@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Rust build
+target/
+
+# Frontend build
+dist/
+
+# macOS
+.DS_Store
+
+# Tauri bundle output
+*.dmg
+*.app
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# Logs
+*.log
+
+# Gateway SQLite database
+routebox.db
+routebox.db-wal
+routebox.db-shm

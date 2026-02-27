@@ -1,0 +1,15 @@
+{
+  "name": "routebox",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @routebox/desktop dev",
+    "dev:tauri": "pnpm --filter @routebox/desktop tauri dev",
+    "dev:gateway": "pnpm --filter @routebox/gateway dev",
+    "build": "pnpm --filter @routebox/desktop tauri build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

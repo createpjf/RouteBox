@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: cd apps/gateway && bun install
+
+      - name: Run tests
+        run: cd apps/gateway && bun test
+
+  test-desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: TypeScript check
+        run: cd apps/desktop && npx tsc --noEmit
+
+      - name: Run tests
+        run: cd apps/desktop && npx vitest run
+
+  docker-gateway:
+    needs: test-gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t routebox-gateway apps/gateway
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name gw -p 3001:3001 \
+            -e ROUTEBOX_TOKEN=test \
+            -e OPENAI_API_KEY=sk-fake \
+            routebox-gateway
+          sleep 2
+          curl -sf http://localhost:3001/health | grep -q '"status":"ok"'
+          docker stop gw
