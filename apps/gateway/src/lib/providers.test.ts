@@ -53,10 +53,10 @@ describe("providerForModel", () => {
     expect(() => providerForModel("")).not.toThrow();
   });
 
-  test("finds Flock for qwen models", () => {
+  test("finds FLock.io for qwen models", () => {
     const p = providerForModel("qwen3-30b-a3b-instruct-2507");
     expect(p).toBeDefined();
-    expect(p!.name).toBe("Flock");
+    expect(p!.name).toBe("FLock.io");
     expect(p!.authHeader).toBe("x-litellm-api-key");
   });
 });

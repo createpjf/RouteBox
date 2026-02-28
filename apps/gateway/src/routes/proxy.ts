@@ -2,6 +2,7 @@
 // POST /v1/chat/completions — OpenAI-compatible proxy
 // ---------------------------------------------------------------------------
 
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import {
   type ProviderConfig,
@@ -9,11 +10,54 @@ import {
   toAnthropicRequest,
   fromAnthropicResponse,
   calculateCost,
+  resolveModelAlias,
 } from "../lib/providers";
 import { selectRoute } from "../lib/router";
 import { metrics, type RequestRecord } from "../lib/metrics";
 
 const app = new Hono();
+
+const MAX_STREAM_BUFFER = 1024 * 1024; // 1 MB — reject malformed streams that never emit newlines
+
+// ── In-memory rate limiter: 60 requests per minute per auth token ────────
+
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 60;
+
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+
+const rateBuckets = new Map<string, RateBucket>();
+
+// Clean up stale buckets every 5 minutes to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateBuckets) {
+    if (bucket.resetAt <= now) {
+      rateBuckets.delete(key);
+    }
+  }
+}, 5 * 60_000);
+
+function checkRateLimit(token: string): { allowed: boolean; retryAfterMs: number } {
+  const now = Date.now();
+  let bucket = rateBuckets.get(token);
+
+  if (!bucket || bucket.resetAt <= now) {
+    bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    rateBuckets.set(token, bucket);
+  }
+
+  bucket.count++;
+
+  if (bucket.count > RATE_LIMIT_MAX) {
+    return { allowed: false, retryAfterMs: bucket.resetAt - now };
+  }
+
+  return { allowed: true, retryAfterMs: 0 };
+}
 
 // ── Non-streaming helpers ───────────────────────────────────────────────────
 
@@ -33,6 +77,7 @@ async function forwardOpenAI(
     method: "POST",
     headers,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
 }
 
@@ -49,6 +94,7 @@ async function forwardAnthropic(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify(anthropicBody),
+    signal: AbortSignal.timeout(30_000),
   });
 }
 
@@ -82,6 +128,7 @@ function anthropicStreamToOpenAI(
   upstream: ReadableStream<Uint8Array>,
   model: string,
   onDone: (usage: { input: number; output: number }) => void,
+  routeboxMeta?: { requestedModel: string; providerName: string },
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -109,6 +156,10 @@ function anthropicStreamToOpenAI(
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
+          if (buffer.length > MAX_STREAM_BUFFER) {
+            controller.error(new Error("Stream buffer overflow"));
+            break;
+          }
 
           const lines = buffer.split("\n");
           buffer = lines.pop()!; // keep incomplete line
@@ -197,8 +248,31 @@ function anthropicStreamToOpenAI(
             }
           }
         }
+      } catch (err) {
+        // Send SSE error event to the client
+        const errorMessage = err instanceof Error ? err.message : "Stream read error";
+        pushChunk(JSON.stringify({
+          error: { message: errorMessage, type: "stream_error" },
+        }));
       } finally {
         reader.releaseLock();
+      }
+
+      // Inject _routebox metadata before [DONE]
+      if (routeboxMeta) {
+        const cost = calculateCost(model, inputTokens, outputTokens);
+        const originalCost = routeboxMeta.requestedModel !== model
+          ? calculateCost(routeboxMeta.requestedModel, inputTokens, outputTokens)
+          : cost;
+        pushChunk(JSON.stringify({
+          _routebox: {
+            routed_model: model,
+            provider: routeboxMeta.providerName.toLowerCase(),
+            cost,
+            saved: Math.max(0, originalCost - cost),
+            key_source: "byok",
+          },
+        }));
       }
 
       pushChunk("[DONE]");
@@ -213,6 +287,7 @@ function anthropicStreamToOpenAI(
 function openaiStreamPassthrough(
   upstream: ReadableStream<Uint8Array>,
   onDone: (usage: { input: number; output: number }) => void,
+  routeboxMeta?: { model: string; requestedModel: string; providerName: string },
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -222,29 +297,61 @@ function openaiStreamPassthrough(
   return new ReadableStream({
     async start(controller) {
       const reader = upstream.getReader();
+      const encoder = new TextEncoder();
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          // Pass through raw bytes
-          controller.enqueue(value);
 
-          // Also parse for usage
+          // Parse for usage and intercept [DONE] to inject _routebox
           buffer += decoder.decode(value, { stream: true });
+          if (buffer.length > MAX_STREAM_BUFFER) {
+            controller.error(new Error("Stream buffer overflow"));
+            break;
+          }
           const lines = buffer.split("\n");
           buffer = lines.pop()!;
+
           for (const line of lines) {
-            if (line.startsWith("data: ") && !line.includes("[DONE]")) {
-              try {
-                const chunk = JSON.parse(line.slice(6));
-                if (chunk.usage) {
-                  inputTokens = chunk.usage.prompt_tokens ?? inputTokens;
-                  outputTokens = chunk.usage.completion_tokens ?? outputTokens;
+            if (line.startsWith("data: ")) {
+              if (line.includes("[DONE]")) {
+                // Inject _routebox before [DONE]
+                if (routeboxMeta) {
+                  const cost = calculateCost(routeboxMeta.model, inputTokens, outputTokens);
+                  const originalCost = routeboxMeta.requestedModel !== routeboxMeta.model
+                    ? calculateCost(routeboxMeta.requestedModel, inputTokens, outputTokens)
+                    : cost;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                    _routebox: {
+                      routed_model: routeboxMeta.model,
+                      provider: routeboxMeta.providerName.toLowerCase(),
+                      cost,
+                      saved: Math.max(0, originalCost - cost),
+                      key_source: "byok",
+                    },
+                  })}\n\n`));
                 }
-              } catch { /* skip */ }
+                controller.enqueue(encoder.encode(`${line}\n\n`));
+              } else {
+                try {
+                  const chunk = JSON.parse(line.slice(6));
+                  if (chunk.usage) {
+                    inputTokens = chunk.usage.prompt_tokens ?? inputTokens;
+                    outputTokens = chunk.usage.completion_tokens ?? outputTokens;
+                  }
+                } catch { /* skip */ }
+                controller.enqueue(encoder.encode(`${line}\n\n`));
+              }
+            } else if (line.trim()) {
+              // Pass through non-data lines (e.g. event: lines)
+              controller.enqueue(encoder.encode(`${line}\n`));
             }
           }
         }
+      } catch (err) {
+        // Send SSE error event to the client
+        const errorMessage = err instanceof Error ? err.message : "Stream read error";
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: errorMessage, type: "stream_error" } })}\n\n`));
       } finally {
         reader.releaseLock();
       }
@@ -254,10 +361,6 @@ function openaiStreamPassthrough(
   });
 }
 
-// ── Request counter ─────────────────────────────────────────────────────────
-
-let reqCounter = 0;
-
 // ── Main handler ────────────────────────────────────────────────────────────
 
 app.post("/chat/completions", async (c) => {
@@ -265,10 +368,62 @@ app.post("/chat/completions", async (c) => {
     return c.json({ error: { message: "Traffic is paused", type: "server_error", code: "traffic_paused" } }, 503);
   }
 
+  // ── Rate limit check ──
+  const authHeader = c.req.header("Authorization") ?? "";
+  const authToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "anonymous";
+  const rateCheck = checkRateLimit(authToken);
+  if (!rateCheck.allowed) {
+    const retryAfterSec = Math.ceil(rateCheck.retryAfterMs / 1000);
+    return c.json({
+      error: {
+        message: `Rate limit exceeded: max ${RATE_LIMIT_MAX} requests per minute. Retry after ${retryAfterSec}s.`,
+        type: "rate_limit_error",
+        code: "rate_limit_exceeded",
+      },
+    }, 429);
+  }
+
   const body = await c.req.json<OpenAIChatRequest>();
-  const requestedModel = body.model;
+
+  // Validate required model field
+  if (!body.model || typeof body.model !== "string" || !body.model.trim()) {
+    return c.json({
+      error: { message: "Missing required field: model", type: "invalid_request_error" },
+    }, 400);
+  }
+
+  // Validate messages field
+  if (!Array.isArray(body.messages)) {
+    return c.json({
+      error: { message: "Field 'messages' must be an array", type: "invalid_request_error" },
+    }, 400);
+  }
+  if (body.messages.length === 0) {
+    return c.json({
+      error: { message: "Field 'messages' must not be empty", type: "invalid_request_error" },
+    }, 400);
+  }
+  for (let i = 0; i < body.messages.length; i++) {
+    const msg = body.messages[i];
+    if (!msg.role || typeof msg.role !== "string") {
+      return c.json({
+        error: { message: `messages[${i}].role must be a non-empty string`, type: "invalid_request_error" },
+      }, 400);
+    }
+  }
+
+  // Reject oversized request bodies (>1MB)
+  if (JSON.stringify(body).length > 1_000_000) {
+    return c.json({
+      error: { message: "Request body too large (max 1MB)", type: "invalid_request_error" },
+    }, 400);
+  }
+
+  // Resolve aliases (e.g. "claude-3.5-sonnet" → "claude-3-5-sonnet-20241022")
+  const requestedModel = resolveModelAlias(body.model);
+  body.model = requestedModel;
   const isStream = body.stream === true;
-  const clientRequestId = c.req.header("x-request-id") || `rb-${Date.now()}-${++reqCounter}`;
+  const clientRequestId = c.req.header("x-request-id") || randomUUID();
 
   // Route
   const route = selectRoute(requestedModel, metrics.routingStrategy);
@@ -288,6 +443,8 @@ app.post("/chat/completions", async (c) => {
 
   const startMs = performance.now();
   let res: Response;
+  let retriedProvider: ProviderConfig | undefined;
+  let retriedModel: string | undefined;
 
   try {
     res = await forward(provider, body);
@@ -295,54 +452,132 @@ app.post("/chat/completions", async (c) => {
     metrics.markProviderDown(provider.name);
     const latencyMs = Math.round(performance.now() - startMs);
     recordRequest(requestedModel, model, provider.name, 0, 0, 0, latencyMs, "error");
-    return c.json({
-      error: { message: `Provider ${provider.name} unreachable`, type: "server_error" },
-    }, 502);
+
+    // Auto-retry with fallback provider
+    if (!isFallback) {
+      const fallback = selectRoute(requestedModel, "quality_first");
+      if (fallback && fallback.provider.name !== provider.name) {
+        try {
+          body.model = fallback.model;
+          if (isStream && fallback.provider.format === "openai") {
+            body.stream_options = { include_usage: true };
+          }
+          res = await forward(fallback.provider, body);
+          retriedProvider = fallback.provider;
+          retriedModel = fallback.model;
+        } catch {
+          metrics.markProviderDown(fallback.provider.name);
+        }
+      }
+    }
+    if (!res!) {
+      return c.json({
+        error: { message: `Provider ${provider.name} unreachable`, type: "server_error" },
+      }, 502);
+    }
   }
 
-  if (!res.ok) {
+  // Use retried provider info if retry succeeded
+  const activeProvider = retriedProvider ?? provider;
+  const activeModel = retriedModel ?? model;
+  const activeIsFallback = !!retriedProvider || isFallback;
+
+  if (!res!.ok) {
     const latencyMs = Math.round(performance.now() - startMs);
-    const errBody = await res.text().catch(() => "");
-    // If it's a retriable error and we were on canonical, try fallback
-    if (res.status >= 500 && !isFallback) {
-      metrics.markProviderDown(provider.name);
+    const errBody = await res!.text().catch(() => "");
+    const errStatus = res!.status;
+
+    // Auto-retry on 5xx with a different provider
+    if (errStatus >= 500 && !activeIsFallback) {
+      metrics.markProviderDown(activeProvider.name);
+      const fallback = selectRoute(requestedModel, "quality_first");
+      if (fallback && fallback.provider.name !== activeProvider.name) {
+        try {
+          body.model = fallback.model;
+          if (isStream && fallback.provider.format === "openai") {
+            body.stream_options = { include_usage: true };
+          }
+          const retryRes = await forward(fallback.provider, body);
+          if (retryRes.ok || retryRes.status < 500) {
+            // Retry succeeded — continue with this response
+            res = retryRes;
+            Object.assign(route, { provider: fallback.provider, model: fallback.model, isFallback: true });
+            // Fall through to normal response handling below
+          } else {
+            // Retry also failed
+            recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
+            return c.json({
+              error: {
+                message: `Provider ${activeProvider.name} returned ${errStatus} (retry with ${fallback.provider.name} also failed)`,
+                type: "upstream_error",
+                upstream: errBody.slice(0, 500),
+              },
+            }, 502);
+          }
+        } catch {
+          metrics.markProviderDown(fallback.provider.name);
+          recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
+          return c.json({
+            error: {
+              message: `Provider ${activeProvider.name} returned ${errStatus}, fallback ${fallback.provider.name} unreachable`,
+              type: "upstream_error",
+            },
+          }, 502);
+        }
+      } else {
+        recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
+        return c.json({
+          error: {
+            message: `Provider ${activeProvider.name} returned ${errStatus}`,
+            type: "upstream_error",
+            upstream: errBody.slice(0, 500),
+          },
+        }, 502);
+      }
+    } else {
+      recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
+      return c.json({
+        error: {
+          message: `Provider ${activeProvider.name} returned ${errStatus}`,
+          type: "upstream_error",
+          upstream: errBody.slice(0, 500),
+        },
+      }, (errStatus >= 500 ? 502 : errStatus) as 400 | 401 | 403 | 404 | 422 | 429 | 502);
     }
-    recordRequest(requestedModel, model, provider.name, 0, 0, 0, latencyMs, "error");
-    return c.json({
-      error: {
-        message: `Provider ${provider.name} returned ${res.status}`,
-        type: "upstream_error",
-        upstream: errBody.slice(0, 500),
-      },
-    }, (res.status >= 500 ? 502 : res.status) as 400 | 401 | 403 | 404 | 422 | 429 | 502);
   }
+
+  // Re-read provider/model after possible retry
+  const finalProvider = route.provider;
+  const finalModel = route.model;
+  const finalIsFallback = route.isFallback;
 
   // ── Streaming response ──
-  if (isStream && res.body) {
+  if (isStream && res!.body) {
     const latencyMs = Math.round(performance.now() - startMs);
-    const stream = provider.format === "anthropic"
-      ? anthropicStreamToOpenAI(res.body, model, (usage) => {
+    const routeboxStreamMeta = { model: finalModel, requestedModel, providerName: finalProvider.name };
+    const stream = finalProvider.format === "anthropic"
+      ? anthropicStreamToOpenAI(res!.body, finalModel, (usage) => {
           recordRequest(
-            requestedModel, model, provider.name,
+            requestedModel, finalModel, finalProvider.name,
             usage.input, usage.output, usage.input + usage.output,
-            latencyMs, isFallback ? "fallback" : "success",
+            latencyMs, finalIsFallback ? "fallback" : "success",
           );
-        })
-      : openaiStreamPassthrough(res.body, (usage) => {
+        }, { requestedModel, providerName: finalProvider.name })
+      : openaiStreamPassthrough(res!.body, (usage) => {
           recordRequest(
-            requestedModel, model, provider.name,
+            requestedModel, finalModel, finalProvider.name,
             usage.input, usage.output, usage.input + usage.output,
-            latencyMs, isFallback ? "fallback" : "success",
+            latencyMs, finalIsFallback ? "fallback" : "success",
           );
-        });
+        }, routeboxStreamMeta);
 
     return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
-        "X-RouteBox-Provider": provider.name,
-        "X-RouteBox-Model": model,
+        "X-RouteBox-Provider": finalProvider.name,
+        "X-RouteBox-Model": finalModel,
         "X-Request-ID": clientRequestId,
       },
     });
@@ -350,23 +585,37 @@ app.post("/chat/completions", async (c) => {
 
   // ── Non-streaming response ──
   const latencyMs = Math.round(performance.now() - startMs);
-  const json = await res.json() as Record<string, unknown>;
+  const json = await res!.json() as Record<string, unknown>;
 
   // Transform Anthropic response to OpenAI shape
-  const responseJson = provider.format === "anthropic"
-    ? fromAnthropicResponse(json as never, model)
+  const responseJson = finalProvider.format === "anthropic"
+    ? fromAnthropicResponse(json as never, finalModel)
     : json;
 
   const usage = extractUsage(json);
+  const cost = calculateCost(finalModel, usage.input, usage.output, finalProvider.name);
+  const originalCost = requestedModel !== finalModel
+    ? calculateCost(requestedModel, usage.input, usage.output)
+    : cost;
+
   recordRequest(
-    requestedModel, model, provider.name,
+    requestedModel, finalModel, finalProvider.name,
     usage.input, usage.output, usage.input + usage.output,
-    latencyMs, isFallback ? "fallback" : "success",
+    latencyMs, finalIsFallback ? "fallback" : "success",
   );
 
+  // Inject _routebox metadata
+  (responseJson as Record<string, unknown>)._routebox = {
+    routed_model: finalModel,
+    provider: finalProvider.name.toLowerCase(),
+    cost,
+    saved: Math.max(0, originalCost - cost),
+    key_source: "byok",
+  };
+
   return c.json(responseJson, 200, {
-    "X-RouteBox-Provider": provider.name,
-    "X-RouteBox-Model": model,
+    "X-RouteBox-Provider": finalProvider.name,
+    "X-RouteBox-Model": finalModel,
     "X-Request-ID": clientRequestId,
   });
 });
@@ -383,10 +632,9 @@ function recordRequest(
   latencyMs: number,
   status: RequestRecord["status"],
 ) {
-  const cost = calculateCost(actualModel, inputTokens, outputTokens);
-  reqCounter++;
+  const cost = calculateCost(actualModel, inputTokens, outputTokens, providerName);
   metrics.record({
-    id: `req_${Date.now()}_${reqCounter}`,
+    id: randomUUID(),
     timestamp: Date.now(),
     provider: providerName,
     model: actualModel,
@@ -396,6 +644,9 @@ function recordRequest(
     cost,
     latencyMs,
     status,
+    requestedModel,
+    isFallback: status === "fallback",
+    routingStrategy: metrics.routingStrategy,
   });
 
   // Calculate savings if routed to a cheaper model

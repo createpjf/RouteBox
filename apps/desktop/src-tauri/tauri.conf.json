@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "RouteBox",
-  "version": "0.1.0",
-  "identifier": "com.routebox.app",
+  "version": "1.0.0",
+  "identifier": "com.routebox.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "bun build ../../apps/gateway/src/index.ts --target=bun --outfile src-tauri/gateway-bundle.js && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -14,8 +14,8 @@
       {
         "label": "panel",
         "title": "RouteBox",
-        "width": 360,
-        "height": 560,
+        "width": 380,
+        "height": 680,
         "resizable": false,
         "decorations": false,
         "transparent": true,
@@ -27,15 +27,13 @@
     "security": {
       "csp": "default-src 'self'; connect-src 'self' ws://localhost:* wss://localhost:* http://localhost:* https://api.routebox.dev wss://api.routebox.dev; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
-    },
     "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app"],
+    "targets": ["dmg"],
+    "resources": ["gateway-bundle.js"],
+    "createUpdaterArtifacts": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -51,7 +49,12 @@
       "minimumSystemVersion": "12.0",
       "frameworks": [],
       "entitlements": "Entitlements.plist",
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "dmg": {
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 },
+        "windowSize": { "width": 660, "height": 400 }
+      }
     }
   },
   "plugins": {}

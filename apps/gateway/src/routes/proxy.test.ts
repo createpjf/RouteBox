@@ -196,15 +196,15 @@ describe("POST /v1/chat/completions", () => {
     expect(json.error.code).toBe("no_provider");
   });
 
-  test("routes qwen models to Flock with custom auth header", async () => {
+  test("routes qwen models to FLock.io with custom auth header", async () => {
     const res = await proxyRequest({
       model: "qwen3-30b-a3b-instruct-2507",
       messages: [{ role: "user", content: "Hello" }],
     });
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-RouteBox-Provider")).toBe("Flock");
+    expect(res.headers.get("X-RouteBox-Provider")).toBe("FLock.io");
     const json = await res.json() as any;
-    // Flock uses x-litellm-api-key instead of Authorization Bearer
+    // FLock.io uses x-litellm-api-key instead of Authorization Bearer
     expect(json._litellm).toBe("test-flock");
     expect(json._auth).toBe("");
   });
@@ -217,6 +217,6 @@ describe("GET /health", () => {
     const json = await res.json() as any;
     expect(json.status).toBe("ok");
     expect(json.providers).toContain("OpenAI");
-    expect(json.providers).toContain("Flock");
+    expect(json.providers).toContain("FLock.io");
   });
 });

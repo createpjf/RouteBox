@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Xcode user data (keep xcshareddata for shared schemes)
+RouteBox.xcodeproj/xcuserdata/
+RouteBox.xcodeproj/project.xcworkspace/xcuserdata/

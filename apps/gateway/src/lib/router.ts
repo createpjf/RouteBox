@@ -10,6 +10,7 @@ import {
   type ProviderConfig,
 } from "./providers";
 import { metrics } from "./metrics";
+import { loadModelPreferences, type ModelPreferenceRow } from "./db";
 
 export interface RouteResult {
   provider: ProviderConfig;
@@ -17,6 +18,37 @@ export interface RouteResult {
   /** Was this a fallback from the originally-requested model? */
   isFallback: boolean;
 }
+
+// ── Model preferences cache ─────────────────────────────────────────────────
+
+let preferencesCache: ModelPreferenceRow[] | null = null;
+
+export function refreshPreferencesCache() {
+  preferencesCache = null;
+}
+
+function getPreferences(): ModelPreferenceRow[] {
+  if (preferencesCache === null) {
+    preferencesCache = loadModelPreferences();
+  }
+  return preferencesCache;
+}
+
+/** Check if a model matches a pattern (supports trailing * wildcard) */
+function matchesPattern(model: string, pattern: string): boolean {
+  if (pattern === "*") return true;
+  if (pattern.endsWith("*")) {
+    return model.startsWith(pattern.slice(0, -1));
+  }
+  return model === pattern;
+}
+
+/** Find a provider config by name */
+function findProvider(name: string): ProviderConfig | undefined {
+  return providers.find((p) => p.name === name);
+}
+
+// ── Core routing ────────────────────────────────────────────────────────────
 
 /** Find which tier a model belongs to, if any */
 function tierFor(model: string): string[] | undefined {
@@ -34,55 +66,77 @@ export function selectRoute(
   requestedModel: string,
   strategy: string,
 ): RouteResult | null {
-  // Direct / quality-first: use the canonical provider if available
+  // ── Check model preferences first ──
+  const prefs = getPreferences();
+
+  // Check for pins (highest priority)
+  for (const pref of prefs) {
+    if (pref.action === "pin" && matchesPattern(requestedModel, pref.model_pattern)) {
+      const pinned = findProvider(pref.provider_name);
+      if (pinned && metrics.isProviderUp(pinned.name)) {
+        return { provider: pinned, model: requestedModel, isFallback: false };
+      }
+      // Pinned provider is down — fall through to normal strategy
+      break;
+    }
+  }
+
+  // Collect excluded providers
+  const excluded = new Set<string>();
+  for (const pref of prefs) {
+    if (pref.action === "exclude" && matchesPattern(requestedModel, pref.model_pattern)) {
+      excluded.add(pref.provider_name);
+    }
+  }
+
+  // ── Normal strategy routing ──
   const canonical = providerForModel(requestedModel);
+  const canonicalOk = canonical && !excluded.has(canonical.name) && metrics.isProviderUp(canonical.name);
 
   if (strategy === "quality_first") {
-    if (canonical && metrics.isProviderUp(canonical.name)) {
-      return { provider: canonical, model: requestedModel, isFallback: false };
+    if (canonicalOk) {
+      return { provider: canonical!, model: requestedModel, isFallback: false };
     }
-    // Fallback to any provider that can serve an equivalent
-    return fallbackRoute(requestedModel, canonical?.name);
+    return fallbackRoute(requestedModel, canonical?.name, excluded);
   }
 
   if (strategy === "cost_first") {
-    return costFirstRoute(requestedModel, canonical);
+    return costFirstRoute(requestedModel, canonicalOk ? canonical : undefined, excluded);
   }
 
   if (strategy === "speed_first") {
-    return speedFirstRoute(requestedModel, canonical);
+    return speedFirstRoute(requestedModel, canonicalOk ? canonical : undefined, excluded);
   }
 
   // smart_auto: try canonical first, fall back intelligently
-  if (canonical && metrics.isProviderUp(canonical.name)) {
-    return { provider: canonical, model: requestedModel, isFallback: false };
+  if (canonicalOk) {
+    return { provider: canonical!, model: requestedModel, isFallback: false };
   }
-  return fallbackRoute(requestedModel, canonical?.name);
+  return fallbackRoute(requestedModel, canonical?.name, excluded);
 }
 
 function costFirstRoute(
   requestedModel: string,
   canonical: ProviderConfig | undefined,
+  excluded: Set<string>,
 ): RouteResult | null {
   const tier = tierFor(requestedModel);
   if (!tier) {
-    // No tier — use canonical
     if (canonical && metrics.isProviderUp(canonical.name)) {
       return { provider: canonical, model: requestedModel, isFallback: false };
     }
     return null;
   }
 
-  // Find cheapest model in this tier that has an available provider
   let best: RouteResult | null = null;
   let bestCost = Infinity;
 
   for (const model of tier) {
     const p = providerForModel(model);
-    if (!p || !metrics.isProviderUp(p.name)) continue;
+    if (!p || excluded.has(p.name) || !metrics.isProviderUp(p.name)) continue;
     const pricing = pricingForModel(model);
     const avgCost = (pricing.input + pricing.output) / 2;
-    if (avgCost < bestCost) {
+    if (avgCost < bestCost || (avgCost === bestCost && p.name === "FLock.io")) {
       bestCost = avgCost;
       best = { provider: p, model, isFallback: model !== requestedModel };
     }
@@ -94,6 +148,7 @@ function costFirstRoute(
 function speedFirstRoute(
   requestedModel: string,
   canonical: ProviderConfig | undefined,
+  excluded: Set<string>,
 ): RouteResult | null {
   const tier = tierFor(requestedModel);
   if (!tier) {
@@ -108,9 +163,9 @@ function speedFirstRoute(
 
   for (const model of tier) {
     const p = providerForModel(model);
-    if (!p || !metrics.isProviderUp(p.name)) continue;
+    if (!p || excluded.has(p.name) || !metrics.isProviderUp(p.name)) continue;
     const lat = metrics.getProviderLatency(p.name);
-    if (lat < bestLatency) {
+    if (lat < bestLatency || (lat === bestLatency && p.name === "FLock.io")) {
       bestLatency = lat;
       best = { provider: p, model, isFallback: model !== requestedModel };
     }
@@ -122,14 +177,23 @@ function speedFirstRoute(
 function fallbackRoute(
   requestedModel: string,
   excludeProvider?: string,
+  excluded?: Set<string>,
 ): RouteResult | null {
   const tier = tierFor(requestedModel);
   if (!tier) return null;
 
+  // Prefer FLock.io as the first fallback when available
+  let firstNonFlock: RouteResult | null = null;
   for (const model of tier) {
     const p = providerForModel(model);
     if (!p || p.name === excludeProvider || !metrics.isProviderUp(p.name)) continue;
-    return { provider: p, model, isFallback: true };
+    if (excluded?.has(p.name)) continue;
+    if (p.name === "FLock.io") {
+      return { provider: p, model, isFallback: true };
+    }
+    if (!firstNonFlock) {
+      firstNonFlock = { provider: p, model, isFallback: true };
+    }
   }
-  return null;
+  return firstNonFlock;
 }

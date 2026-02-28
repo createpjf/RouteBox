@@ -19,7 +19,7 @@ async function loadCachedStats(): Promise<RealtimeStats | null> {
   try {
     const { load } = await import("@tauri-apps/plugin-store");
     const store = await load("settings.json", { defaults: {} });
-    return await store.get<RealtimeStats>(CACHE_KEY);
+    return await store.get<RealtimeStats>(CACHE_KEY) ?? null;
   } catch {
     return null;
   }
@@ -37,7 +37,7 @@ async function saveCachedStats(stats: RealtimeStats) {
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useRealtimeStats() {
+export function useRealtimeStats(ready = true) {
   const [stats, setStats] = useState<RealtimeStats | null>(null);
   const [connected, setConnected] = useState(false);
   const [stale, setStale] = useState(false);
@@ -58,7 +58,10 @@ export function useRealtimeStats() {
   }, []);
 
   useEffect(() => {
-    const ws = new RouteBoxWebSocket(getWsUrl());
+    if (!ready) return;
+
+    // Pass a function so each connect/reconnect gets the latest token URL
+    const ws = new RouteBoxWebSocket(() => getWsUrl());
     wsRef.current = ws;
 
     ws.on("open", () => {
@@ -122,7 +125,7 @@ export function useRealtimeStats() {
       ws.disconnect();
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, []);
+  }, [ready]);
 
   const disconnect = useCallback(() => {
     wsRef.current?.disconnect();

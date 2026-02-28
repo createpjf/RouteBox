@@ -1,5 +1,14 @@
 import { getGatewayUrl, getAuthToken } from "./constants";
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(
   path: string,
   options?: RequestInit & { retries?: number }
@@ -19,15 +28,17 @@ async function request<T>(
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(
-          (body as Record<string, string>).error || `HTTP ${res.status}`
+        throw new ApiError(
+          (body as Record<string, string>).error || `HTTP ${res.status}`,
+          res.status
         );
       }
       return (await res.json()) as T;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      // Don't retry POST or 4xx errors
-      if (options?.method === "POST" || lastError.message.includes("HTTP 4")) {
+      // Don't retry POST or 4xx client errors
+      const is4xx = err instanceof ApiError && err.status >= 400 && err.status < 500;
+      if (options?.method === "POST" || is4xx) {
         break;
       }
       if (attempt < maxRetries) {
@@ -78,8 +89,91 @@ export interface TrafficStatusResponse {
   paused: boolean;
 }
 
+// ── Provider registry (key management) ──────────────────────────────────────
+
+export interface ProviderRegistryEntry {
+  name: string;
+  format: "openai" | "anthropic";
+  hasKey: boolean;
+  keySource: "env" | "db" | null;
+  maskedKey: string | null;
+  isActive: boolean;
+}
+
+export interface ProviderRegistryResponse {
+  providers: ProviderRegistryEntry[];
+}
+
+export interface SetProviderKeyResponse {
+  success: boolean;
+  provider: string;
+}
+
+export interface ValidateKeyResponse {
+  valid: boolean;
+  error: string | null;
+}
+
+// ── Analytics ────────────────────────────────────────────────────────────────
+
+export interface AnalyticsTimeSeriesPoint {
+  date: string;
+  cost: number;
+  tokens: number;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface AnalyticsResponse {
+  period: string;
+  timeSeries: AnalyticsTimeSeriesPoint[];
+  providerBreakdown: { provider: string; requests: number; cost: number; tokens: number }[];
+  topModels: { model: string; requests: number; cost: number }[];
+  totals: { requests: number; tokens: number; cost: number; avgLatency: number };
+}
+
+// ── Budget ───────────────────────────────────────────────────────────────────
+
+export interface BudgetResponse {
+  monthly: number;
+  spent: number;
+  currency: string;
+}
+
+// ── Model Preferences ────────────────────────────────────────────────────────
+
+export interface ModelPreference {
+  id: number;
+  modelPattern: string;
+  provider: string;
+  action: "pin" | "exclude";
+  priority: number;
+}
+
+export interface PreferencesResponse {
+  preferences: ModelPreference[];
+}
+
+// ── Models ───────────────────────────────────────────────────────────────────
+
+export interface ModelInfo {
+  id: string;
+  pricing: { input: number; output: number };
+}
+
+export interface ProviderModels {
+  provider: string;
+  models: ModelInfo[];
+}
+
+export interface ModelsResponse {
+  providers: ProviderModels[];
+}
+
 export const api = {
   getProviders: () => request<ProvidersResponse>("/api/v1/providers"),
+  getModels: () => request<ModelsResponse>("/api/v1/models"),
   getBalance: () => request<BalanceResponse>("/api/v1/balance"),
   getKeys: () => request<KeysResponse>("/api/v1/keys"),
   getRouting: () => request<RoutingResponse>("/api/v1/routing"),
@@ -95,4 +189,51 @@ export const api = {
     request("/api/v1/traffic/resume", { method: "POST", retries: 0 }),
   getTrafficStatus: () =>
     request<TrafficStatusResponse>("/api/v1/traffic/status"),
+
+  // Provider key management
+  getProviderRegistry: () =>
+    request<ProviderRegistryResponse>("/api/v1/providers/registry"),
+  setProviderKey: (name: string, apiKey: string) =>
+    request<SetProviderKeyResponse>(`/api/v1/providers/${encodeURIComponent(name)}/key`, {
+      method: "PUT",
+      body: JSON.stringify({ apiKey }),
+      retries: 0,
+    }),
+  deleteProviderKey: (name: string) =>
+    request<{ success: boolean }>(`/api/v1/providers/${encodeURIComponent(name)}/key`, {
+      method: "DELETE",
+      retries: 0,
+    }),
+  validateProviderKey: (name: string) =>
+    request<ValidateKeyResponse>(`/api/v1/providers/${encodeURIComponent(name)}/validate`, {
+      method: "POST",
+      retries: 0,
+    }),
+
+  // Analytics
+  getAnalytics: (period = "today") =>
+    request<AnalyticsResponse>(`/api/v1/analytics?period=${encodeURIComponent(period)}`),
+
+  // Budget
+  getBudget: () => request<BudgetResponse>("/api/v1/budget"),
+  setBudget: (monthly: number) =>
+    request<{ success: boolean }>("/api/v1/budget", {
+      method: "PUT",
+      body: JSON.stringify({ monthly }),
+      retries: 0,
+    }),
+
+  // Model Preferences
+  getPreferences: () => request<PreferencesResponse>("/api/v1/preferences"),
+  addPreference: (modelPattern: string, provider: string, action: string, priority = 0) =>
+    request<{ success: boolean; id: number }>("/api/v1/preferences", {
+      method: "POST",
+      body: JSON.stringify({ modelPattern, provider, action, priority }),
+      retries: 0,
+    }),
+  removePreference: (id: number) =>
+    request<{ success: boolean }>(`/api/v1/preferences/${id}`, {
+      method: "DELETE",
+      retries: 0,
+    }),
 };

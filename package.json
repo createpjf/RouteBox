@@ -6,6 +6,7 @@
     "dev:tauri": "pnpm --filter @routebox/desktop tauri dev",
     "dev:gateway": "pnpm --filter @routebox/gateway dev",
     "build": "pnpm --filter @routebox/desktop tauri build",
+    "build:dmg": "pnpm --filter @routebox/desktop build:dmg",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },

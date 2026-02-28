@@ -14,17 +14,13 @@ export function AlertBanner({ title, message, onDismiss }: AlertBannerProps) {
 
   return (
     <div
-      className="mx-3 mt-2 rounded-xl p-2.5 flex items-start gap-2 animate-slide-in backdrop-blur-xl"
-      style={{
-        background: "rgba(248, 113, 113, 0.08)",
-        border: "0.5px solid rgba(248, 113, 113, 0.15)",
-      }}
+      className="mx-4 mt-2 rounded-xl p-2.5 flex items-start gap-2 animate-slide-in bg-[#FFF8F0] border border-[rgba(0,0,0,0.04)]"
     >
-      <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-accent-red/12 shrink-0">
-        <AlertTriangle size={14} strokeWidth={1.75} className="text-accent-red" />
+      <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-[#F5F5F7] shrink-0">
+        <AlertTriangle size={14} strokeWidth={1.75} className="text-[#FF9500]" />
       </div>
       <div className="flex-1 min-w-0 pt-0.5">
-        <p className="text-[13px] font-semibold text-accent-red">{title}</p>
+        <p className="text-[13px] font-semibold text-[#86868B]">{title}</p>
         <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">{message}</p>
       </div>
       <button
@@ -32,7 +28,7 @@ export function AlertBanner({ title, message, onDismiss }: AlertBannerProps) {
           setDismissed(true);
           onDismiss();
         }}
-        className="flex items-center justify-center h-7 w-7 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-white/[0.05] transition-colors shrink-0"
+        className="flex items-center justify-center h-7 w-7 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-bg-card transition-colors shrink-0"
       >
         <X size={14} strokeWidth={1.75} />
       </button>

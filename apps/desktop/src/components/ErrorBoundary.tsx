@@ -36,7 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
           <button
             onClick={this.handleReset}
-            className="flex items-center gap-1.5 text-[13px] font-medium text-accent-blue hover:bg-accent-blue/8 h-8 px-3 rounded-lg transition-colors mt-1"
+            className="btn-primary mt-1"
           >
             <RotateCcw size={14} strokeWidth={1.75} />
             Reload

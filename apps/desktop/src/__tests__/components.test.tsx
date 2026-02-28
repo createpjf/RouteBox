@@ -1,12 +1,21 @@
 import { describe, test, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import React from "react";
 
 // Mock lucide-react — vi.mock is hoisted above imports, so use inline require
 vi.mock("lucide-react", async () => {
   const React = await import("react");
   const icon = (props: any) => React.createElement("span", { "data-testid": "icon", ...props });
-  return { Settings: icon, AlertTriangle: icon, RotateCcw: icon, X: icon };
+  return {
+    Settings: icon, AlertTriangle: icon, RotateCcw: icon, X: icon,
+    ChevronRight: icon, Wifi: icon, Box: icon, Copy: icon, Check: icon,
+    Pause: icon, Play: icon, Coins: icon, DollarSign: icon, Sparkles: icon,
+    Zap: icon, Loader2: icon, Trash2: icon, ChevronDown: icon,
+    LayoutDashboard: icon, Route: icon, ScrollText: icon, Search: icon,
+    Wallet: icon, Activity: icon, XCircle: icon,
+    Key: icon, Shield: icon, AlertCircle: icon, BookOpen: icon, ArrowRight: icon,
+    BarChart3: icon, Pin: icon, Ban: icon, Plus: icon, Square: icon,
+    TrendingUp: icon, Cpu: icon, Clock: icon,
+  };
 });
 
 // Mock constants to avoid Tauri imports
@@ -15,6 +24,10 @@ vi.mock("@/lib/constants", () => ({
     OpenAI: "#10A37F",
     Anthropic: "#D4A574",
     Google: "#4285F4",
+    DeepSeek: "#4D6BFE",
+    MiniMax: "#E85B2B",
+    Kimi: "#5856D6",
+    Flock: "#7C3AED",
   } as Record<string, string>,
   ROUTING_STRATEGIES: [],
   getGatewayUrl: () => "http://localhost:3001",
@@ -26,71 +39,76 @@ vi.mock("@/lib/constants", () => ({
   WS_PING_INTERVAL: 25000,
 }));
 
-import { Header } from "../components/Header";
+import { HeroSection } from "../components/HeroSection";
 import { ProviderStatus } from "../components/ProviderStatus";
-import { RequestLog } from "../components/RequestLog";
+import { RequestLogPage } from "../components/RequestLogPage";
 import { ToastContainer } from "../components/ToastContainer";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { StatCard } from "../components/StatCard";
+import { TabBar } from "../components/TabBar";
 
-describe("Header", () => {
-  test("shows 'Live' when connected", () => {
-    render(<Header connected={true} onOpenSettings={() => {}} />);
-    expect(screen.getByText("Live")).toBeDefined();
+// Simple mock icon for StatCard tests
+const MockIcon = (props: any) => <span data-testid="stat-icon" {...props} />;
+
+describe("HeroSection", () => {
+  const noop = () => {};
+
+  test("shows 'Online' when connected", () => {
+    render(<HeroSection connected={true} onOpenSettings={noop} />);
+    expect(screen.getByText("Online")).toBeDefined();
   });
 
   test("shows 'Offline' when disconnected", () => {
-    render(<Header connected={false} onOpenSettings={() => {}} />);
+    render(<HeroSection connected={false} onOpenSettings={noop} />);
     expect(screen.getByText("Offline")).toBeDefined();
   });
 
-  test("shows 'Cached' when disconnected + stale", () => {
-    render(<Header connected={false} stale={true} onOpenSettings={() => {}} />);
-    expect(screen.getByText("Cached")).toBeDefined();
-  });
-
-  test("calls onOpenSettings when settings button clicked", () => {
-    const onOpen = vi.fn();
-    render(<Header connected={true} onOpenSettings={onOpen} />);
-    const buttons = screen.getAllByRole("button");
-    fireEvent.click(buttons[0]);
-    expect(onOpen).toHaveBeenCalledOnce();
+  test("renders RouteBox title", () => {
+    render(<HeroSection connected={true} onOpenSettings={noop} />);
+    expect(screen.getByText("RouteBox")).toBeDefined();
   });
 });
 
 describe("StatCard", () => {
   test("renders label and value", () => {
     render(
-      <StatCard label="Requests" value="1,234" icon={<span>i</span>} color="#3B82F6" />
+      <StatCard label="Requests" value="1,234" color="#3B82F6" icon={MockIcon} />
     );
     expect(screen.getByText("Requests")).toBeDefined();
     expect(screen.getByText("1,234")).toBeDefined();
   });
 
+  test("renders icon", () => {
+    render(
+      <StatCard label="Requests" value="1,234" color="#3B82F6" icon={MockIcon} />
+    );
+    expect(screen.getByTestId("stat-icon")).toBeDefined();
+  });
+
   test("renders positive delta with + prefix", () => {
     render(
-      <StatCard label="Tokens" value="5K" icon={<span>i</span>} color="#FFF" delta={12} />
+      <StatCard label="Tokens" value="5K" color="#FFF" icon={MockIcon} delta={12} />
     );
     expect(screen.getByText("+12%")).toBeDefined();
   });
 
   test("renders negative delta without + prefix", () => {
     render(
-      <StatCard label="Cost" value="$5" icon={<span>i</span>} color="#FFF" delta={-8} />
+      <StatCard label="Cost" value="$5" color="#FFF" icon={MockIcon} delta={-8} />
     );
     expect(screen.getByText("-8%")).toBeDefined();
   });
 
   test("hides delta when zero", () => {
     const { container } = render(
-      <StatCard label="Tokens" value="5K" icon={<span>i</span>} color="#FFF" delta={0} />
+      <StatCard label="Tokens" value="5K" color="#FFF" icon={MockIcon} delta={0} />
     );
     expect(container.textContent).not.toContain("0%");
   });
 
   test("renders subtitle", () => {
     render(
-      <StatCard label="Saved" value="$1.50" icon={<span>i</span>} color="#FFF" subtitle="by routing" />
+      <StatCard label="Saved" value="$1.50" color="#FFF" icon={MockIcon} subtitle="by routing" />
     );
     expect(screen.getByText("by routing")).toBeDefined();
   });
@@ -114,19 +132,19 @@ describe("ProviderStatus", () => {
     expect(screen.getByText("OpenAI")).toBeDefined();
     expect(screen.getByText("Anthropic")).toBeDefined();
     expect(screen.getByText("120ms")).toBeDefined();
-    expect(screen.getByText("timeout")).toBeDefined();
+    expect(screen.getByText("offline")).toBeDefined();
   });
 });
 
-describe("RequestLog", () => {
+describe("RequestLogPage", () => {
   test("renders empty state", () => {
-    render(<RequestLog entries={[]} />);
+    render(<RequestLogPage entries={[]} />);
     expect(screen.getByText("Waiting for requests...")).toBeDefined();
   });
 
   test("renders entries with status badges", () => {
     render(
-      <RequestLog
+      <RequestLogPage
         entries={[
           { id: "1", timestamp: Date.now(), provider: "OpenAI", model: "gpt-4o", tokens: 100, cost: 0.001, latencyMs: 120, status: "success" },
           { id: "2", timestamp: Date.now(), provider: "Anthropic", model: "claude-sonnet-4-20250514", tokens: 200, cost: 0.003, latencyMs: 350, status: "error" },
@@ -136,7 +154,28 @@ describe("RequestLog", () => {
     expect(screen.getByText("gpt-4o")).toBeDefined();
     expect(screen.getByText("OK")).toBeDefined();
     expect(screen.getByText("ERR")).toBeDefined();
-    expect(screen.getByText("2 recent")).toBeDefined();
+  });
+
+  test("renders search input", () => {
+    render(<RequestLogPage entries={[]} />);
+    expect(screen.getByPlaceholderText("Filter requests...")).toBeDefined();
+  });
+});
+
+describe("TabBar", () => {
+  test("renders four tabs", () => {
+    render(<TabBar activeTab="dashboard" onTabChange={() => {}} />);
+    expect(screen.getByText("Dashboard")).toBeDefined();
+    expect(screen.getByText("Routing")).toBeDefined();
+    expect(screen.getByText("Logs")).toBeDefined();
+    expect(screen.getByText("Analytics")).toBeDefined();
+  });
+
+  test("calls onTabChange when tab clicked", () => {
+    const onTabChange = vi.fn();
+    render(<TabBar activeTab="dashboard" onTabChange={onTabChange} />);
+    fireEvent.click(screen.getByText("Routing"));
+    expect(onTabChange).toHaveBeenCalledWith("routing");
   });
 });
 
@@ -213,8 +252,6 @@ describe("ErrorBoundary", () => {
     expect(screen.getByText("Something went wrong")).toBeDefined();
     shouldThrow = false;
     fireEvent.click(screen.getByText("Reload"));
-    // After reset, it will try to render MaybeThrow again
-    // Since shouldThrow is now false, it should show "Recovered"
     rerender(
       <ErrorBoundary>
         <MaybeThrow />

@@ -1,5 +1,4 @@
 mod commands;
-mod error;
 mod keychain;
 mod tray;
 
@@ -13,7 +12,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_process::init())
+        .manage(commands::GatewayProcess(std::sync::Mutex::new(None)))
         .setup(|app| {
+            // Hide from macOS Dock — this is a menu-bar-only app
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             // Create system tray icon
             tray::create_tray(app.handle())?;
 
@@ -68,7 +72,25 @@ pub fn run() {
             commands::copy_to_clipboard,
             commands::show_notification,
             commands::toggle_panel,
+            commands::spawn_gateway,
+            commands::stop_gateway,
+            commands::is_gateway_running,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                // Kill gateway process before exiting to prevent orphaned bun processes
+                let state = app_handle.state::<commands::GatewayProcess>();
+                let mut guard = match state.0.lock() {
+                    Ok(g) => g,
+                    Err(_) => return,
+                };
+                if let Some(ref mut child) = *guard {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                *guard = None;
+            }
+        });
 }

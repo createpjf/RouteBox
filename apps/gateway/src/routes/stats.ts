@@ -1,11 +1,30 @@
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
-import { metrics } from "../lib/metrics";
+import { metrics, type RequestRecord } from "../lib/metrics";
 import { verifyToken } from "../lib/auth";
 
 const { upgradeWebSocket, websocket } = createBunWebSocket();
 
 const app = new Hono();
+
+/** Serialize a RequestRecord into the WebSocket event shape */
+function serializeLogEntry(entry: RequestRecord) {
+  return {
+    id: entry.id,
+    timestamp: entry.timestamp,
+    provider: entry.provider,
+    model: entry.model,
+    tokens: entry.totalTokens,
+    cost: entry.cost,
+    latencyMs: entry.latencyMs,
+    status: entry.status,
+    requestedModel: entry.requestedModel,
+    inputTokens: entry.inputTokens,
+    outputTokens: entry.outputTokens,
+    isFallback: entry.isFallback,
+    routingStrategy: entry.routingStrategy,
+  };
+}
 
 app.get(
   "/ws/stats",
@@ -32,43 +51,30 @@ app.get(
         // Push recent log entries
         const recent = metrics.getRecentLog(10);
         for (const entry of recent) {
-          ws.send(JSON.stringify({
-            event: "request_log",
-            data: {
-              id: entry.id,
-              timestamp: entry.timestamp,
-              provider: entry.provider,
-              model: entry.model,
-              tokens: entry.totalTokens,
-              cost: entry.cost,
-              latencyMs: entry.latencyMs,
-              status: entry.status,
-            },
-          }));
+          ws.send(JSON.stringify({ event: "request_log", data: serializeLogEntry(entry) }));
         }
         if (recent.length) lastLogId = recent[recent.length - 1].id;
 
         // Broadcast stats every second + any new log entries
         statsInterval = setInterval(() => {
-          ws.send(JSON.stringify({ event: "stats", data: metrics.getStats() }));
+          try {
+            ws.send(JSON.stringify({ event: "stats", data: metrics.getStats() }));
 
-          // Push new log entries
-          const newEntries = metrics.getLogSince(lastLogId);
-          for (const entry of newEntries) {
-            ws.send(JSON.stringify({
-              event: "request_log",
-              data: {
-                id: entry.id,
-                timestamp: entry.timestamp,
-                provider: entry.provider,
-                model: entry.model,
-                tokens: entry.totalTokens,
-                cost: entry.cost,
-                latencyMs: entry.latencyMs,
-                status: entry.status,
-              },
-            }));
-            lastLogId = entry.id;
+            // Push new log entries
+            const newEntries = metrics.getLogSince(lastLogId);
+            for (const entry of newEntries) {
+              ws.send(JSON.stringify({ event: "request_log", data: serializeLogEntry(entry) }));
+              lastLogId = entry.id;
+            }
+
+            // Check for pending budget alerts
+            if (metrics.pendingAlert) {
+              ws.send(JSON.stringify({ event: "alert", data: metrics.pendingAlert }));
+              metrics.pendingAlert = null;
+            }
+          } catch {
+            // Connection closed — clean up interval
+            if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
           }
         }, 1000);
       },

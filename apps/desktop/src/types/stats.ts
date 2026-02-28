@@ -9,6 +9,8 @@ export interface RealtimeStats {
   sparkline: number[];
   providers: ProviderStatus[];
   balance: number;
+  budget: number;
+  monthSpend: number;
 }
 
 export interface ProviderStatus {
@@ -41,6 +43,15 @@ export interface RequestLogEntry {
   cost: number;
   latencyMs: number;
   status: "success" | "error" | "fallback";
+  /** Original model before routing */
+  requestedModel?: string;
+  /** Token breakdown */
+  inputTokens?: number;
+  outputTokens?: number;
+  /** Was this a fallback route? */
+  isFallback?: boolean;
+  /** Strategy active at request time */
+  routingStrategy?: string;
 }
 
 export interface TrafficPoint {

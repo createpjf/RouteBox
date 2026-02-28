@@ -1,51 +1,42 @@
-import type { ReactNode } from "react";
-import clsx from "clsx";
+import type { ElementType } from "react";
 
 interface StatCardProps {
   label: string;
   value: string | number;
-  icon: ReactNode;
   color: string;
+  icon: ElementType;
   delta?: number;
   deltaInvert?: boolean;
   subtitle?: string;
 }
 
-export function StatCard({ label, value, icon, color, delta, deltaInvert, subtitle }: StatCardProps) {
+export function StatCard({ label, value, icon: Icon, delta, subtitle }: StatCardProps) {
   const isPositive = delta !== undefined && delta > 0;
-  const deltaColor = deltaInvert
-    ? isPositive ? "text-accent-red" : "text-accent-green"
-    : isPositive ? "text-accent-green" : "text-accent-red";
 
   return (
-    <div className="glass-card-static rounded-xl p-3 flex items-start justify-between">
-      {/* Left: label → value → delta, all left-aligned in a stack */}
-      <div className="min-w-0">
-        <div className="text-[11px] font-medium text-text-secondary leading-none">
-          {label}
+    <div className="glass-card-static p-4 flex flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#F5F5F7]">
+          <Icon size={14} className="text-[#86868B]" />
         </div>
-        <div className="text-[18px] font-semibold text-text-primary tabular-nums tracking-[-0.02em] leading-none mt-1.5">
+        <span className="text-[11px] font-medium text-[#86868B] tracking-[0.03em]">{label}</span>
+      </div>
+      <div>
+        <span className="text-[28px] font-bold text-[#1D1D1F] tabular-nums tracking-[-0.03em] leading-none">
           {value}
-        </div>
+        </span>
         {(delta !== undefined && delta !== 0 || subtitle) && (
-          <div className="mt-0.5">
+          <div className="mt-1">
             {delta !== undefined && delta !== 0 && (
-              <span className={clsx("text-[10px] font-medium tabular-nums leading-none", deltaColor)}>
+              <span className="text-[10px] font-medium tabular-nums leading-none text-[#AEAEB2]">
                 {isPositive ? "+" : ""}{delta}%
               </span>
             )}
             {subtitle && (
-              <span className="text-[10px] text-text-tertiary leading-none">{subtitle}</span>
+              <span className="block text-[11px] text-[#C7C7CC] mt-0.5">{subtitle}</span>
             )}
           </div>
         )}
-      </div>
-      {/* Right: icon, pinned top-right */}
-      <div
-        className="flex items-center justify-center h-7 w-7 rounded-lg shrink-0"
-        style={{ backgroundColor: `${color}14`, color }}
-      >
-        {icon}
       </div>
     </div>
   );

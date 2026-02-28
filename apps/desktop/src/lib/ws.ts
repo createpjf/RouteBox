@@ -3,7 +3,7 @@ import { WS_RECONNECT_MAX_DELAY, WS_PING_INTERVAL } from "./constants";
 type EventHandler = (data: unknown) => void;
 
 export class RouteBoxWebSocket {
-  private url: string;
+  private getUrl: () => string;
   private ws: WebSocket | null = null;
   private handlers: Map<string, Set<EventHandler>> = new Map();
   private reconnectDelay = 1000;
@@ -11,14 +11,14 @@ export class RouteBoxWebSocket {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private intentionalClose = false;
 
-  constructor(url: string) {
-    this.url = url;
+  constructor(getUrl: () => string) {
+    this.getUrl = getUrl;
   }
 
   connect() {
     this.intentionalClose = false;
     try {
-      this.ws = new WebSocket(this.url);
+      this.ws = new WebSocket(this.getUrl());
 
       this.ws.onopen = () => {
         this.reconnectDelay = 1000;

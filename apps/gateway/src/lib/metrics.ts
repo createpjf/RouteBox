@@ -11,6 +11,7 @@ import {
   loadSetting,
   saveSetting,
   loadTodayRequestsByProvider,
+  queryMonthSpend,
 } from "./db";
 
 export interface RequestRecord {
@@ -24,6 +25,12 @@ export interface RequestRecord {
   cost: number;
   latencyMs: number;
   status: "success" | "error" | "fallback";
+  /** Original model before routing */
+  requestedModel?: string;
+  /** Was this a fallback route? */
+  isFallback?: boolean;
+  /** Strategy active at request time */
+  routingStrategy?: string;
 }
 
 export interface ProviderSnapshot {
@@ -66,12 +73,20 @@ class MetricsStore {
   private prevTokens = 0;
   private prevCost = 0;
 
-  // Balance
-  balance = 25.0;
+  // Balance (cumulative spend, starts at 0)
+  balance = 0;
 
   // Routing / traffic state
   routingStrategy = "smart_auto";
   trafficPaused = false;
+
+  // Budget
+  budget = 0;
+  monthSpend = 0;
+  private budgetAlert80Sent = "";
+  private budgetAlert100Sent = "";
+  private currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  pendingAlert: { title: string; message: string } | null = null;
 
   constructor() {
     // Seed provider state from configured providers
@@ -91,7 +106,7 @@ class MetricsStore {
     this.totalTokens = loadAggregate("totalTokens");
     this.totalCost = loadAggregate("totalCost");
     this.totalSaved = loadAggregate("totalSaved");
-    this.balance = loadAggregate("balance") || 25.0;
+    this.balance = loadAggregate("balance") || 0;
 
     // Sync prev to current so first delta is 0
     this.prevRequests = this.totalRequests;
@@ -120,11 +135,27 @@ class MetricsStore {
     const savedPaused = loadSetting("trafficPaused");
     if (savedPaused) this.trafficPaused = savedPaused === "true";
 
+    // Budget
+    const savedBudget = loadSetting("budgetMonthly");
+    if (savedBudget) this.budget = parseFloat(savedBudget) || 0;
+    this.monthSpend = queryMonthSpend();
+    this.budgetAlert80Sent = loadSetting("budgetAlertSent80") ?? "";
+    this.budgetAlert100Sent = loadSetting("budgetAlertSent100") ?? "";
+
     console.log(`   DB restored: ${this.totalRequests} requests, $${this.totalCost.toFixed(4)} cost`);
   }
 
   /** Record a completed proxy request */
   record(rec: RequestRecord) {
+    // Check for month rollover — resync from DB if month changed
+    const nowMonth = new Date().toISOString().slice(0, 7);
+    if (nowMonth !== this.currentMonth) {
+      this.currentMonth = nowMonth;
+      this.monthSpend = queryMonthSpend();
+      this.budgetAlert80Sent = "";
+      this.budgetAlert100Sent = "";
+    }
+
     this.log.push(rec);
     if (this.log.length > MAX_LOG) this.log.splice(0, this.log.length - MAX_LOG);
 
@@ -152,6 +183,18 @@ class MetricsStore {
     const minuteKey = new Date().toISOString().slice(0, 16);
     this.minuteBuckets.set(minuteKey, (this.minuteBuckets.get(minuteKey) ?? 0) + 1);
 
+    // Prune old minute buckets to prevent unbounded growth
+    if (this.minuteBuckets.size > MAX_SPARKLINE * 3) {
+      const cutoff = new Date(Date.now() - MAX_SPARKLINE * 2 * 60_000).toISOString().slice(0, 16);
+      for (const k of this.minuteBuckets.keys()) {
+        if (k < cutoff) this.minuteBuckets.delete(k);
+      }
+    }
+
+    // Budget tracking
+    this.monthSpend += rec.cost;
+    this.checkBudgetAlerts();
+
     // ── Persist to DB ──
     persistRequest(rec);
     this.flushAggregates();
@@ -176,6 +219,34 @@ class MetricsStore {
   setRoutingStrategy(strategy: string) {
     this.routingStrategy = strategy;
     saveSetting("routingStrategy", strategy);
+  }
+
+  /** Set monthly budget */
+  setBudget(amount: number) {
+    this.budget = amount;
+    saveSetting("budgetMonthly", String(amount));
+  }
+
+  /** Check budget thresholds and queue alerts */
+  private checkBudgetAlerts() {
+    if (this.budget <= 0) return;
+    const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+
+    if (this.monthSpend >= this.budget && this.budgetAlert100Sent !== currentMonth) {
+      this.pendingAlert = {
+        title: "Budget Exceeded",
+        message: `Monthly spend ($${this.monthSpend.toFixed(2)}) has exceeded your $${this.budget.toFixed(2)} budget.`,
+      };
+      this.budgetAlert100Sent = currentMonth;
+      saveSetting("budgetAlertSent100", currentMonth);
+    } else if (this.monthSpend >= this.budget * 0.8 && this.budgetAlert80Sent !== currentMonth) {
+      this.pendingAlert = {
+        title: "Budget Warning",
+        message: `Monthly spend ($${this.monthSpend.toFixed(2)}) has reached 80% of your $${this.budget.toFixed(2)} budget.`,
+      };
+      this.budgetAlert80Sent = currentMonth;
+      saveSetting("budgetAlertSent80", currentMonth);
+    }
   }
 
   /** Persist traffic paused state */
@@ -250,6 +321,8 @@ class MetricsStore {
       sparkline,
       providers: providerSnapshots,
       balance: +this.balance.toFixed(2),
+      budget: this.budget,
+      monthSpend: +this.monthSpend.toFixed(4),
     };
   }
 
@@ -265,6 +338,30 @@ class MetricsStore {
     const ps = this.providerState.get(name);
     if (!ps) return false;
     return ps.failStreak < DOWN_FAIL_STREAK;
+  }
+
+  /** Sync provider state when providers array changes (after rebuildProviders) */
+  syncProviders() {
+    // Add new providers
+    for (const p of providers) {
+      if (!this.providerState.has(p.name)) {
+        this.providerState.set(p.name, {
+          latencySamples: [],
+          lastSuccess: 0,
+          lastFailure: 0,
+          failStreak: 0,
+          requestsToday: 0,
+          keySource: p.keySource,
+        });
+      }
+    }
+    // Remove stale providers
+    const activeNames = new Set(providers.map(p => p.name));
+    for (const name of this.providerState.keys()) {
+      if (!activeNames.has(name)) {
+        this.providerState.delete(name);
+      }
+    }
   }
 
   /** Flush aggregate counters to DB (batched) */

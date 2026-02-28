@@ -35,6 +35,7 @@ export function App() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(true); // default true to prevent flash
   const [selectedRequest, setSelectedRequest] = useState<RequestLogEntry | null>(null);
   const [gatewayState, setGatewayState] = useState<GatewayState>("idle");
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [tokenLoaded, setTokenLoaded] = useState(false);
   const [token, setToken] = useState("");
@@ -77,6 +78,10 @@ export function App() {
         const { load } = await import("@tauri-apps/plugin-store");
         const store = await load("settings.json", { defaults: {} });
         const autoStart = await store.get<boolean>("gatewayAutoStart");
+        // First launch: persist default (true) so Settings toggle stays in sync
+        if (autoStart === undefined || autoStart === null) {
+          await store.set("gatewayAutoStart", true);
+        }
         if (autoStart === false) {
           setTokenLoaded(true);
           return;
@@ -114,8 +119,12 @@ export function App() {
           // Remote gateway: just report not reachable
           if (!cancelled) setGatewayState("failed");
         }
-      } catch {
-        if (!cancelled) setGatewayState("idle");
+      } catch (err) {
+        console.error("[RouteBox] auto-start failed:", err);
+        if (!cancelled) {
+          setGatewayState("failed");
+          setGatewayError(err instanceof Error ? err.message : String(err));
+        }
       } finally {
         if (!cancelled) setTokenLoaded(true);
       }
@@ -129,6 +138,7 @@ export function App() {
   useEffect(() => {
     if (connected && gatewayState !== "running") {
       setGatewayState("running");
+      setGatewayError(null);
     }
   }, [connected, gatewayState]);
 
@@ -163,6 +173,7 @@ export function App() {
           connected={connected}
           stale={stale}
           gatewayState={gatewayState}
+          gatewayError={gatewayError}
           onOpenSettings={() => setShowSettings(true)}
         />
         {alert && (

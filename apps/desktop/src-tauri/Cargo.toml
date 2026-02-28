@@ -1,6 +1,6 @@
 [package]
 name = "routebox-desktop"
-version = "0.1.0"
+version = "1.0.0"
 description = "RouteBox macOS Menu Bar App"
 authors = ["RouteBox"]
 edition = "2021"
@@ -27,6 +27,7 @@ thiserror = "2"
 arboard = "3"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
+libc = "0.2"
 
 [profile.release]
 strip = true

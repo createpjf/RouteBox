@@ -1,10 +1,13 @@
 let gatewayUrl = "http://localhost:3001";
+// Empty by default; gateway auto-generates tokens. Tauri loads the real token from keychain.
 let authToken = "";
 
 export function getGatewayUrl() {
   return gatewayUrl;
 }
 
+// NOTE: Token passed as query param because browser WebSocket API doesn't support custom headers.
+// The gateway should log-scrub query params containing tokens.
 export function getWsUrl() {
   const base = gatewayUrl.replace(/^http/, "ws") + "/ws/stats";
   return authToken ? `${base}?token=${encodeURIComponent(authToken)}` : base;
@@ -30,10 +33,11 @@ export const PROVIDER_COLORS: Record<string, string> = {
   Anthropic: "#D4A574",
   Google: "#4285F4",
   DeepSeek: "#4D6BFE",
-  Mistral: "#FF7000",
+  MiniMax: "#E85B2B",
+  Kimi: "#5856D6",
   Groq: "#F55036",
   Together: "#6366F1",
-  Flock: "#7C3AED",
+  "FLock.io": "#7C3AED",
 };
 
 export const ROUTING_STRATEGIES = [
