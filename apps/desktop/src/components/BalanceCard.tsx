@@ -1,41 +1,76 @@
-import clsx from "clsx";
 import { Wallet } from "lucide-react";
+import clsx from "clsx";
 
 interface BalanceCardProps {
   balance: number;
+  budget?: number;
+  monthSpend?: number;
   lowThreshold?: number;
-  onTopUp: () => void;
+  onTopUp?: () => void;
 }
 
-export function BalanceCard({ balance, lowThreshold = 5, onTopUp }: BalanceCardProps) {
-  const isLow = balance < lowThreshold;
+export function BalanceCard({ budget = 0, monthSpend = 0 }: BalanceCardProps) {
+  const hasBudget = budget > 0;
+  const pct = hasBudget && Number.isFinite(monthSpend) && Number.isFinite(budget)
+    ? Math.min(100, Math.round((monthSpend / budget) * 100))
+    : 0;
+
+  const hasUsage = monthSpend > 0;
 
   return (
-    <div className="glass-card-static rounded-xl p-3">
+    <div className="glass-card-static p-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-white/[0.05]">
-            <Wallet size={14} strokeWidth={1.75} className="text-text-secondary" />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#F5F5F7]">
+            <Wallet size={17} strokeWidth={1.8} className="text-[#86868B]" />
           </div>
           <div>
-            <span className="text-[11px] text-text-secondary block">Credits</span>
-            <p
-              className={clsx(
-                "text-[18px] font-semibold tabular-nums tracking-[-0.02em] mt-0.5",
-                isLow ? "text-accent-red" : "text-text-primary"
-              )}
-            >
-              ${balance.toFixed(2)}
-            </p>
+            <span className="text-[11px] text-[#86868B] block font-medium">Total Cost</span>
+            {hasUsage ? (
+              <span className="text-[24px] font-bold tabular-nums tracking-[-0.03em] text-[#1D1D1F]" style={{ fontFamily: "SF Pro Rounded, -apple-system, system-ui, sans-serif" }}>
+                ${monthSpend.toFixed(2)}
+              </span>
+            ) : (
+              <span className="text-[14px] font-medium text-[#86868B]">
+                No usage yet
+              </span>
+            )}
           </div>
         </div>
-        <button
-          onClick={onTopUp}
-          className="text-[13px] font-medium bg-accent-blue/10 hover:bg-accent-blue/18 text-accent-blue h-8 px-3.5 rounded-lg transition-colors"
-        >
-          Top Up
-        </button>
+        <span className="text-[10px] text-[#86868B] font-medium px-2 py-1 rounded-lg bg-[#F5F5F7]">
+          BYOK
+        </span>
       </div>
+
+      {hasBudget && (
+        <div className="mt-3 pt-3 border-t border-border-light">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-medium text-[#86868B]">Monthly Budget</span>
+            <span className="text-[10px] tabular-nums text-[#86868B]">
+              ${monthSpend.toFixed(2)} / ${budget.toFixed(2)}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-[#F2F2F7] overflow-hidden">
+            <div
+              className={clsx(
+                "h-full rounded-full transition-all duration-500",
+                pct >= 80 ? "bg-[#FF3B30]" : pct >= 60 ? "bg-[#FF9500]" : "bg-[#34C759]"
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="flex justify-end mt-1">
+            <span
+              className={clsx(
+                "text-[9px] font-medium",
+                pct >= 80 ? "text-[#FF3B30]" : pct >= 60 ? "text-[#FF9500]" : "text-[#34C759]"
+              )}
+            >
+              {pct}%
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
