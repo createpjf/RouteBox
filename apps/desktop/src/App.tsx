@@ -15,7 +15,7 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { ToastContainer } from "@/components/ToastContainer";
 import { useRealtimeStats } from "@/hooks/useRealtimeStats";
 import { useToast } from "@/hooks/useToast";
-import { getGatewayUrl, setGatewayUrl, setAuthToken } from "@/lib/constants";
+import { getGatewayUrl, setGatewayUrl, setAuthToken, getPortFromUrl } from "@/lib/constants";
 import { checkGatewayHealth, waitForGateway, isLocalGatewayUrl } from "@/lib/gateway-health";
 import type { RealtimeStats, RequestLogEntry } from "@/types/stats";
 
@@ -102,7 +102,7 @@ export function App() {
           // Local gateway: spawn bun process
           if (!cancelled) setGatewayState("starting");
           const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("spawn_gateway", { port: 3001 });
+          await invoke("spawn_gateway", { port: getPortFromUrl(url) });
 
           // Reload token from keychain (spawn_gateway generates it if needed)
           try {

@@ -416,5 +416,134 @@ export function removeModelPreference(id: number) {
   deletePreferenceStmt.run(id);
 }
 
+// ── Model toggles ────────────────────────────────────────────────────────
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS model_toggles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id TEXT NOT NULL,
+    provider_name TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as integer) * 1000),
+    UNIQUE(model_id, provider_name)
+  )
+`);
+
+export interface ModelToggleRow {
+  id: number;
+  model_id: string;
+  provider_name: string;
+  enabled: number;
+  updated_at: number;
+}
+
+const getAllModelTogglesStmt = db.prepare(`SELECT * FROM model_toggles`);
+const getDisabledModelsStmt = db.prepare(`SELECT model_id, provider_name FROM model_toggles WHERE enabled = 0`);
+const upsertModelToggleStmt = db.prepare(`
+  INSERT INTO model_toggles (model_id, provider_name, enabled, updated_at)
+  VALUES ($modelId, $provider, $enabled, $now)
+  ON CONFLICT(model_id, provider_name) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at
+`);
+
+export function loadAllModelToggles(): ModelToggleRow[] {
+  return getAllModelTogglesStmt.all() as ModelToggleRow[];
+}
+
+export function loadDisabledModels(): { model_id: string; provider_name: string }[] {
+  return getDisabledModelsStmt.all() as { model_id: string; provider_name: string }[];
+}
+
+export function saveModelToggle(modelId: string, provider: string, enabled: boolean) {
+  upsertModelToggleStmt.run({
+    $modelId: modelId,
+    $provider: provider,
+    $enabled: enabled ? 1 : 0,
+    $now: Date.now(),
+  });
+}
+
+// ── Routing rules ────────────────────────────────────────────────────────
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS routing_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    match_type TEXT NOT NULL DEFAULT 'content_general',
+    match_value TEXT NOT NULL DEFAULT '{}',
+    target_model TEXT NOT NULL,
+    target_provider TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as integer) * 1000)
+  )
+`);
+
+export interface RoutingRuleRow {
+  id: number;
+  name: string;
+  match_type: string;
+  match_value: string;
+  target_model: string;
+  target_provider: string | null;
+  priority: number;
+  enabled: number;
+  created_at: number;
+}
+
+const getAllRoutingRulesStmt = db.prepare(`SELECT * FROM routing_rules WHERE enabled = 1 ORDER BY priority DESC, id`);
+const getAllRoutingRulesIncDisabledStmt = db.prepare(`SELECT * FROM routing_rules ORDER BY priority DESC, id`);
+const insertRoutingRuleStmt = db.prepare(`
+  INSERT INTO routing_rules (name, match_type, match_value, target_model, target_provider, priority, enabled)
+  VALUES ($name, $matchType, $matchValue, $targetModel, $targetProvider, $priority, $enabled)
+`);
+const updateRoutingRuleStmt = db.prepare(`
+  UPDATE routing_rules SET name=$name, match_type=$matchType, match_value=$matchValue,
+    target_model=$targetModel, target_provider=$targetProvider, priority=$priority, enabled=$enabled
+  WHERE id = $id
+`);
+const deleteRoutingRuleStmt = db.prepare(`DELETE FROM routing_rules WHERE id = ?`);
+
+export function loadRoutingRules(includeDisabled = false): RoutingRuleRow[] {
+  return (includeDisabled ? getAllRoutingRulesIncDisabledStmt : getAllRoutingRulesStmt).all() as RoutingRuleRow[];
+}
+
+export function saveRoutingRule(
+  name: string, matchType: string, matchValue: string,
+  targetModel: string, targetProvider: string | null,
+  priority: number, enabled: boolean,
+): number {
+  const result = insertRoutingRuleStmt.run({
+    $name: name,
+    $matchType: matchType,
+    $matchValue: matchValue,
+    $targetModel: targetModel,
+    $targetProvider: targetProvider ?? null,
+    $priority: priority,
+    $enabled: enabled ? 1 : 0,
+  });
+  return Number(result.lastInsertRowid);
+}
+
+export function updateRoutingRuleById(
+  id: number, name: string, matchType: string, matchValue: string,
+  targetModel: string, targetProvider: string | null,
+  priority: number, enabled: boolean,
+) {
+  updateRoutingRuleStmt.run({
+    $id: id,
+    $name: name,
+    $matchType: matchType,
+    $matchValue: matchValue,
+    $targetModel: targetModel,
+    $targetProvider: targetProvider ?? null,
+    $priority: priority,
+    $enabled: enabled ? 1 : 0,
+  });
+}
+
+export function removeRoutingRule(id: number) {
+  deleteRoutingRuleStmt.run(id);
+}
+
 // Prune on startup (keep 30 days)
 pruneOldRequests(30);

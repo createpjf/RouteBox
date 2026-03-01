@@ -9,6 +9,7 @@ dist/
 
 # macOS
 .DS_Store
+._*
 
 # Tauri bundle output
 *.dmg

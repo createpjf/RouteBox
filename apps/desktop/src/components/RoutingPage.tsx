@@ -1,15 +1,21 @@
-import { useState, useCallback, useEffect } from "react";
-import { Copy, Check, Pause, Play, Plus, X, Pin, Ban, Loader2 } from "lucide-react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { Copy, Check, Pause, Play, Plus, X, Pin, Ban, Loader2, Search } from "lucide-react";
 import clsx from "clsx";
 import { ProviderStatus } from "@/components/ProviderStatus";
 import { RoutingStrategy } from "@/components/RoutingStrategy";
 import { api } from "@/lib/api";
-import type { ModelPreference } from "@/lib/api";
+import type { ModelPreference, RoutingRule } from "@/lib/api";
 import type { RealtimeStats } from "@/types/stats";
 
 interface RoutingPageProps {
   stats: RealtimeStats;
   showToast: (msg: string) => void;
+}
+
+/** Reverse index: modelId → [{provider, pricing}] */
+interface ModelProviderEntry {
+  provider: string;
+  pricing: { input: number; output: number };
 }
 
 export function RoutingPage({ stats, showToast }: RoutingPageProps) {
@@ -20,11 +26,27 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   // Model preferences
   const [preferences, setPreferences] = useState<ModelPreference[]>([]);
   const [showAddPref, setShowAddPref] = useState(false);
-  const [prefPattern, setPrefPattern] = useState("");
-  const [prefProvider, setPrefProvider] = useState("");
   const [prefAction, setPrefAction] = useState<"pin" | "exclude">("pin");
   const [prefSaving, setPrefSaving] = useState(false);
 
+  // Routing rules
+  const [routingRules, setRoutingRules] = useState<RoutingRule[]>([]);
+  const [showAddRule, setShowAddRule] = useState(false);
+  const [ruleSaving, setRuleSaving] = useState(false);
+  const [ruleName, setRuleName] = useState("");
+  const [ruleMatchType, setRuleMatchType] = useState<RoutingRule["matchType"]>("content_code");
+  const [ruleMatchValue, setRuleMatchValue] = useState("");
+  const [ruleTargetModel, setRuleTargetModel] = useState("");
+  const [ruleSearchQuery, setRuleSearchQuery] = useState("");
+
+  // Structured model+provider selection
+  const [modelIndex, setModelIndex] = useState<Map<string, ModelProviderEntry[]>>(new Map());
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState("");
+
+  // Fetch initial data (one-time)
   useEffect(() => {
     api.getTrafficStatus()
       .then((res) => setIsPaused(res.paused))
@@ -35,7 +57,52 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     api.getPreferences()
       .then((res) => setPreferences(res.preferences))
       .catch(() => {});
+    api.getRoutingRules()
+      .then((res) => setRoutingRules(res.rules))
+      .catch(() => {});
   }, []);
+
+  // Fetch models — re-fetch when providers come online
+  useEffect(() => {
+    api.getModels()
+      .then((res) => {
+        // Build reverse index: modelId → [{provider, pricing}]
+        const idx = new Map<string, ModelProviderEntry[]>();
+        for (const p of res.providers) {
+          for (const m of p.models) {
+            const existing = idx.get(m.id) || [];
+            existing.push({ provider: p.provider, pricing: m.pricing });
+            idx.set(m.id, existing);
+          }
+        }
+        setModelIndex(idx);
+        setModelsLoaded(true);
+      })
+      .catch(() => { setModelsLoaded(true); });
+  }, [stats.providers.length]);
+
+  // Sorted + filtered model list
+  const filteredModels = useMemo(() => {
+    const allModels = Array.from(modelIndex.keys()).sort();
+    if (!searchQuery.trim()) return allModels;
+    const q = searchQuery.toLowerCase();
+    return allModels.filter((m) => m.toLowerCase().includes(q));
+  }, [modelIndex, searchQuery]);
+
+  // Providers available for selected model
+  const availableProviders = useMemo(() => {
+    if (!selectedModel) return [];
+    return modelIndex.get(selectedModel) || [];
+  }, [modelIndex, selectedModel]);
+
+  // Auto-select provider when model changes
+  useEffect(() => {
+    if (availableProviders.length === 1) {
+      setSelectedProvider(availableProviders[0].provider);
+    } else if (availableProviders.length > 0 && !availableProviders.find((p) => p.provider === selectedProvider)) {
+      setSelectedProvider("");
+    }
+  }, [availableProviders, selectedProvider]);
 
   const handleCopyKey = useCallback(async () => {
     try {
@@ -78,26 +145,27 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   }, [showToast]);
 
   const handleAddPreference = useCallback(async () => {
-    if (!prefPattern.trim() || !prefProvider.trim()) return;
+    if (!selectedModel || !selectedProvider) return;
     setPrefSaving(true);
     try {
-      const res = await api.addPreference(prefPattern.trim(), prefProvider.trim(), prefAction);
+      const res = await api.addPreference(selectedModel, selectedProvider, prefAction);
       setPreferences((prev) => [...prev, {
         id: res.id,
-        modelPattern: prefPattern.trim(),
-        provider: prefProvider.trim(),
+        modelPattern: selectedModel,
+        provider: selectedProvider,
         action: prefAction,
         priority: 0,
       }]);
-      setPrefPattern("");
-      setPrefProvider("");
+      setSelectedModel("");
+      setSelectedProvider("");
+      setSearchQuery("");
       setShowAddPref(false);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to add preference");
     } finally {
       setPrefSaving(false);
     }
-  }, [prefPattern, prefProvider, prefAction, showToast]);
+  }, [selectedModel, selectedProvider, prefAction, showToast]);
 
   const handleRemovePreference = useCallback(async (id: number) => {
     try {
@@ -108,14 +176,92 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     }
   }, [showToast]);
 
-  const activeProviderNames = stats.providers.filter((p) => p.isUp).map((p) => p.name);
+  // Filtered models for rule target selection
+  const ruleFilteredModels = useMemo(() => {
+    const allModels = Array.from(modelIndex.keys()).sort();
+    if (!ruleSearchQuery.trim()) return allModels;
+    const q = ruleSearchQuery.toLowerCase();
+    return allModels.filter((m) => m.toLowerCase().includes(q));
+  }, [modelIndex, ruleSearchQuery]);
+
+  const MATCH_TYPE_META: Record<string, { label: string; color: string; icon: string }> = {
+    model_alias: { label: "Alias", color: "#007AFF", icon: "\uD83C\uDFF7\uFE0F" },
+    content_code: { label: "Code", color: "#5856D6", icon: "{ }" },
+    content_long: { label: "Long", color: "#FF9500", icon: "\uD83D\uDCC4" },
+    content_general: { label: "General", color: "#34C759", icon: "\uD83D\uDCAC" },
+  };
+
+  const handleAddRule = useCallback(async () => {
+    if (!ruleName || !ruleTargetModel) return;
+    setRuleSaving(true);
+    try {
+      const matchValue = ruleMatchType === "model_alias"
+        ? ruleMatchValue
+        : ruleMatchType === "content_long"
+          ? JSON.stringify({ min_chars: 8000 })
+          : ruleMatchType === "content_code"
+            ? JSON.stringify({ min_markers: 3 })
+            : "{}";
+      const res = await api.addRoutingRule({
+        name: ruleName,
+        matchType: ruleMatchType,
+        matchValue,
+        targetModel: ruleTargetModel,
+        targetProvider: null,
+        priority: 0,
+        enabled: true,
+      });
+      setRoutingRules((prev) => [...prev, {
+        id: res.id,
+        name: ruleName,
+        matchType: ruleMatchType,
+        matchValue,
+        targetModel: ruleTargetModel,
+        targetProvider: null,
+        priority: 0,
+        enabled: true,
+      }]);
+      setRuleName("");
+      setRuleMatchValue("");
+      setRuleTargetModel("");
+      setRuleSearchQuery("");
+      setShowAddRule(false);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to add rule");
+    } finally {
+      setRuleSaving(false);
+    }
+  }, [ruleName, ruleMatchType, ruleMatchValue, ruleTargetModel, showToast]);
+
+  const handleToggleRule = useCallback(async (id: number, enabled: boolean) => {
+    const rule = routingRules.find((r) => r.id === id);
+    if (!rule) return;
+    setRoutingRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled } : r));
+    try {
+      await api.updateRoutingRule(id, { ...rule, enabled });
+    } catch {
+      setRoutingRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled: !enabled } : r));
+    }
+  }, [routingRules]);
+
+  const handleRemoveRule = useCallback(async (id: number) => {
+    try {
+      await api.removeRoutingRule(id);
+      setRoutingRules((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to remove rule");
+    }
+  }, [showToast]);
+
+  /** Format pricing for display */
+  const fmtPrice = (n: number) => n < 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(1)}`;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 pt-2 gap-5">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-4 pt-2 gap-3">
       {/* Routing Strategy */}
       <div>
         <h3 className="section-header">Routing Strategy</h3>
-        <div className="glass-card-static p-1">
+        <div className="glass-card-static p-2">
           <RoutingStrategy
             current={routingStrategy}
             onChange={handleChangeStrategy}
@@ -130,7 +276,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
           {preferences.length === 0 && !showAddPref ? (
             <div className="px-3 py-4 text-center">
               <p className="text-[11px] text-text-tertiary mb-2">
-                Pin models to providers or exclude specific providers
+                Pin models to providers or exclude specific provider+model combinations
               </p>
             </div>
           ) : (
@@ -149,7 +295,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                     <Ban size={12} strokeWidth={1.75} className="text-[#FF3B30] shrink-0" />
                   )}
                   <span className="text-[12px] font-mono text-[#1D1D1F] truncate">{pref.modelPattern}</span>
-                  <span className="text-[10px] text-[#86868B]">→</span>
+                  <span className="text-[10px] text-[#86868B]">{"\u2192"}</span>
                   <span className="text-[12px] text-[#86868B] truncate">{pref.provider}</span>
                 </div>
                 <button
@@ -164,23 +310,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
           {showAddPref ? (
             <div className="p-3 border-t border-border-light space-y-2">
-              <input
-                type="text"
-                value={prefPattern}
-                onChange={(e) => setPrefPattern(e.target.value)}
-                placeholder="Model pattern (e.g. gpt-*, claude-*)"
-                className="input text-[12px]"
-              />
-              <select
-                value={prefProvider}
-                onChange={(e) => setPrefProvider(e.target.value)}
-                className="input text-[12px]"
-              >
-                <option value="">Select provider...</option>
-                {activeProviderNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+              {/* Pin / Exclude toggle */}
               <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#F2F2F7]">
                 <button
                   onClick={() => setPrefAction("pin")}
@@ -207,13 +337,131 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                   Exclude
                 </button>
               </div>
+
+              {/* Model search */}
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#86868B]" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setSelectedModel("");
+                    setSelectedProvider("");
+                  }}
+                  placeholder="Search models..."
+                  className="input text-[12px]"
+                  style={{ paddingLeft: '32px' }}
+                />
+              </div>
+
+              {/* Model list (scrollable) */}
+              {!selectedModel && (
+                <div className="max-h-[180px] overflow-y-auto rounded-lg border border-border-light">
+                  {filteredModels.length === 0 ? (
+                    <div className="px-3 py-3 text-[11px] text-text-tertiary text-center">
+                      {!modelsLoaded ? "Loading models..." : modelIndex.size === 0 ? "No models — add a provider key first" : "No models match"}
+                    </div>
+                  ) : (
+                    filteredModels.map((modelId) => {
+                      const entries = modelIndex.get(modelId) || [];
+                      return (
+                        <button
+                          key={modelId}
+                          onClick={() => {
+                            setSelectedModel(modelId);
+                            setSearchQuery(modelId);
+                          }}
+                          className="flex items-center justify-between w-full px-3 py-1.5 text-left hover:bg-[#F2F2F7] transition-colors border-b border-border-light last:border-b-0"
+                        >
+                          <span className="text-[12px] font-mono text-[#1D1D1F] truncate">{modelId}</span>
+                          <span className="text-[10px] text-[#86868B] shrink-0 ml-2">
+                            {entries.length === 1
+                              ? entries[0].provider
+                              : `${entries.length} providers`}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* Selected model → provider selector */}
+              {selectedModel && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 px-1">
+                    <span className="text-[11px] font-medium text-[#1D1D1F]">
+                      {selectedModel}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSelectedModel("");
+                        setSelectedProvider("");
+                        setSearchQuery("");
+                      }}
+                      className="p-0.5 rounded hover:bg-[#F2F2F7] transition-colors"
+                    >
+                      <X size={10} strokeWidth={2} className="text-[#86868B]" />
+                    </button>
+                  </div>
+
+                  {availableProviders.length <= 1 ? (
+                    // Single provider — auto-selected, just show info
+                    availableProviders.length === 1 && (
+                      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#F2F2F7]">
+                        <span className="text-[12px] text-[#1D1D1F]">{availableProviders[0].provider}</span>
+                        <span className="text-[10px] text-[#86868B]">
+                          {fmtPrice(availableProviders[0].pricing.input)}/{fmtPrice(availableProviders[0].pricing.output)} per 1M
+                        </span>
+                      </div>
+                    )
+                  ) : (
+                    // Multiple providers — radio buttons
+                    <div className="rounded-lg border border-border-light overflow-hidden">
+                      {availableProviders.map((entry, i) => (
+                        <button
+                          key={entry.provider}
+                          onClick={() => setSelectedProvider(entry.provider)}
+                          className={clsx(
+                            "flex items-center justify-between w-full px-2.5 py-1.5 text-left transition-colors",
+                            selectedProvider === entry.provider
+                              ? "bg-[#007AFF]/8"
+                              : "hover:bg-[#F2F2F7]",
+                            i < availableProviders.length - 1 && "border-b border-border-light"
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className={clsx(
+                              "w-3 h-3 rounded-full border-2 flex items-center justify-center",
+                              selectedProvider === entry.provider
+                                ? "border-[#007AFF]"
+                                : "border-[#C7C7CC]"
+                            )}>
+                              {selectedProvider === entry.provider && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#007AFF]" />
+                              )}
+                            </div>
+                            <span className="text-[12px] text-[#1D1D1F]">{entry.provider}</span>
+                          </div>
+                          <span className="text-[10px] text-[#86868B]">
+                            {fmtPrice(entry.pricing.input)}/{fmtPrice(entry.pricing.output)} per 1M
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Save / Cancel */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleAddPreference}
-                  disabled={prefSaving || !prefPattern.trim() || !prefProvider}
+                  disabled={prefSaving || !selectedModel || !selectedProvider}
                   className={clsx(
                     "flex items-center gap-1 text-[11px] font-medium h-7 px-2.5 rounded-lg transition-colors",
-                    prefSaving || !prefPattern.trim() || !prefProvider
+                    prefSaving || !selectedModel || !selectedProvider
                       ? "text-text-tertiary cursor-not-allowed"
                       : "text-accent-cyan hover:bg-accent-cyan/10"
                   )}
@@ -222,7 +470,12 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                   Save
                 </button>
                 <button
-                  onClick={() => setShowAddPref(false)}
+                  onClick={() => {
+                    setShowAddPref(false);
+                    setSelectedModel("");
+                    setSelectedProvider("");
+                    setSearchQuery("");
+                  }}
                   className="text-[11px] text-text-tertiary h-7 px-2 rounded-lg hover:bg-[#F2F2F7] transition-colors"
                 >
                   Cancel
@@ -241,39 +494,251 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         </div>
       </div>
 
+      {/* Routing Rules */}
+      <div>
+        <h3 className="section-header">Routing Rules</h3>
+        <div className="glass-card-static overflow-hidden">
+          {routingRules.length === 0 && !showAddRule ? (
+            <div className="px-3 py-4 text-center">
+              <p className="text-[11px] text-text-tertiary mb-2">
+                Route requests based on content type or virtual model names
+              </p>
+            </div>
+          ) : (
+            routingRules.map((rule, i) => {
+              const meta = MATCH_TYPE_META[rule.matchType] || MATCH_TYPE_META.content_general;
+              return (
+                <div
+                  key={rule.id}
+                  className={clsx(
+                    "flex items-center justify-between h-10 px-3",
+                    i < routingRules.length - 1 && "border-b border-border-light",
+                    !rule.enabled && "opacity-50"
+                  )}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] shrink-0">{meta.icon}</span>
+                    <span className="text-[12px] font-medium text-[#1D1D1F] truncate">{rule.name}</span>
+                    <span className="text-[10px] text-[#86868B]">{"\u2192"}</span>
+                    <span className="text-[11px] font-mono text-[#86868B] truncate">{rule.targetModel}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span
+                      className="text-[9px] font-medium px-1.5 py-0.5 rounded-md"
+                      style={{ backgroundColor: meta.color + "15", color: meta.color }}
+                    >
+                      {meta.label}
+                    </span>
+                    <button
+                      onClick={() => handleToggleRule(rule.id, !rule.enabled)}
+                      className={clsx(
+                        "relative w-7 h-4 rounded-full transition-colors duration-200",
+                        rule.enabled ? "bg-[#34C759]" : "bg-[#C7C7CC]"
+                      )}
+                    >
+                      <div className={clsx(
+                        "absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200",
+                        rule.enabled ? "translate-x-3.5" : "translate-x-0.5"
+                      )} />
+                    </button>
+                    <button
+                      onClick={() => handleRemoveRule(rule.id)}
+                      className="p-1 rounded hover:bg-[#F2F2F7] transition-colors"
+                    >
+                      <X size={12} strokeWidth={1.75} className="text-[#C7C7CC]" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {showAddRule ? (
+            <div className="p-3 border-t border-border-light space-y-2.5">
+              {/* Rule Name */}
+              <input
+                type="text"
+                value={ruleName}
+                onChange={(e) => setRuleName(e.target.value)}
+                placeholder="Rule name (e.g. Code tasks)"
+                className="input text-[12px]"
+              />
+
+              {/* Match Type selector */}
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#F2F2F7]">
+                {(["model_alias", "content_code", "content_long", "content_general"] as const).map((mt) => {
+                  const meta = MATCH_TYPE_META[mt];
+                  return (
+                    <button
+                      key={mt}
+                      onClick={() => setRuleMatchType(mt)}
+                      className={clsx(
+                        "flex-1 text-[9px] font-medium py-1 rounded-md transition-all text-center",
+                        ruleMatchType === mt
+                          ? "text-white shadow-sm"
+                          : "text-[#86868B]"
+                      )}
+                      style={ruleMatchType === mt ? { backgroundColor: meta.color } : undefined}
+                    >
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Match value for model alias */}
+              {ruleMatchType === "model_alias" && (
+                <input
+                  type="text"
+                  value={ruleMatchValue}
+                  onChange={(e) => setRuleMatchValue(e.target.value)}
+                  placeholder="Virtual model name (e.g. route-code)"
+                  className="input text-[12px]"
+                />
+              )}
+
+              {/* Auto-config hint for content types */}
+              {ruleMatchType === "content_long" && (
+                <p className="text-[10px] text-text-tertiary px-0.5">Auto-detect: messages ≥ 8,000 chars</p>
+              )}
+              {ruleMatchType === "content_code" && (
+                <p className="text-[10px] text-text-tertiary px-0.5">Auto-detect: ≥ 3 code markers (```, imports, etc.)</p>
+              )}
+              {ruleMatchType === "content_general" && (
+                <p className="text-[10px] text-text-tertiary px-0.5">Matches all other requests as fallback</p>
+              )}
+
+              {/* Target model search */}
+              <span className="text-[10px] font-medium text-text-tertiary px-0.5">Target Model</span>
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#86868B]" />
+                <input
+                  type="text"
+                  value={ruleSearchQuery}
+                  onChange={(e) => {
+                    setRuleSearchQuery(e.target.value);
+                    setRuleTargetModel("");
+                  }}
+                  placeholder="Target model..."
+                  className="input text-[12px]"
+                  style={{ paddingLeft: '32px' }}
+                />
+              </div>
+
+              {!ruleTargetModel && (
+                <div className="max-h-[140px] overflow-y-auto rounded-lg border border-border-light">
+                  {ruleFilteredModels.length === 0 ? (
+                    <div className="px-3 py-3 text-[11px] text-text-tertiary text-center">
+                      {!modelsLoaded ? "Loading models..." : modelIndex.size === 0 ? "No models — add a provider key first" : "No models match"}
+                    </div>
+                  ) : (
+                    ruleFilteredModels.slice(0, 30).map((modelId) => (
+                      <button
+                        key={modelId}
+                        onClick={() => {
+                          setRuleTargetModel(modelId);
+                          setRuleSearchQuery(modelId);
+                        }}
+                        className="flex items-center w-full px-3 py-1.5 text-left hover:bg-[#F2F2F7] transition-colors border-b border-border-light last:border-b-0"
+                      >
+                        <span className="text-[12px] font-mono text-[#1D1D1F] truncate">{modelId}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {ruleTargetModel && (
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="text-[11px] font-medium text-[#1D1D1F]">{ruleTargetModel}</span>
+                  <button
+                    onClick={() => { setRuleTargetModel(""); setRuleSearchQuery(""); }}
+                    className="p-0.5 rounded hover:bg-[#F2F2F7] transition-colors"
+                  >
+                    <X size={10} strokeWidth={2} className="text-[#86868B]" />
+                  </button>
+                </div>
+              )}
+
+              {/* Save / Cancel */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleAddRule}
+                  disabled={ruleSaving || !ruleName || !ruleTargetModel}
+                  className={clsx(
+                    "flex items-center gap-1 text-[11px] font-medium h-7 px-2.5 rounded-lg transition-colors",
+                    ruleSaving || !ruleName || !ruleTargetModel
+                      ? "text-text-tertiary cursor-not-allowed"
+                      : "text-accent-cyan hover:bg-accent-cyan/10"
+                  )}
+                >
+                  {ruleSaving && <Loader2 size={11} strokeWidth={1.75} className="animate-spin" />}
+                  Save Rule
+                </button>
+                {!ruleSaving && (!ruleName || !ruleTargetModel) && (
+                  <span className="text-[9px] text-text-tertiary">
+                    {!ruleName ? "Enter a rule name" : "Select a target model"}
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    setShowAddRule(false);
+                    setRuleName("");
+                    setRuleMatchValue("");
+                    setRuleTargetModel("");
+                    setRuleSearchQuery("");
+                  }}
+                  className="text-[11px] text-text-tertiary h-7 px-2 rounded-lg hover:bg-[#F2F2F7] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAddRule(true)}
+              className="flex items-center gap-1.5 w-full h-9 px-3 text-[12px] text-[#007AFF] hover:bg-[#F2F2F7] transition-colors border-t border-border-light"
+            >
+              <Plus size={13} strokeWidth={2} />
+              Add Rule
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Provider Status */}
       <ProviderStatus providers={stats.providers} />
 
       {/* Controls — 2-column grid matching reference */}
       <div>
         <h3 className="section-header">Controls</h3>
-        <div className="grid grid-cols-2 gap-2.5">
-          <button className="glass-card p-4 flex flex-col items-center gap-2" onClick={handleCopyKey}>
+        <div className="grid grid-cols-2 gap-2">
+          <button className="glass-card p-3 flex items-center gap-2.5" onClick={handleCopyKey}>
             {copied ? (
-              <Check size={20} strokeWidth={1.6} className="text-[#34C759]" />
+              <Check size={16} strokeWidth={1.75} className="text-[#34C759]" />
             ) : (
-              <Copy size={20} strokeWidth={1.6} className="text-[#1D1D1F]" />
+              <Copy size={16} strokeWidth={1.75} className="text-[#1D1D1F]" />
             )}
-            <span className="text-[13px] font-medium text-[#1D1D1F]">
-              {copied ? "Copied!" : "Copy Key"}
-            </span>
-            <span className="text-[10px] font-medium text-[#C7C7CC] bg-[#F5F5F7] px-2 py-0.5 rounded-md">
-              {"\u2318"}C
-            </span>
+            <div className="flex flex-col items-start">
+              <span className="text-[12px] font-medium text-[#1D1D1F]">
+                {copied ? "Copied!" : "Copy Key"}
+              </span>
+              <span className="text-[9px] text-text-tertiary">{"\u2318"}C</span>
+            </div>
           </button>
 
-          <button className="glass-card p-4 flex flex-col items-center gap-2" onClick={handleTogglePause}>
+          <button className="glass-card p-3 flex items-center gap-2.5" onClick={handleTogglePause}>
             {isPaused ? (
-              <Play size={20} strokeWidth={1.8} className="text-[#1D1D1F]" />
+              <Play size={16} strokeWidth={1.75} className="text-[#1D1D1F]" />
             ) : (
-              <Pause size={20} strokeWidth={1.8} className="text-[#1D1D1F]" />
+              <Pause size={16} strokeWidth={1.75} className="text-[#1D1D1F]" />
             )}
-            <span className="text-[13px] font-medium text-[#1D1D1F]">
-              {isPaused ? "Resume" : "Pause"}
-            </span>
-            <span className="text-[10px] font-medium text-[#C7C7CC] bg-[#F5F5F7] px-2 py-0.5 rounded-md">
-              {"\u2318"}P
-            </span>
+            <div className="flex flex-col items-start">
+              <span className="text-[12px] font-medium text-[#1D1D1F]">
+                {isPaused ? "Resume" : "Pause"}
+              </span>
+              <span className="text-[9px] text-text-tertiary">{"\u2318"}P</span>
+            </div>
           </button>
         </div>
       </div>

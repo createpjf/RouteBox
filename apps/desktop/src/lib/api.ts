@@ -171,6 +171,36 @@ export interface ModelsResponse {
   providers: ProviderModels[];
 }
 
+// ── Model Toggles ───────────────────────────────────────────────────────
+
+export interface ModelToggle {
+  id: number;
+  modelId: string;
+  provider: string;
+  enabled: boolean;
+}
+
+export interface ModelTogglesResponse {
+  toggles: ModelToggle[];
+}
+
+// ── Routing Rules ───────────────────────────────────────────────────────
+
+export interface RoutingRule {
+  id: number;
+  name: string;
+  matchType: "model_alias" | "content_code" | "content_long" | "content_general";
+  matchValue: string;
+  targetModel: string;
+  targetProvider: string | null;
+  priority: number;
+  enabled: boolean;
+}
+
+export interface RoutingRulesResponse {
+  rules: RoutingRule[];
+}
+
 export const api = {
   getProviders: () => request<ProvidersResponse>("/api/v1/providers"),
   getModels: () => request<ModelsResponse>("/api/v1/models"),
@@ -233,6 +263,35 @@ export const api = {
     }),
   removePreference: (id: number) =>
     request<{ success: boolean }>(`/api/v1/preferences/${id}`, {
+      method: "DELETE",
+      retries: 0,
+    }),
+
+  // Model Toggles
+  getModelToggles: () => request<ModelTogglesResponse>("/api/v1/model-toggles"),
+  setModelToggle: (modelId: string, provider: string, enabled: boolean) =>
+    request<{ success: boolean }>("/api/v1/model-toggles", {
+      method: "PUT",
+      body: JSON.stringify({ modelId, provider, enabled }),
+      retries: 0,
+    }),
+
+  // Routing Rules
+  getRoutingRules: () => request<RoutingRulesResponse>("/api/v1/routing-rules"),
+  addRoutingRule: (rule: Omit<RoutingRule, "id">) =>
+    request<{ success: boolean; id: number }>("/api/v1/routing-rules", {
+      method: "POST",
+      body: JSON.stringify(rule),
+      retries: 0,
+    }),
+  updateRoutingRule: (id: number, rule: Omit<RoutingRule, "id">) =>
+    request<{ success: boolean }>(`/api/v1/routing-rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(rule),
+      retries: 0,
+    }),
+  removeRoutingRule: (id: number) =>
+    request<{ success: boolean }>(`/api/v1/routing-rules/${id}`, {
       method: "DELETE",
       retries: 0,
     }),

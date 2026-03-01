@@ -326,11 +326,32 @@ class MetricsStore {
     };
   }
 
-  /** Get average latency for a provider */
+  /** Get latest latency for a provider (real-time); falls back to EMA, then Infinity */
   getProviderLatency(name: string): number {
     const ps = this.providerState.get(name);
     if (!ps || ps.latencySamples.length === 0) return Infinity;
-    return ps.latencySamples.reduce((a, b) => a + b, 0) / ps.latencySamples.length;
+    // Use the most recent sample as the real-time signal
+    return ps.latencySamples[ps.latencySamples.length - 1];
+  }
+
+  /** Get exponentially-weighted moving average latency (recent samples weighted more) */
+  getProviderEmaLatency(name: string): number {
+    const ps = this.providerState.get(name);
+    if (!ps || ps.latencySamples.length === 0) return Infinity;
+    const alpha = 0.3; // weight for newest sample
+    let ema = ps.latencySamples[0];
+    for (let i = 1; i < ps.latencySamples.length; i++) {
+      ema = alpha * ps.latencySamples[i] + (1 - alpha) * ema;
+    }
+    return ema;
+  }
+
+  /** Seed an initial latency sample (used by startup probe) */
+  seedLatency(name: string, latencyMs: number) {
+    const ps = this.providerState.get(name);
+    if (ps && ps.latencySamples.length === 0) {
+      ps.latencySamples.push(latencyMs);
+    }
   }
 
   /** Check if a provider is considered up */

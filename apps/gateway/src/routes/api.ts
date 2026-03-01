@@ -3,6 +3,7 @@ import { metrics } from "../lib/metrics";
 import {
   PROVIDER_REGISTRY,
   MODEL_PRICING,
+  pricingForModel,
   providers,
   getProviderKeyStatus,
   rebuildProviders,
@@ -24,9 +25,15 @@ import {
   removeModelPreference,
   saveSetting,
   loadSetting,
+  loadAllModelToggles,
+  saveModelToggle,
+  loadRoutingRules,
+  saveRoutingRule,
+  updateRoutingRuleById,
+  removeRoutingRule,
 } from "../lib/db";
 import { validateProviderKey } from "../lib/validate-key";
-import { refreshPreferencesCache } from "../lib/router";
+import { refreshPreferencesCache, refreshTogglesCache, refreshRoutingRulesCache } from "../lib/router";
 
 const app = new Hono();
 
@@ -129,7 +136,7 @@ app.get("/models", (c) => {
   for (const p of activeProviders) {
     const models = Object.keys(MODEL_PRICING)
       .filter((m) => p.prefixes.some((pfx) => m.startsWith(pfx)))
-      .map((id) => ({ id, pricing: MODEL_PRICING[id] }));
+      .map((id) => ({ id, pricing: pricingForModel(id, p.name) }));
     result.push({ provider: p.name, models });
   }
 
@@ -229,14 +236,38 @@ app.get("/analytics", (c) => {
       break;
   }
 
-  const timeSeries = queryTimeSeries(sinceTs, groupBy).map((r) => ({
-    date: r.date,
-    cost: +(r.total_cost ?? 0).toFixed(6),
-    tokens: r.total_tokens ?? 0,
-    requests: r.request_count ?? 0,
-    inputTokens: r.input_tokens ?? 0,
-    outputTokens: r.output_tokens ?? 0,
-  }));
+  const rawSeries = queryTimeSeries(sinceTs, groupBy);
+  const seriesMap = new Map(rawSeries.map((r) => [r.date, r]));
+
+  // Build a complete time axis so the chart always has continuous data points
+  const slots: string[] = [];
+  if (groupBy === "hour") {
+    // Today: 24 hourly slots (00:00 .. 23:00)
+    const d = new Date(sinceTs);
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    for (let h = 0; h < 24; h++) {
+      slots.push(`${ymd} ${String(h).padStart(2, "0")}:00`);
+    }
+  } else {
+    // 7d / 30d: daily slots
+    const days = period === "30d" ? 30 : 7;
+    for (let i = 0; i < days; i++) {
+      const d = new Date(now - (days - 1 - i) * 86_400_000);
+      slots.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+    }
+  }
+
+  const timeSeries = slots.map((date) => {
+    const r = seriesMap.get(date);
+    return {
+      date,
+      cost: +(r?.total_cost ?? 0).toFixed(6),
+      tokens: r?.total_tokens ?? 0,
+      requests: r?.request_count ?? 0,
+      inputTokens: r?.input_tokens ?? 0,
+      outputTokens: r?.output_tokens ?? 0,
+    };
+  });
 
   const providerBreakdown = queryProviderBreakdown(sinceTs).map((r) => ({
     provider: r.provider,
@@ -314,6 +345,113 @@ app.delete("/preferences/:id", async (c) => {
   if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
   removeModelPreference(id);
   refreshPreferencesCache();
+  return c.json({ success: true });
+});
+
+// ── Model Toggles ──────────────────────────────────────────────────────────
+
+app.get("/model-toggles", (c) => {
+  const toggles = loadAllModelToggles();
+  return c.json({
+    toggles: toggles.map((t) => ({
+      id: t.id,
+      modelId: t.model_id,
+      provider: t.provider_name,
+      enabled: t.enabled === 1,
+    })),
+  });
+});
+
+app.put("/model-toggles", async (c) => {
+  const body = await c.req.json<{ modelId: string; provider: string; enabled: boolean }>();
+  if (!body.modelId?.trim() || !body.provider?.trim()) {
+    return c.json({ error: "modelId and provider are required" }, 400);
+  }
+  if (typeof body.enabled !== "boolean") {
+    return c.json({ error: "enabled must be a boolean" }, 400);
+  }
+  saveModelToggle(body.modelId.trim(), body.provider.trim(), body.enabled);
+  refreshTogglesCache();
+  return c.json({ success: true });
+});
+
+// ── Routing Rules ──────────────────────────────────────────────────────────
+
+app.get("/routing-rules", (c) => {
+  const rules = loadRoutingRules(true);
+  return c.json({
+    rules: rules.map((r) => ({
+      id: r.id,
+      name: r.name,
+      matchType: r.match_type,
+      matchValue: r.match_value,
+      targetModel: r.target_model,
+      targetProvider: r.target_provider,
+      priority: r.priority,
+      enabled: r.enabled === 1,
+    })),
+  });
+});
+
+app.post("/routing-rules", async (c) => {
+  const body = await c.req.json<{
+    name: string;
+    matchType: string;
+    matchValue: string;
+    targetModel: string;
+    targetProvider?: string;
+    priority?: number;
+    enabled?: boolean;
+  }>();
+  const validTypes = ["model_alias", "content_code", "content_long", "content_general"];
+  if (!validTypes.includes(body.matchType)) {
+    return c.json({ error: `matchType must be one of: ${validTypes.join(", ")}` }, 400);
+  }
+  if (!body.name?.trim() || !body.targetModel?.trim()) {
+    return c.json({ error: "name and targetModel are required" }, 400);
+  }
+  if (body.matchType === "model_alias" && !body.matchValue?.trim()) {
+    return c.json({ error: "matchValue is required for model_alias type" }, 400);
+  }
+  const id = saveRoutingRule(
+    body.name.trim(),
+    body.matchType,
+    body.matchValue?.trim() || "{}",
+    body.targetModel.trim(),
+    body.targetProvider?.trim() || null,
+    body.priority ?? 0,
+    body.enabled ?? true,
+  );
+  refreshRoutingRulesCache();
+  return c.json({ success: true, id });
+});
+
+app.put("/routing-rules/:id", async (c) => {
+  const id = parseInt(c.req.param("id"), 10);
+  if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+  const body = await c.req.json<{
+    name: string;
+    matchType: string;
+    matchValue: string;
+    targetModel: string;
+    targetProvider?: string;
+    priority?: number;
+    enabled?: boolean;
+  }>();
+  updateRoutingRuleById(
+    id, body.name, body.matchType, body.matchValue || "{}",
+    body.targetModel, body.targetProvider || null,
+    body.priority ?? 0, body.enabled ?? true,
+  );
+  refreshRoutingRulesCache();
+  return c.json({ success: true });
+});
+
+app.delete("/routing-rules/:id", (c) => {
+  const id = parseInt(c.req.param("id"), 10);
+  if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+  removeRoutingRule(id);
+  refreshRoutingRulesCache();
   return c.json({ success: true });
 });
 

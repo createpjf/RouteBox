@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ChevronRight } from "lucide-react";
 import type { ProviderStatus as ProviderStatusType } from "@/types/stats";
 import { api, type ProviderModels } from "@/lib/api";
 import { PROVIDER_COLORS } from "@/lib/constants";
@@ -12,6 +12,7 @@ interface ProviderStatusProps {
 export function ProviderStatus({ providers }: ProviderStatusProps) {
   const [modelsMap, setModelsMap] = useState<Record<string, ProviderModels>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [toggles, setToggles] = useState<Map<string, boolean>>(new Map());
 
   useEffect(() => {
     api.getModels()
@@ -21,10 +22,39 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
         setModelsMap(map);
       })
       .catch(() => {});
+    api.getModelToggles()
+      .then((res) => {
+        const map = new Map<string, boolean>();
+        for (const t of res.toggles) {
+          map.set(`${t.provider}:${t.modelId}`, t.enabled);
+        }
+        setToggles(map);
+      })
+      .catch(() => {});
   }, [providers.length]);
 
   const toggle = (name: string) =>
     setExpanded((prev) => ({ ...prev, [name]: !prev[name] }));
+
+  const isModelEnabled = (provider: string, modelId: string): boolean => {
+    return toggles.get(`${provider}:${modelId}`) ?? true;
+  };
+
+  const handleToggleModel = useCallback(async (provider: string, modelId: string) => {
+    const key = `${provider}:${modelId}`;
+    const currentEnabled = toggles.get(key) ?? true;
+    const newEnabled = !currentEnabled;
+
+    // Optimistic update
+    setToggles((prev) => new Map(prev).set(key, newEnabled));
+
+    try {
+      await api.setModelToggle(modelId, provider, newEnabled);
+    } catch {
+      // Revert on error
+      setToggles((prev) => new Map(prev).set(key, currentEnabled));
+    }
+  }, [toggles]);
 
   return (
     <div>
@@ -42,20 +72,26 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
           const color = PROVIDER_COLORS[p.name] ?? "#86868B";
 
           return (
-            <div key={p.name}>
+            <div
+              key={p.name}
+              className={clsx(
+                i < providers.length - 1 && "border-b border-border-light"
+              )}
+            >
+              {/* Header row */}
               <div
-                className={clsx(
-                  "flex items-center justify-between py-3 px-4 cursor-pointer hover:bg-[#FAFAFA] transition-colors",
-                  !isExpanded && i < providers.length - 1 && "border-b border-border-light"
-                )}
+                className="flex items-center justify-between py-3 px-4 cursor-pointer hover:bg-[#FAFAFA] transition-colors"
                 onClick={() => toggle(p.name)}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  {isExpanded ? (
-                    <ChevronDown size={13} strokeWidth={2} className="text-text-tertiary shrink-0" />
-                  ) : (
-                    <ChevronRight size={13} strokeWidth={2} className="text-text-tertiary shrink-0" />
-                  )}
+                  <ChevronRight
+                    size={13}
+                    strokeWidth={2}
+                    className={clsx(
+                      "text-text-tertiary shrink-0 transition-transform duration-200",
+                      isExpanded && "rotate-90"
+                    )}
+                  />
                   <div
                     className="w-1.5 h-1.5 rounded-full shrink-0"
                     style={{ backgroundColor: p.isUp ? color : "#C7C7CC" }}
@@ -80,30 +116,57 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
                 </div>
               </div>
 
-              {/* Model list */}
-              {isExpanded && pm && pm.models.length > 0 && (
-                <div className={clsx(
-                  "px-4 pb-2.5",
-                  i < providers.length - 1 && "border-b border-border-light"
-                )}>
-                  {pm.models.map((m) => (
-                    <div
-                      key={m.id}
-                      className="flex items-center justify-between py-1.5 px-2"
-                    >
-                      <span className="text-[11px] font-mono text-text-secondary truncate">
-                        {m.id}
-                      </span>
-                      <span className="text-[10px] text-text-tertiary shrink-0 ml-2">
-                        ${m.pricing.input}/{m.pricing.output}
-                      </span>
+              {/* Expandable model list with CSS grid transition */}
+              <div
+                className="grid transition-[grid-template-rows] duration-200 ease-out"
+                style={{ gridTemplateRows: isExpanded ? "1fr" : "0fr" }}
+              >
+                <div className="overflow-hidden min-h-0">
+                  {pm && pm.models.length > 0 && (
+                    <div className="px-4 pb-2.5">
+                      {pm.models.map((m) => {
+                        const enabled = isModelEnabled(p.name, m.id);
+                        return (
+                          <div
+                            key={m.id}
+                            className="flex items-center justify-between py-1.5 px-2"
+                          >
+                            <span className={clsx(
+                              "text-[11px] font-mono truncate",
+                              enabled ? "text-text-secondary" : "text-text-tertiary line-through"
+                            )}>
+                              {m.id}
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              <span className="text-[10px] text-text-tertiary">
+                                ${m.pricing.input}/{m.pricing.output}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleModel(p.name, m.id);
+                                }}
+                                className={clsx(
+                                  "relative w-7 h-4 rounded-full transition-colors duration-200",
+                                  enabled ? "bg-[#34C759]" : "bg-[#C7C7CC]"
+                                )}
+                              >
+                                <div className={clsx(
+                                  "absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200",
+                                  enabled ? "translate-x-3.5" : "translate-x-0.5"
+                                )} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="text-[9px] text-text-tertiary mt-1 px-2">
+                        price per 1M tokens (input/output)
+                      </p>
                     </div>
-                  ))}
-                  <p className="text-[9px] text-text-tertiary mt-1 px-2">
-                    price per 1M tokens (input/output)
-                  </p>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           );
         })}

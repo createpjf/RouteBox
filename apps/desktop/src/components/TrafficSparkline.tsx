@@ -11,8 +11,8 @@ export function TrafficSparkline({ data }: TrafficSparklineProps) {
   const peak = hasTraffic ? Math.max(...data.map((d) => d.value)) : 0;
 
   return (
-    <div className="glass-card-static p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="glass-card-static p-3">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Activity size={13} strokeWidth={1.75} className="text-[#AEAEB2]" />
           <span className="text-[11px] font-medium text-[#86868B] tracking-[0.03em]">
@@ -26,11 +26,11 @@ export function TrafficSparkline({ data }: TrafficSparklineProps) {
         )}
       </div>
       {!hasTraffic ? (
-        <div className="flex items-center justify-center h-[50px]">
+        <div className="flex items-center justify-center h-[44px]">
           <p className="text-[11px] text-text-tertiary">No traffic yet</p>
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={50}>
+        <ResponsiveContainer width="100%" height={44}>
           <AreaChart data={data} margin={{ top: 2, right: 2, bottom: 0, left: 2 }}>
             <defs>
               <linearGradient id="trafficGrad" x1="0" y1="0" x2="0" y2="1">

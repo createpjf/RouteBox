@@ -69,6 +69,42 @@ const port = parseInt(process.env.PORT || "3001", 10);
 console.log(`🚀 RouteBox Gateway running on http://localhost:${port}`);
 console.log(`   Providers: ${providers.map((p) => p.name).join(", ") || "(none — set API keys)"}`);
 
+// ── Startup latency probe — ping each provider to seed real-time latency ──
+async function probeProviderLatency() {
+  for (const p of providers) {
+    const start = performance.now();
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (p.authHeader) {
+        headers[p.authHeader] = p.apiKey;
+      } else if (p.format === "anthropic") {
+        headers["x-api-key"] = p.apiKey;
+        headers["anthropic-version"] = "2023-06-01";
+      } else {
+        headers["Authorization"] = `Bearer ${p.apiKey}`;
+      }
+      // Use /models endpoint as a lightweight ping
+      const url = p.format === "anthropic"
+        ? `${p.baseUrl}/messages` // Anthropic has no /models; a tiny HEAD-like POST will 400 but measure latency
+        : `${p.baseUrl}/models`;
+      await fetch(url, { method: "GET", headers, signal: AbortSignal.timeout(5000) });
+      const latency = Math.round(performance.now() - start);
+      metrics.seedLatency(p.name, latency);
+      console.log(`   Probe ${p.name}: ${latency}ms`);
+    } catch {
+      const latency = Math.round(performance.now() - start);
+      // Even on error, the round-trip time is useful as a latency signal
+      if (latency < 5000) {
+        metrics.seedLatency(p.name, latency);
+        console.log(`   Probe ${p.name}: ${latency}ms (error, but latency recorded)`);
+      } else {
+        console.log(`   Probe ${p.name}: timeout`);
+      }
+    }
+  }
+}
+probeProviderLatency();
+
 process.on("SIGTERM", () => { console.log("Shutting down..."); process.exit(0); });
 process.on("SIGINT", () => { console.log("Shutting down..."); process.exit(0); });
 

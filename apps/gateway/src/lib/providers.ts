@@ -179,7 +179,7 @@ export const PROVIDER_REGISTRY: ProviderTemplate[] = [
     envKey: "FLOCK_API_KEY",
     baseUrlEnvKey: "FLOCK_BASE_URL",
     defaultBaseUrl: "https://api.flock.io/v1",
-    prefixes: ["qwen", "kimi-", "minimax-", "MiniMax-", "moonshot-", "deepseek-v3"],
+    prefixes: ["qwen3-", "kimi-k2-thinking", "minimax-m2.1", "MiniMax-M2.1", "deepseek-v3.2"],
     format: "openai",
     authHeader: "x-litellm-api-key",
   },
@@ -269,6 +269,20 @@ export function providerForModel(model: string): ProviderConfig | undefined {
     }
   }
   return best;
+}
+
+/** Find ALL providers that can serve a model (not just the longest-prefix one) */
+export function providersForModel(model: string): ProviderConfig[] {
+  const result: ProviderConfig[] = [];
+  for (const p of providers) {
+    for (const pfx of p.prefixes) {
+      if (model.startsWith(pfx) || model === pfx) {
+        result.push(p);
+        break; // one match per provider is enough
+      }
+    }
+  }
+  return result;
 }
 
 /** Lookup pricing — checks provider-specific overrides, then global, then prefix match */

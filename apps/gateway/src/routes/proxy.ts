@@ -11,6 +11,8 @@ import {
   fromAnthropicResponse,
   calculateCost,
   resolveModelAlias,
+  providers,
+  MODEL_PRICING,
 } from "../lib/providers";
 import { selectRoute } from "../lib/router";
 import { metrics, type RequestRecord } from "../lib/metrics";
@@ -128,7 +130,6 @@ function anthropicStreamToOpenAI(
   upstream: ReadableStream<Uint8Array>,
   model: string,
   onDone: (usage: { input: number; output: number }) => void,
-  routeboxMeta?: { requestedModel: string; providerName: string },
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -258,23 +259,6 @@ function anthropicStreamToOpenAI(
         reader.releaseLock();
       }
 
-      // Inject _routebox metadata before [DONE]
-      if (routeboxMeta) {
-        const cost = calculateCost(model, inputTokens, outputTokens);
-        const originalCost = routeboxMeta.requestedModel !== model
-          ? calculateCost(routeboxMeta.requestedModel, inputTokens, outputTokens)
-          : cost;
-        pushChunk(JSON.stringify({
-          _routebox: {
-            routed_model: model,
-            provider: routeboxMeta.providerName.toLowerCase(),
-            cost,
-            saved: Math.max(0, originalCost - cost),
-            key_source: "byok",
-          },
-        }));
-      }
-
       pushChunk("[DONE]");
       controller.close();
       onDone({ input: inputTokens, output: outputTokens });
@@ -287,7 +271,6 @@ function anthropicStreamToOpenAI(
 function openaiStreamPassthrough(
   upstream: ReadableStream<Uint8Array>,
   onDone: (usage: { input: number; output: number }) => void,
-  routeboxMeta?: { model: string; requestedModel: string; providerName: string },
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -315,22 +298,6 @@ function openaiStreamPassthrough(
           for (const line of lines) {
             if (line.startsWith("data: ")) {
               if (line.includes("[DONE]")) {
-                // Inject _routebox before [DONE]
-                if (routeboxMeta) {
-                  const cost = calculateCost(routeboxMeta.model, inputTokens, outputTokens);
-                  const originalCost = routeboxMeta.requestedModel !== routeboxMeta.model
-                    ? calculateCost(routeboxMeta.requestedModel, inputTokens, outputTokens)
-                    : cost;
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                    _routebox: {
-                      routed_model: routeboxMeta.model,
-                      provider: routeboxMeta.providerName.toLowerCase(),
-                      cost,
-                      saved: Math.max(0, originalCost - cost),
-                      key_source: "byok",
-                    },
-                  })}\n\n`));
-                }
                 controller.enqueue(encoder.encode(`${line}\n\n`));
               } else {
                 try {
@@ -360,6 +327,29 @@ function openaiStreamPassthrough(
     },
   });
 }
+
+// ── GET /models — OpenAI-compatible model listing ───────────────────────────
+
+app.get("/models", (c) => {
+  const modelIds = new Set<string>();
+  for (const p of providers) {
+    for (const modelId of Object.keys(MODEL_PRICING)) {
+      if (p.prefixes.some((pfx) => modelId.startsWith(pfx))) {
+        modelIds.add(modelId);
+      }
+    }
+  }
+  const data = [
+    { id: "auto", object: "model" as const, created: 0, owned_by: "routebox" },
+    ...[...modelIds].map((id) => ({
+      id,
+      object: "model" as const,
+      created: 0,
+      owned_by: "routebox",
+    })),
+  ];
+  return c.json({ object: "list", data });
+});
 
 // ── Main handler ────────────────────────────────────────────────────────────
 
@@ -426,7 +416,7 @@ app.post("/chat/completions", async (c) => {
   const clientRequestId = c.req.header("x-request-id") || randomUUID();
 
   // Route
-  const route = selectRoute(requestedModel, metrics.routingStrategy);
+  const route = selectRoute(requestedModel, metrics.routingStrategy, body.messages);
   if (!route) {
     return c.json({
       error: { message: `No available provider for model: ${requestedModel}`, type: "server_error", code: "no_provider" },
@@ -554,7 +544,6 @@ app.post("/chat/completions", async (c) => {
   // ── Streaming response ──
   if (isStream && res!.body) {
     const latencyMs = Math.round(performance.now() - startMs);
-    const routeboxStreamMeta = { model: finalModel, requestedModel, providerName: finalProvider.name };
     const stream = finalProvider.format === "anthropic"
       ? anthropicStreamToOpenAI(res!.body, finalModel, (usage) => {
           recordRequest(
@@ -562,14 +551,14 @@ app.post("/chat/completions", async (c) => {
             usage.input, usage.output, usage.input + usage.output,
             latencyMs, finalIsFallback ? "fallback" : "success",
           );
-        }, { requestedModel, providerName: finalProvider.name })
+        })
       : openaiStreamPassthrough(res!.body, (usage) => {
           recordRequest(
             requestedModel, finalModel, finalProvider.name,
             usage.input, usage.output, usage.input + usage.output,
             latencyMs, finalIsFallback ? "fallback" : "success",
           );
-        }, routeboxStreamMeta);
+        });
 
     return new Response(stream, {
       headers: {

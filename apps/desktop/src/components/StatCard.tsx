@@ -14,15 +14,15 @@ export function StatCard({ label, value, icon: Icon, delta, subtitle }: StatCard
   const isPositive = delta !== undefined && delta > 0;
 
   return (
-    <div className="glass-card-static p-4 flex flex-col gap-2.5">
+    <div className="glass-card-static p-3 flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#F5F5F7]">
-          <Icon size={14} className="text-[#86868B]" />
+        <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-[#F5F5F7]">
+          <Icon size={12} className="text-[#86868B]" />
         </div>
         <span className="text-[11px] font-medium text-[#86868B] tracking-[0.03em]">{label}</span>
       </div>
       <div>
-        <span className="text-[28px] font-bold text-[#1D1D1F] tabular-nums tracking-[-0.03em] leading-none">
+        <span className="text-[24px] font-bold text-[#1D1D1F] tabular-nums tracking-[-0.03em] leading-none">
           {value}
         </span>
         {(delta !== undefined && delta !== 0 || subtitle) && (

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Check, Loader2, Trash2, ChevronRight, X, BookOpen, Play, Square, Download, RefreshCw, Wifi } from "lucide-react";
 import clsx from "clsx";
-import { getGatewayUrl, setGatewayUrl as setGatewayUrlGlobal, setAuthToken } from "@/lib/constants";
+import { getGatewayUrl, setGatewayUrl as setGatewayUrlGlobal, setAuthToken, getPortFromUrl } from "@/lib/constants";
 import { checkGatewayHealth } from "@/lib/gateway-health";
 import { isLocalGatewayUrl } from "@/lib/gateway-health";
 import { api } from "@/lib/api";
@@ -141,7 +141,7 @@ export function Settings({ onClose, onShowOnboarding }: SettingsProps) {
 
       if (isLocal) {
         // Local gateway: spawn bun process, then health check
-        await tauriInvoke("spawn_gateway", { port: 3001 });
+        await tauriInvoke("spawn_gateway", { port: getPortFromUrl(url) });
         await new Promise((r) => setTimeout(r, 1500));
       }
 

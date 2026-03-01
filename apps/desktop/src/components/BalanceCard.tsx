@@ -18,16 +18,16 @@ export function BalanceCard({ budget = 0, monthSpend = 0 }: BalanceCardProps) {
   const hasUsage = monthSpend > 0;
 
   return (
-    <div className="glass-card-static p-4">
+    <div className="glass-card-static p-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#F5F5F7]">
-            <Wallet size={17} strokeWidth={1.8} className="text-[#86868B]" />
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#F5F5F7]">
+            <Wallet size={14} strokeWidth={1.8} className="text-[#86868B]" />
           </div>
           <div>
             <span className="text-[11px] text-[#86868B] block font-medium">Total Cost</span>
             {hasUsage ? (
-              <span className="text-[24px] font-bold tabular-nums tracking-[-0.03em] text-[#1D1D1F]" style={{ fontFamily: "SF Pro Rounded, -apple-system, system-ui, sans-serif" }}>
+              <span className="text-[20px] font-bold tabular-nums tracking-[-0.03em] text-[#1D1D1F]" style={{ fontFamily: "SF Pro Rounded, -apple-system, system-ui, sans-serif" }}>
                 ${monthSpend.toFixed(2)}
               </span>
             ) : (

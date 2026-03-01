@@ -25,6 +25,15 @@ export function setAuthToken(token: string) {
   authToken = token;
 }
 
+export function getPortFromUrl(url: string): number {
+  try {
+    const parsed = new URL(url);
+    return parsed.port ? parseInt(parsed.port, 10) : 3001;
+  } catch {
+    return 3001;
+  }
+}
+
 export const WS_RECONNECT_MAX_DELAY = 30_000;
 export const WS_PING_INTERVAL = 25_000;
 

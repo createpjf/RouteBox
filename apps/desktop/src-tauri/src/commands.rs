@@ -168,12 +168,31 @@ pub async fn spawn_gateway(
         format!("{bun_dir}:{system_path}")
     };
 
-    eprintln!("[RouteBox] spawning: {} run {} (cwd={:?}, HOME={:?})", bun_path, entry.display(), entry.parent(), real_home);
+    // Resolve stable database path in Tauri app data directory
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    let db_path = data_dir.join("routebox.db");
+
+    // Migrate old database if it exists at the gateway working dir but not at the new location
+    if !db_path.exists() {
+        let old_db = entry.parent()
+            .unwrap_or(&resource_dir)
+            .join("routebox.db");
+        if old_db.exists() {
+            eprintln!("[RouteBox] migrating old DB from {:?} to {:?}", old_db, db_path);
+            let _ = std::fs::copy(&old_db, &db_path);
+            let _ = std::fs::copy(old_db.with_extension("db-wal"), db_path.with_extension("db-wal"));
+            let _ = std::fs::copy(old_db.with_extension("db-shm"), db_path.with_extension("db-shm"));
+        }
+    }
+
+    eprintln!("[RouteBox] spawning: {} run {} (cwd={:?}, HOME={:?}, DB={:?})", bun_path, entry.display(), entry.parent(), real_home, db_path);
     let child = Command::new(&bun_path)
         .args(["run", &entry.to_string_lossy()])
         .current_dir(entry.parent().unwrap_or(&resource_dir))
         .env("PORT", gateway_port.to_string())
         .env("ROUTEBOX_TOKEN", &token)
+        .env("ROUTEBOX_DB_PATH", db_path.to_string_lossy().to_string())
         .env("HOME", &real_home)
         .env("PATH", &child_path)
         .stdout(std::process::Stdio::piped())

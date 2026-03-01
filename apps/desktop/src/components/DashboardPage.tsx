@@ -2,6 +2,7 @@ import { Zap, Coins, DollarSign, Sparkles } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { TrafficSparkline } from "@/components/TrafficSparkline";
 import { BalanceCard } from "@/components/BalanceCard";
+import { ProviderQuickList } from "@/components/ProviderQuickList";
 import type { RealtimeStats, TrafficPoint } from "@/types/stats";
 
 function formatTokens(n: number): string {
@@ -21,9 +22,9 @@ interface DashboardPageProps {
 
 export function DashboardPage({ stats, history }: DashboardPageProps) {
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 pt-2 gap-3">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-4 pt-2 gap-2.5">
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className="grid grid-cols-2 gap-2">
         <StatCard
           label="Requests"
           value={formatNumber(stats.requests)}
@@ -55,15 +56,18 @@ export function DashboardPage({ stats, history }: DashboardPageProps) {
         />
       </div>
 
-      {/* Traffic Sparkline — label is inside the card */}
+      {/* Traffic Sparkline — always visible */}
       <TrafficSparkline data={history} />
 
-      {/* Balance — no external section header */}
+      {/* Balance — always visible */}
       <BalanceCard
         balance={stats.balance}
         budget={stats.budget}
         monthSpend={stats.monthSpend}
       />
+
+      {/* Provider status */}
+      <ProviderQuickList providers={stats.providers} />
     </div>
   );
 }

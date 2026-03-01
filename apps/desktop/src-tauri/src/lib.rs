@@ -12,6 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::default().build())
         .manage(commands::GatewayProcess(std::sync::Mutex::new(None)))
         .setup(|app| {
             // Hide from macOS Dock — this is a menu-bar-only app

@@ -43,6 +43,19 @@ const tooltipStyle = {
   boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
 };
 
+/** Format a date string from the time series for tooltip display */
+function formatDateLabel(date: string): string {
+  // "2026-02-28 14:00" → "14:00"  (hourly / today)
+  if (date.includes(" ")) return date.split(" ")[1];
+  // "2026-02-28" → "Feb 28"  (daily)
+  const parts = date.split("-");
+  if (parts.length === 3) {
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${months[parseInt(parts[1], 10) - 1]} ${parseInt(parts[2], 10)}`;
+  }
+  return date;
+}
+
 export function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>("today");
   const [data, setData] = useState<AnalyticsResponse | null>(null);
@@ -151,7 +164,8 @@ export function AnalyticsPage() {
                   <XAxis dataKey="date" hide />
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    labelStyle={{ display: "none" }}
+                    labelFormatter={formatDateLabel}
+                    labelStyle={{ fontSize: "10px", color: "#86868B", marginBottom: "2px" }}
                     formatter={(value: number) => [formatCost(value), "Cost"]}
                   />
                   <Area
@@ -196,7 +210,8 @@ export function AnalyticsPage() {
                   <XAxis dataKey="date" hide />
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    labelStyle={{ display: "none" }}
+                    labelFormatter={formatDateLabel}
+                    labelStyle={{ fontSize: "10px", color: "#86868B", marginBottom: "2px" }}
                     formatter={(value: number, name: string) => [
                       formatTokens(value),
                       name === "inputTokens" ? "Input" : "Output",
