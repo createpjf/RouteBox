@@ -10,6 +10,7 @@ dist/
 # macOS
 .DS_Store
 ._*
+RouteBox.xcodeproj/
 
 # Tauri bundle output
 *.dmg

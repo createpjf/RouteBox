@@ -1,6 +1,12 @@
 {
   "name": "routebox",
+  "description": "macOS menu bar app — LLM API proxy with intelligent routing",
+  "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/createpjf/RouteBox.git"
+  },
   "scripts": {
     "dev": "pnpm --filter @routebox/desktop dev",
     "dev:tauri": "pnpm --filter @routebox/desktop tauri dev",

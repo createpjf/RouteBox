@@ -11,8 +11,22 @@ RouteBox runs a local OpenAI-compatible proxy (`http://localhost:3001/v1`). You 
 3. **Manages** multiple provider API keys securely in macOS Keychain
 
 ```
-Your App  →  RouteBox (localhost:3001)  →  OpenAI / Anthropic / Google / DeepSeek / ...
+Your App  →  RouteBox (localhost:3001)  →  OpenAI / Anthropic / Google / DeepSeek / MiniMax / Kimi / FLock.io
 ```
+
+## Supported Providers
+
+| Provider | Models | Get API Key |
+|----------|--------|-------------|
+| [OpenAI](https://openai.com) | GPT-4o, GPT-4.1, o3, o4-mini | [platform.openai.com](https://platform.openai.com/api-keys) |
+| [Anthropic](https://anthropic.com) | Claude Sonnet 4, Claude Haiku 4, Claude Opus 4 | [console.anthropic.com](https://console.anthropic.com/) |
+| [Google](https://ai.google.dev) | Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.0 Flash | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| [DeepSeek](https://deepseek.com) | DeepSeek-V3, DeepSeek-R1 | [platform.deepseek.com](https://platform.deepseek.com/) |
+| [MiniMax](https://minimax.io) | MiniMax-M2.5, MiniMax-M2.1 | [platform.minimaxi.com](https://platform.minimaxi.com/) |
+| [Kimi](https://kimi.ai) | Kimi K2.5, Kimi K2, Moonshot | [platform.moonshot.ai](https://platform.moonshot.ai/) |
+| [FLock.io](https://flock.io) | Qwen3-235B, Qwen3-30B, DeepSeek-V3.2, Kimi K2 | [platform.flock.io](https://platform.flock.io) |
+
+> **Tip:** [FLock API Platform](https://platform.flock.io) provides access to open-source models (Qwen3, DeepSeek, Kimi) through decentralized inference nodes — a good option for cost-effective routing.
 
 ## Setup
 
@@ -38,7 +52,7 @@ App appears in menu bar. Press `⌘⇧R` to toggle the panel.
 
 ### 2. Add Provider Keys
 
-Open RouteBox → **Settings → Providers** → Add your API keys (OpenAI, Anthropic, Google, etc.)
+Open RouteBox → **Settings → Providers** → Add your API keys for any [supported provider](#supported-providers).
 
 Keys are stored in macOS Keychain, never leave your machine.
 
@@ -122,6 +136,22 @@ pnpm tauri build
 
 Output: `RouteBox.app`, `.dmg`, `.app.tar.gz` (updater), `.sig` (signature)
 
+## Docker (Gateway Only)
+
+Run just the gateway as a standalone proxy (no macOS desktop UI):
+
+```bash
+cd apps/gateway
+docker build -t routebox-gateway .
+docker run -p 3001:3001 \
+  -e OPENAI_API_KEY=sk-... \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -v routebox-data:/data \
+  routebox-gateway
+```
+
+See [`apps/gateway/.env.example`](apps/gateway/.env.example) for all environment variables.
+
 ## Settings
 
 | Setting | Location | Notes |
@@ -146,3 +176,7 @@ Output: `RouteBox.app`, `.dmg`, `.app.tar.gz` (updater), `.sig` (signature)
 - **Desktop**: Tauri v2 (Rust) + React 19 + TypeScript + Tailwind CSS v4
 - **Gateway**: Bun + Hono + bun:sqlite
 - **Design**: SF Pro, frosted glass (macOS native)
+
+## License
+
+[MIT](LICENSE)
