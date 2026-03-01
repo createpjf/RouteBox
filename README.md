@@ -18,13 +18,13 @@ Your App  →  RouteBox (localhost:3001)  →  OpenAI / Anthropic / Google / Dee
 
 | Provider | Models | Get API Key |
 |----------|--------|-------------|
-| [OpenAI](https://openai.com) | GPT-4o, GPT-4.1, o3, o4-mini | [platform.openai.com](https://platform.openai.com/api-keys) |
-| [Anthropic](https://anthropic.com) | Claude Sonnet 4, Claude Haiku 4, Claude Opus 4 | [console.anthropic.com](https://console.anthropic.com/) |
-| [Google](https://ai.google.dev) | Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.0 Flash | [aistudio.google.com](https://aistudio.google.com/apikey) |
-| [DeepSeek](https://deepseek.com) | DeepSeek-V3, DeepSeek-R1 | [platform.deepseek.com](https://platform.deepseek.com/) |
+| [OpenAI](https://openai.com) | GPT-5.2, GPT-5 | [platform.openai.com](https://platform.openai.com/api-keys) |
+| [Anthropic](https://anthropic.com) | Claude Sonnet 4.6, Claude Haiku 4.5, Claude Opus 4.6 | [console.anthropic.com](https://console.anthropic.com/) |
+| [Google](https://ai.google.dev) | Gemini 3.1 Pro, Gemini 3.1 Flash | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| [DeepSeek](https://deepseek.com) | DeepSeek-V3.2, DeepSeek-R1 | [platform.deepseek.com](https://platform.deepseek.com/) |
 | [MiniMax](https://minimax.io) | MiniMax-M2.5, MiniMax-M2.1 | [platform.minimaxi.com](https://platform.minimaxi.com/) |
 | [Kimi](https://kimi.ai) | Kimi K2.5, Kimi K2, Moonshot | [platform.moonshot.ai](https://platform.moonshot.ai/) |
-| [FLock.io](https://flock.io) | Qwen3-235B, Qwen3-30B, DeepSeek-V3.2, Kimi K2 | [platform.flock.io](https://platform.flock.io) |
+| [FLock.io](https://flock.io) | Qwen3-235B, Qwen3-30B, DeepSeek-V3.2, Kimi K2.5 | [platform.flock.io](https://platform.flock.io) |
 
 > **Tip:** [FLock API Platform](https://platform.flock.io) provides access to open-source models (Qwen3, DeepSeek, Kimi) 嗎，— a good option for cost-effective routing.
 
