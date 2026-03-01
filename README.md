@@ -26,7 +26,7 @@ Your App  →  RouteBox (localhost:3001)  →  OpenAI / Anthropic / Google / Dee
 | [Kimi](https://kimi.ai) | Kimi K2.5, Kimi K2, Moonshot | [platform.moonshot.ai](https://platform.moonshot.ai/) |
 | [FLock.io](https://flock.io) | Qwen3-235B, Qwen3-30B, DeepSeek-V3.2, Kimi K2 | [platform.flock.io](https://platform.flock.io) |
 
-> **Tip:** [FLock API Platform](https://platform.flock.io) provides access to open-source models (Qwen3, DeepSeek, Kimi) through decentralized inference nodes — a good option for cost-effective routing.
+> **Tip:** [FLock API Platform](https://platform.flock.io) provides access to open-source models (Qwen3, DeepSeek, Kimi) 嗎，— a good option for cost-effective routing.
 
 ## Setup
 
