@@ -50,6 +50,7 @@ import {
 } from "../lib/db";
 import { validateProviderKey } from "../lib/validate-key";
 import { refreshPreferencesCache, refreshTogglesCache, refreshRoutingRulesCache } from "../lib/router";
+import { localProviders, probeLocalProvider, updateLocalProviderUrl } from "../lib/local-providers";
 
 const app = new Hono();
 
@@ -156,7 +157,66 @@ app.get("/models", (c) => {
     result.push({ provider: p.name, models });
   }
 
+  // Append online local providers with their dynamic models
+  for (const lp of localProviders) {
+    if (lp.isOnline && lp.models.length > 0) {
+      result.push({
+        provider: lp.name,
+        models: lp.models.map((id) => ({ id, pricing: { input: 0, output: 0 } })),
+      });
+    }
+  }
+
   return c.json({ providers: result });
+});
+
+// ── Local Providers ──────────────────────────────────────────────────────────
+
+app.get("/local-providers", (c) => {
+  return c.json({
+    providers: localProviders.map((lp) => ({
+      name: lp.name,
+      baseUrl: lp.baseUrl,
+      isOnline: lp.isOnline,
+      modelCount: lp.models.length,
+      models: lp.models,
+      lastChecked: lp.lastChecked,
+    })),
+  });
+});
+
+app.put("/local-providers/:name/url", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json<{ baseUrl: string }>();
+  if (!body.baseUrl?.trim()) return c.json({ error: "baseUrl is required" }, 400);
+
+  const updated = await updateLocalProviderUrl(name, body.baseUrl.trim());
+  if (!updated) return c.json({ error: "Unknown local provider" }, 404);
+
+  return c.json({
+    name: updated.name,
+    baseUrl: updated.baseUrl,
+    isOnline: updated.isOnline,
+    modelCount: updated.models.length,
+    models: updated.models,
+  });
+});
+
+app.post("/local-providers/:name/refresh", async (c) => {
+  const name = c.req.param("name");
+  const lp = localProviders.find((p) => p.name === name);
+  if (!lp) return c.json({ error: "Unknown local provider" }, 404);
+
+  await probeLocalProvider(lp);
+
+  return c.json({
+    name: lp.name,
+    baseUrl: lp.baseUrl,
+    isOnline: lp.isOnline,
+    modelCount: lp.models.length,
+    models: lp.models,
+    lastChecked: lp.lastChecked,
+  });
 });
 
 // Balance

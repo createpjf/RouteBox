@@ -1,6 +1,6 @@
 [package]
 name = "routebox-desktop"
-version = "2.0.0"
+version = "2.0.1"
 description = "RouteBox macOS Menu Bar App"
 authors = ["RouteBox"]
 edition = "2021"

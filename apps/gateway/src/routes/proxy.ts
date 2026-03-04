@@ -16,6 +16,7 @@ import {
 } from "../lib/providers";
 import { selectRoute } from "../lib/router";
 import { metrics, type RequestRecord } from "../lib/metrics";
+import { localProviders } from "../lib/local-providers";
 
 const app = new Hono();
 
@@ -70,16 +71,19 @@ async function forwardOpenAI(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (provider.authHeader) {
-    headers[provider.authHeader] = provider.apiKey;
-  } else {
-    headers["Authorization"] = `Bearer ${provider.apiKey}`;
+  // Skip auth for local providers (Ollama, LM Studio)
+  if (!provider.isLocal) {
+    if (provider.authHeader) {
+      headers[provider.authHeader] = provider.apiKey;
+    } else {
+      headers["Authorization"] = `Bearer ${provider.apiKey}`;
+    }
   }
   return fetch(`${provider.baseUrl}/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(provider.isLocal ? 120_000 : 30_000),
   });
 }
 
@@ -373,6 +377,12 @@ app.get("/models", (c) => {
       if (p.prefixes.some((pfx) => modelId.startsWith(pfx))) {
         modelIds.add(modelId);
       }
+    }
+  }
+  // Include local provider models
+  for (const lp of localProviders) {
+    if (lp.isOnline) {
+      for (const m of lp.models) modelIds.add(m);
     }
   }
   const data = [

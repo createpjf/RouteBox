@@ -47,6 +47,8 @@ export const PROVIDER_COLORS: Record<string, string> = {
   Groq: "#F55036",
   Together: "#6366F1",
   "FLock.io": "#7C3AED",
+  Ollama: "#0077B6",
+  "LM Studio": "#E63946",
 };
 
 export const ROUTING_STRATEGIES = [

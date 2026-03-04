@@ -98,6 +98,24 @@ export interface ProviderRegistryEntry {
   keySource: "env" | "db" | null;
   maskedKey: string | null;
   isActive: boolean;
+  isLocal?: boolean;
+  baseUrl?: string;
+  modelCount?: number;
+}
+
+// ── Local Providers ──────────────────────────────────────────────────────────
+
+export interface LocalProviderInfo {
+  name: string;
+  baseUrl: string;
+  isOnline: boolean;
+  modelCount: number;
+  models: string[];
+  lastChecked: number;
+}
+
+export interface LocalProvidersResponse {
+  providers: LocalProviderInfo[];
 }
 
 export interface ProviderRegistryResponse {
@@ -293,6 +311,21 @@ export const api = {
   removeRoutingRule: (id: number) =>
     request<{ success: boolean }>(`/api/v1/routing-rules/${id}`, {
       method: "DELETE",
+      retries: 0,
+    }),
+
+  // Local providers
+  getLocalProviders: () =>
+    request<LocalProvidersResponse>("/api/v1/local-providers"),
+  setLocalProviderUrl: (name: string, baseUrl: string) =>
+    request<LocalProviderInfo>(`/api/v1/local-providers/${encodeURIComponent(name)}/url`, {
+      method: "PUT",
+      body: JSON.stringify({ baseUrl }),
+      retries: 0,
+    }),
+  refreshLocalProvider: (name: string) =>
+    request<LocalProviderInfo>(`/api/v1/local-providers/${encodeURIComponent(name)}/refresh`, {
+      method: "POST",
       retries: 0,
     }),
 
