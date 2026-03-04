@@ -1,5 +1,5 @@
 use crate::keychain;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_positioner::{Position, WindowExt};
 use arboard::Clipboard;
 use std::sync::Mutex;
@@ -121,7 +121,7 @@ pub fn clipboard_action_sync(app: &tauri::AppHandle, action: &str) -> Result<(),
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let text = clipboard.get_text().unwrap_or_default();
     app.emit("spotlight-action", serde_json::json!({ "action": action, "text": text }))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e: tauri::Error| e.to_string())?;
     toggle_spotlight_internal(app)?;
     Ok(())
 }
