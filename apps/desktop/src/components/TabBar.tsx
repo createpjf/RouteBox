@@ -1,7 +1,7 @@
-import { LayoutDashboard, Route, ScrollText, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Route, ScrollText, BarChart3, PieChart } from "lucide-react";
 import clsx from "clsx";
 
-export type TabId = "dashboard" | "routing" | "logs" | "analytics";
+export type TabId = "dashboard" | "usage" | "routing" | "logs" | "analytics";
 
 interface TabBarProps {
   activeTab: TabId;
@@ -10,6 +10,7 @@ interface TabBarProps {
 
 const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "usage", label: "My Usage", icon: PieChart },
   { id: "routing", label: "Routing", icon: Route },
   { id: "logs", label: "Logs", icon: ScrollText },
   { id: "analytics", label: "Analytics", icon: BarChart3 },

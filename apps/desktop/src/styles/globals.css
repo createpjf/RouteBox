@@ -302,3 +302,86 @@
   gap: 8px;
   border-radius: 8px;
 }
+
+/* ── V2: Spotlight gradient ── */
+.spotlight-gradient {
+  background: rgba(30, 30, 30, 0.96);
+  backdrop-filter: blur(50px) saturate(200%);
+  -webkit-backdrop-filter: blur(50px) saturate(200%);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+@keyframes spotlight-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.spotlight-animate {
+  animation: spotlight-in 180ms ease-out;
+}
+
+/* ── V2: Markdown body ── */
+.markdown-body {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  color: rgba(255, 255, 255, 0.95);
+  margin: 12px 0 6px;
+  font-weight: 600;
+}
+
+.markdown-body h1 { font-size: 18px; }
+.markdown-body h2 { font-size: 15px; }
+.markdown-body h3 { font-size: 14px; }
+
+.markdown-body p { margin: 6px 0; }
+
+.markdown-body ul, .markdown-body ol {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.markdown-body a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid rgba(255, 255, 255, 0.15);
+  padding-left: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 8px 0;
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.markdown-body th, .markdown-body td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.markdown-body th {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* hljs override for code blocks */
+.markdown-body .hljs {
+  background: transparent !important;
+}

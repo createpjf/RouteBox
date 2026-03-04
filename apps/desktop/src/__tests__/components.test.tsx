@@ -14,7 +14,7 @@ vi.mock("lucide-react", async () => {
     Wallet: icon, Activity: icon, XCircle: icon,
     Key: icon, Shield: icon, AlertCircle: icon, BookOpen: icon, ArrowRight: icon,
     BarChart3: icon, Pin: icon, Ban: icon, Plus: icon, Square: icon,
-    TrendingUp: icon, Cpu: icon, Clock: icon,
+    TrendingUp: icon, Cpu: icon, Clock: icon, PieChart: icon,
   };
 });
 
@@ -163,9 +163,10 @@ describe("RequestLogPage", () => {
 });
 
 describe("TabBar", () => {
-  test("renders four tabs", () => {
+  test("renders five tabs", () => {
     render(<TabBar activeTab="dashboard" onTabChange={() => {}} />);
     expect(screen.getByText("Dashboard")).toBeDefined();
+    expect(screen.getByText("My Usage")).toBeDefined();
     expect(screen.getByText("Routing")).toBeDefined();
     expect(screen.getByText("Logs")).toBeDefined();
     expect(screen.getByText("Analytics")).toBeDefined();

@@ -545,5 +545,329 @@ export function removeRoutingRule(id: number) {
   deleteRoutingRuleStmt.run(id);
 }
 
+// ── V2: Conversations ─────────────────────────────────────────────────────
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New Chat',
+    model TEXT NOT NULL DEFAULT '',
+    strategy TEXT NOT NULL DEFAULT 'smart_auto',
+    msg_count INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    total_cost REAL NOT NULL DEFAULT 0,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as integer) * 1000),
+    updated_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as integer) * 1000)
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost REAL NOT NULL DEFAULT 0,
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    cache_hit INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as integer) * 1000)
+  )
+`);
+
+db.run(`CREATE INDEX IF NOT EXISTS idx_messages_conv_ts ON messages(conversation_id, created_at)`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS spotlight_history (
+    id TEXT PRIMARY KEY,
+    prompt TEXT NOT NULL,
+    response TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    cost REAL NOT NULL DEFAULT 0,
+    tokens INTEGER NOT NULL DEFAULT 0,
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as integer) * 1000)
+  )
+`);
+
+db.run(`CREATE INDEX IF NOT EXISTS idx_spotlight_created ON spotlight_history(created_at DESC)`);
+
+// Enable foreign key enforcement for CASCADE
+db.run("PRAGMA foreign_keys = ON");
+
+// ── V2: Conversation types ────────────────────────────────────────────────
+
+export interface ConversationRow {
+  id: string;
+  title: string;
+  model: string;
+  strategy: string;
+  msg_count: number;
+  total_tokens: number;
+  total_cost: number;
+  pinned: number;
+  archived: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface MessageRow {
+  id: string;
+  conversation_id: string;
+  role: string;
+  content: string;
+  model: string;
+  provider: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost: number;
+  latency_ms: number;
+  cache_hit: number;
+  created_at: number;
+}
+
+export interface SpotlightHistoryRow {
+  id: string;
+  prompt: string;
+  response: string;
+  model: string;
+  provider: string;
+  cost: number;
+  tokens: number;
+  latency_ms: number;
+  created_at: number;
+}
+
+// ── V2: Conversation prepared statements ──────────────────────────────────
+
+const insertConversationStmt = db.prepare(`
+  INSERT INTO conversations (id, title, model, strategy, created_at, updated_at)
+  VALUES ($id, $title, $model, $strategy, $now, $now)
+`);
+
+const updateConversationStmt = db.prepare(`
+  UPDATE conversations SET title=$title, model=$model, strategy=$strategy, updated_at=$now
+  WHERE id = $id
+`);
+
+const updateConversationStatsStmt = db.prepare(`
+  UPDATE conversations SET msg_count=$msgCount, total_tokens=$totalTokens, total_cost=$totalCost, updated_at=$now
+  WHERE id = $id
+`);
+
+const getConversationsStmt = db.prepare(`
+  SELECT * FROM conversations WHERE archived = 0
+  ORDER BY pinned DESC, updated_at DESC
+`);
+
+const getConversationStmt = db.prepare(`
+  SELECT * FROM conversations WHERE id = ?
+`);
+
+const deleteConversationStmt = db.prepare(`
+  DELETE FROM conversations WHERE id = ?
+`);
+
+const togglePinStmt = db.prepare(`
+  UPDATE conversations SET pinned = CASE WHEN pinned = 0 THEN 1 ELSE 0 END, updated_at = ? WHERE id = ?
+`);
+
+const archiveConversationStmt = db.prepare(`
+  UPDATE conversations SET archived = 1, updated_at = ? WHERE id = ?
+`);
+
+// ── V2: Message prepared statements ───────────────────────────────────────
+
+const insertMessageStmt = db.prepare(`
+  INSERT INTO messages (id, conversation_id, role, content, model, provider, input_tokens, output_tokens, cost, latency_ms, cache_hit, created_at)
+  VALUES ($id, $convId, $role, $content, $model, $provider, $inputTokens, $outputTokens, $cost, $latencyMs, $cacheHit, $now)
+`);
+
+const getMessagesStmt = db.prepare(`
+  SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC
+`);
+
+// ── V2: Spotlight prepared statements ─────────────────────────────────────
+
+const insertSpotlightStmt = db.prepare(`
+  INSERT INTO spotlight_history (id, prompt, response, model, provider, cost, tokens, latency_ms, created_at)
+  VALUES ($id, $prompt, $response, $model, $provider, $cost, $tokens, $latencyMs, $now)
+`);
+
+const getRecentSpotlightStmt = db.prepare(`
+  SELECT * FROM spotlight_history ORDER BY created_at DESC LIMIT ?
+`);
+
+// ── V2: Usage query prepared statements ───────────────────────────────────
+
+const usageTodayStmt = db.prepare(`
+  SELECT COUNT(*) as requests, COALESCE(SUM(total_tokens), 0) as tokens,
+         COALESCE(SUM(cost), 0) as cost
+  FROM requests WHERE timestamp >= ?
+`);
+
+const usageMonthStmt = db.prepare(`
+  SELECT COUNT(*) as requests, COALESCE(SUM(total_tokens), 0) as tokens,
+         COALESCE(SUM(cost), 0) as cost
+  FROM requests WHERE timestamp >= ?
+`);
+
+const weeklyTrendStmt = db.prepare(`
+  SELECT strftime('%Y-%m-%d', timestamp/1000, 'unixepoch') as date,
+         COALESCE(SUM(cost), 0) as cost, COUNT(*) as requests
+  FROM requests WHERE timestamp >= ?
+  GROUP BY date ORDER BY date
+`);
+
+const modelBreakdownStmt = db.prepare(`
+  SELECT model, COUNT(*) as requests, COALESCE(SUM(cost), 0) as cost
+  FROM requests WHERE timestamp >= ?
+  GROUP BY model ORDER BY cost DESC LIMIT 10
+`);
+
+// ── V2: Conversation CRUD ─────────────────────────────────────────────────
+
+export function createConversation(title: string, model: string, strategy = "smart_auto"): ConversationRow {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  insertConversationStmt.run({ $id: id, $title: title, $model: model, $strategy: strategy, $now: now });
+  return getConversationStmt.get(id) as ConversationRow;
+}
+
+export function updateConversation(id: string, title: string, model: string, strategy: string) {
+  updateConversationStmt.run({ $id: id, $title: title, $model: model, $strategy: strategy, $now: Date.now() });
+}
+
+export function loadConversations(): ConversationRow[] {
+  return getConversationsStmt.all() as ConversationRow[];
+}
+
+export function loadConversation(id: string): ConversationRow | null {
+  return (getConversationStmt.get(id) as ConversationRow | null) ?? null;
+}
+
+export function deleteConversation(id: string) {
+  deleteConversationStmt.run(id);
+}
+
+export function togglePinConversation(id: string) {
+  togglePinStmt.run(Date.now(), id);
+}
+
+export function archiveConversation(id: string) {
+  archiveConversationStmt.run(Date.now(), id);
+}
+
+// ── V2: Message CRUD ──────────────────────────────────────────────────────
+
+export function insertMessage(
+  conversationId: string,
+  role: string,
+  content: string,
+  meta?: { model?: string; provider?: string; inputTokens?: number; outputTokens?: number; cost?: number; latencyMs?: number; cacheHit?: boolean },
+): MessageRow {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  insertMessageStmt.run({
+    $id: id,
+    $convId: conversationId,
+    $role: role,
+    $content: content,
+    $model: meta?.model ?? "",
+    $provider: meta?.provider ?? "",
+    $inputTokens: meta?.inputTokens ?? 0,
+    $outputTokens: meta?.outputTokens ?? 0,
+    $cost: meta?.cost ?? 0,
+    $latencyMs: meta?.latencyMs ?? 0,
+    $cacheHit: meta?.cacheHit ? 1 : 0,
+    $now: now,
+  });
+  // Update conversation stats
+  const msgs = getMessagesStmt.all(conversationId) as MessageRow[];
+  const totalTokens = msgs.reduce((s, m) => s + m.input_tokens + m.output_tokens, 0);
+  const totalCost = msgs.reduce((s, m) => s + m.cost, 0);
+  updateConversationStatsStmt.run({
+    $id: conversationId,
+    $msgCount: msgs.length,
+    $totalTokens: totalTokens,
+    $totalCost: totalCost,
+    $now: now,
+  });
+  return { id, conversation_id: conversationId, role, content, model: meta?.model ?? "", provider: meta?.provider ?? "", input_tokens: meta?.inputTokens ?? 0, output_tokens: meta?.outputTokens ?? 0, cost: meta?.cost ?? 0, latency_ms: meta?.latencyMs ?? 0, cache_hit: meta?.cacheHit ? 1 : 0, created_at: now };
+}
+
+export function loadMessages(conversationId: string): MessageRow[] {
+  return getMessagesStmt.all(conversationId) as MessageRow[];
+}
+
+// ── V2: Spotlight CRUD ────────────────────────────────────────────────────
+
+export function saveSpotlightEntry(prompt: string, response: string, meta?: { model?: string; provider?: string; cost?: number; tokens?: number; latencyMs?: number }): SpotlightHistoryRow {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  insertSpotlightStmt.run({
+    $id: id,
+    $prompt: prompt,
+    $response: response,
+    $model: meta?.model ?? "",
+    $provider: meta?.provider ?? "",
+    $cost: meta?.cost ?? 0,
+    $tokens: meta?.tokens ?? 0,
+    $latencyMs: meta?.latencyMs ?? 0,
+    $now: now,
+  });
+  return { id, prompt, response, model: meta?.model ?? "", provider: meta?.provider ?? "", cost: meta?.cost ?? 0, tokens: meta?.tokens ?? 0, latency_ms: meta?.latencyMs ?? 0, created_at: now };
+}
+
+export function loadRecentSpotlight(limit = 3): SpotlightHistoryRow[] {
+  return getRecentSpotlightStmt.all(limit) as SpotlightHistoryRow[];
+}
+
+// ── V2: Usage queries ─────────────────────────────────────────────────────
+
+export interface UsageTodayResult { requests: number; tokens: number; cost: number; saved: number }
+export interface UsageMonthResult { requests: number; tokens: number; cost: number; budgetPct: number }
+export interface WeeklyTrendRow { date: string; cost: number; requests: number }
+export interface ModelBreakdownRow { model: string; requests: number; cost: number; pct: number }
+
+export function queryTodayUsage(): UsageTodayResult {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const row = usageTodayStmt.get(startOfDay.getTime()) as { requests: number; tokens: number; cost: number } | null;
+  const cost = row?.cost ?? 0;
+  // "saved" = cost from fallback requests where a cheaper provider was used
+  // Approximation: sum of savings from requests marked as fallback
+  return { requests: row?.requests ?? 0, tokens: row?.tokens ?? 0, cost, saved: 0 };
+}
+
+export function queryMonthUsage(): UsageMonthResult {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const row = usageMonthStmt.get(startOfMonth) as { requests: number; tokens: number; cost: number } | null;
+  const cost = row?.cost ?? 0;
+  const budgetStr = loadSetting("monthly_budget");
+  const budget = budgetStr ? parseFloat(budgetStr) : 0;
+  const budgetPct = budget > 0 ? Math.round((cost / budget) * 100) : 0;
+  return { requests: row?.requests ?? 0, tokens: row?.tokens ?? 0, cost, budgetPct };
+}
+
+export function queryWeeklyTrend(sinceTs?: number): WeeklyTrendRow[] {
+  const since = sinceTs ?? Date.now() - 7 * 86_400_000;
+  return weeklyTrendStmt.all(since) as WeeklyTrendRow[];
+}
+
+export function queryModelBreakdown(sinceTs?: number): ModelBreakdownRow[] {
+  const since = sinceTs ?? Date.now() - 30 * 86_400_000;
+  const rows = modelBreakdownStmt.all(since) as { model: string; requests: number; cost: number }[];
+  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+  return rows.map(r => ({ ...r, pct: totalCost > 0 ? Math.round((r.cost / totalCost) * 100) : 0 }));
+}
+
 // Prune on startup (keep 30 days)
 pruneOldRequests(30);

@@ -11,6 +11,7 @@ import { Settings } from "@/components/Settings";
 import { Onboarding } from "@/components/Onboarding";
 import { RequestDetail } from "@/components/RequestDetail";
 import { AnalyticsPage } from "@/components/AnalyticsPage";
+import { UsagePage } from "@/components/UsagePage";
 import { AlertBanner } from "@/components/AlertBanner";
 import { ToastContainer } from "@/components/ToastContainer";
 import { useRealtimeStats } from "@/hooks/useRealtimeStats";
@@ -196,6 +197,7 @@ export function App() {
               onSelectEntry={setSelectedRequest}
             />
           )}
+          {activeTab === "usage" && <UsagePage />}
           {activeTab === "analytics" && <AnalyticsPage />}
         </div>
 

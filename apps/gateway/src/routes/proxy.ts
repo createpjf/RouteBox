@@ -126,9 +126,17 @@ function extractUsage(json: Record<string, unknown>): { input: number; output: n
 
 // ── Streaming: Anthropic SSE → OpenAI SSE transformer ───────────────────────
 
+interface StreamMeta {
+  provider: string;
+  requestedModel: string;
+  startMs: number;
+  isFallback: boolean;
+}
+
 function anthropicStreamToOpenAI(
   upstream: ReadableStream<Uint8Array>,
   model: string,
+  streamMeta: StreamMeta,
   onDone: (usage: { input: number; output: number }) => void,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -259,6 +267,20 @@ function anthropicStreamToOpenAI(
         reader.releaseLock();
       }
 
+      // Inject routebox.meta before [DONE]
+      const totalTokens = inputTokens + outputTokens;
+      const metaCost = calculateCost(model, inputTokens, outputTokens, streamMeta.provider);
+      pushChunk(JSON.stringify({
+        object: "routebox.meta",
+        provider: streamMeta.provider.toLowerCase(),
+        model,
+        requested_model: streamMeta.requestedModel,
+        usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTokens },
+        cost: metaCost,
+        latency_ms: Math.round(performance.now() - streamMeta.startMs),
+        is_fallback: streamMeta.isFallback,
+      }));
+
       pushChunk("[DONE]");
       controller.close();
       onDone({ input: inputTokens, output: outputTokens });
@@ -270,6 +292,7 @@ function anthropicStreamToOpenAI(
 
 function openaiStreamPassthrough(
   upstream: ReadableStream<Uint8Array>,
+  streamMeta: StreamMeta,
   onDone: (usage: { input: number; output: number }) => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
@@ -298,6 +321,19 @@ function openaiStreamPassthrough(
           for (const line of lines) {
             if (line.startsWith("data: ")) {
               if (line.includes("[DONE]")) {
+                // Inject routebox.meta before [DONE]
+                const totalTok = inputTokens + outputTokens;
+                const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens, streamMeta.provider);
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  object: "routebox.meta",
+                  provider: streamMeta.provider.toLowerCase(),
+                  model: streamMeta.requestedModel,
+                  requested_model: streamMeta.requestedModel,
+                  usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
+                  cost: metaCost,
+                  latency_ms: Math.round(performance.now() - streamMeta.startMs),
+                  is_fallback: streamMeta.isFallback,
+                })}\n\n`));
                 controller.enqueue(encoder.encode(`${line}\n\n`));
               } else {
                 try {
@@ -543,16 +579,23 @@ app.post("/chat/completions", async (c) => {
 
   // ── Streaming response ──
   if (isStream && res!.body) {
-    const latencyMs = Math.round(performance.now() - startMs);
+    const streamMetaObj: StreamMeta = {
+      provider: finalProvider.name,
+      requestedModel,
+      startMs,
+      isFallback: finalIsFallback,
+    };
     const stream = finalProvider.format === "anthropic"
-      ? anthropicStreamToOpenAI(res!.body, finalModel, (usage) => {
+      ? anthropicStreamToOpenAI(res!.body, finalModel, streamMetaObj, (usage) => {
+          const latencyMs = Math.round(performance.now() - startMs);
           recordRequest(
             requestedModel, finalModel, finalProvider.name,
             usage.input, usage.output, usage.input + usage.output,
             latencyMs, finalIsFallback ? "fallback" : "success",
           );
         })
-      : openaiStreamPassthrough(res!.body, (usage) => {
+      : openaiStreamPassthrough(res!.body, streamMetaObj, (usage) => {
+          const latencyMs = Math.round(performance.now() - startMs);
           recordRequest(
             requestedModel, finalModel, finalProvider.name,
             usage.input, usage.output, usage.input + usage.output,
@@ -600,6 +643,9 @@ app.post("/chat/completions", async (c) => {
     cost,
     saved: Math.max(0, originalCost - cost),
     key_source: "byok",
+    usage: { prompt_tokens: usage.input, completion_tokens: usage.output, total_tokens: usage.input + usage.output },
+    latency_ms: latencyMs,
+    is_fallback: finalIsFallback,
   };
 
   return c.json(responseJson, 200, {
