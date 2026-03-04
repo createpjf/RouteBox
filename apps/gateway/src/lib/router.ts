@@ -10,6 +10,7 @@ import {
   MODEL_TIERS,
   type ProviderConfig,
 } from "./providers";
+import { getLocalProviderConfigs } from "./local-providers";
 import { metrics } from "./metrics";
 import { loadModelPreferences, loadDisabledModels, loadRoutingRules, type ModelPreferenceRow, type RoutingRuleRow } from "./db";
 import { analyzeContent } from "./content-analyzer";
@@ -81,9 +82,10 @@ function matchesPattern(model: string, pattern: string): boolean {
   return model === pattern;
 }
 
-/** Find a provider config by name */
+/** Find a provider config by name (cloud or local) */
 function findProvider(name: string): ProviderConfig | undefined {
-  return providers.find((p) => p.name === name);
+  return providers.find((p) => p.name === name)
+    ?? getLocalProviderConfigs().find((p) => p.name === name);
 }
 
 // ── Composite exclusion helpers ─────────────────────────────────────────────

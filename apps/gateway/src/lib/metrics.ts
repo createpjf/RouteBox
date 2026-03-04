@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { providers, type ProviderConfig } from "./providers";
+import { localProviders } from "./local-providers";
 import {
   persistRequest,
   loadRecentRequests,
@@ -286,6 +287,22 @@ class MetricsStore {
       });
     }
 
+    // Include online local providers
+    for (const lp of localProviders) {
+      if (lp.isOnline) {
+        const ps = this.providerState.get(lp.name);
+        providerSnapshots.push({
+          name: lp.name,
+          latency: ps?.latencySamples.length
+            ? Math.round(ps.latencySamples.reduce((a, b) => a + b, 0) / ps.latencySamples.length)
+            : 0,
+          isUp: true,
+          keySource: "byok",
+          requestsToday: ps?.requestsToday ?? 0,
+        });
+      }
+    }
+
     // Sparkline — last 30 minutes
     const sparkline: number[] = [];
     const nowMin = new Date();
@@ -356,6 +373,10 @@ class MetricsStore {
 
   /** Check if a provider is considered up */
   isProviderUp(name: string): boolean {
+    // Local providers use their own online status from probing
+    const lp = localProviders.find((p) => p.name === name);
+    if (lp) return lp.isOnline;
+
     const ps = this.providerState.get(name);
     if (!ps) return false;
     return ps.failStreak < DOWN_FAIL_STREAK;
@@ -363,7 +384,7 @@ class MetricsStore {
 
   /** Sync provider state when providers array changes (after rebuildProviders) */
   syncProviders() {
-    // Add new providers
+    // Add new cloud providers
     for (const p of providers) {
       if (!this.providerState.has(p.name)) {
         this.providerState.set(p.name, {
@@ -376,8 +397,24 @@ class MetricsStore {
         });
       }
     }
-    // Remove stale providers
-    const activeNames = new Set(providers.map(p => p.name));
+    // Add online local providers
+    for (const lp of localProviders) {
+      if (lp.isOnline && !this.providerState.has(lp.name)) {
+        this.providerState.set(lp.name, {
+          latencySamples: [],
+          lastSuccess: 0,
+          lastFailure: 0,
+          failStreak: 0,
+          requestsToday: 0,
+          keySource: "byok",
+        });
+      }
+    }
+    // Remove stale providers (keep if cloud or online local)
+    const activeNames = new Set([
+      ...providers.map(p => p.name),
+      ...localProviders.filter(lp => lp.isOnline).map(lp => lp.name),
+    ]);
     for (const name of this.providerState.keys()) {
       if (!activeNames.has(name)) {
         this.providerState.delete(name);

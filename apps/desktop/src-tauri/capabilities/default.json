@@ -10,6 +10,7 @@
     "global-shortcut:default",
     "notification:default",
     "store:default",
-    "process:default"
+    "process:default",
+    "updater:default"
   ]
 }

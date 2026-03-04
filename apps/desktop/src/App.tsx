@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Panel } from "@/components/Panel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HeroSection } from "@/components/HeroSection";
@@ -11,6 +11,7 @@ import { Settings } from "@/components/Settings";
 import { Onboarding } from "@/components/Onboarding";
 import { RequestDetail } from "@/components/RequestDetail";
 import { AnalyticsPage } from "@/components/AnalyticsPage";
+import { UsagePage } from "@/components/UsagePage";
 import { AlertBanner } from "@/components/AlertBanner";
 import { ToastContainer } from "@/components/ToastContainer";
 import { useRealtimeStats } from "@/hooks/useRealtimeStats";
@@ -151,6 +152,25 @@ export function App() {
     }
   }, [connected, stats, onboardingDismissed, showSettings]);
 
+  // Auto-check for updates on startup (once, 5s delay)
+  const updateCheckedRef = useRef(false);
+  useEffect(() => {
+    if (updateCheckedRef.current || gatewayState !== "running") return;
+    updateCheckedRef.current = true;
+    const timer = setTimeout(async () => {
+      try {
+        const { check } = await import("@tauri-apps/plugin-updater");
+        const update = await check();
+        if (update) {
+          showToast(`New version available! Open Settings → About to update.`, "info", 8000);
+        }
+      } catch {
+        // Silent — update check is best-effort
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [gatewayState, showToast]);
+
   const handleDismissOnboarding = useCallback(async () => {
     setShowOnboarding(false);
     setOnboardingDismissed(true);
@@ -175,6 +195,12 @@ export function App() {
           gatewayState={gatewayState}
           gatewayError={gatewayError}
           onOpenSettings={() => setShowSettings(true)}
+          onOpenChat={() => {
+            import("@tauri-apps/api/core").then(({ invoke }) => invoke("open_chat")).catch(() => {});
+          }}
+          onOpenSpotlight={() => {
+            import("@tauri-apps/api/core").then(({ invoke }) => invoke("toggle_spotlight")).catch(() => {});
+          }}
         />
         {alert && (
           <AlertBanner
@@ -196,6 +222,7 @@ export function App() {
               onSelectEntry={setSelectedRequest}
             />
           )}
+          {activeTab === "usage" && <UsagePage />}
           {activeTab === "analytics" && <AnalyticsPage />}
         </div>
 

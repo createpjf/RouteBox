@@ -1,5 +1,5 @@
 use crate::keychain;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_positioner::{Position, WindowExt};
 use arboard::Clipboard;
 use std::sync::Mutex;
@@ -67,6 +67,62 @@ pub fn toggle_panel_internal(app: &tauri::AppHandle) -> Result<(), String> {
             window.set_focus().map_err(|e| e.to_string())?;
         }
     }
+    Ok(())
+}
+
+// ── Spotlight toggle ────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn toggle_spotlight(app: tauri::AppHandle) -> Result<(), String> {
+    toggle_spotlight_internal(&app)
+}
+
+pub fn toggle_spotlight_internal(app: &tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("spotlight") {
+        if window.is_visible().unwrap_or(false) {
+            window.hide().map_err(|e| e.to_string())?;
+        } else {
+            window.center().map_err(|e| e.to_string())?;
+            window.show().map_err(|e| e.to_string())?;
+            window.set_focus().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+// ── Chat window ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn open_chat(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("chat") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// ── Clipboard read ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn read_clipboard() -> Result<String, String> {
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.get_text().map_err(|e| e.to_string())
+}
+
+// ── Clipboard action (read + emit event + show spotlight) ───────────────────
+
+#[tauri::command]
+pub async fn clipboard_action(app: tauri::AppHandle, action: String) -> Result<(), String> {
+    clipboard_action_sync(&app, &action)
+}
+
+/// Synchronous version for use from shortcut handlers (no async runtime needed)
+pub fn clipboard_action_sync(app: &tauri::AppHandle, action: &str) -> Result<(), String> {
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    let text = clipboard.get_text().unwrap_or_default();
+    app.emit("spotlight-action", serde_json::json!({ "action": action, "text": text }))
+        .map_err(|e: tauri::Error| e.to_string())?;
+    toggle_spotlight_internal(app)?;
     Ok(())
 }
 

@@ -31,9 +31,27 @@ import {
   saveRoutingRule,
   updateRoutingRuleById,
   removeRoutingRule,
+  // V2: conversations, messages, spotlight, usage
+  createConversation,
+  updateConversation,
+  loadConversations,
+  loadConversation,
+  deleteConversation,
+  togglePinConversation,
+  archiveConversation,
+  insertMessage,
+  loadMessages,
+  saveSpotlightEntry,
+  loadRecentSpotlight,
+  queryTodayUsage,
+  queryMonthUsage,
+  queryWeeklyTrend,
+  queryModelBreakdown,
 } from "../lib/db";
 import { validateProviderKey } from "../lib/validate-key";
 import { refreshPreferencesCache, refreshTogglesCache, refreshRoutingRulesCache } from "../lib/router";
+import { localProviders, probeLocalProvider, updateLocalProviderUrl } from "../lib/local-providers";
+import { isSearchEnabled, getBraveApiKey } from "../lib/brave-search";
 
 const app = new Hono();
 
@@ -128,19 +146,92 @@ app.post("/providers/:name/validate", async (c) => {
   return c.json({ valid: result.ok, error: result.error ?? null });
 });
 
-// Models — list available models grouped by active provider
+// Models — list ALL known models grouped by provider (including unconfigured ones)
 app.get("/models", (c) => {
-  const activeProviders = providers;
-  const result: { provider: string; models: { id: string; pricing: { input: number; output: number } }[] }[] = [];
+  const activeNames = new Set(providers.map((p) => p.name));
 
-  for (const p of activeProviders) {
+  const result: {
+    provider: string;
+    active: boolean;
+    models: { id: string; pricing: { input: number; output: number } }[];
+  }[] = [];
+
+  for (const tmpl of PROVIDER_REGISTRY) {
     const models = Object.keys(MODEL_PRICING)
-      .filter((m) => p.prefixes.some((pfx) => m.startsWith(pfx)))
-      .map((id) => ({ id, pricing: pricingForModel(id, p.name) }));
-    result.push({ provider: p.name, models });
+      .filter((m) => tmpl.prefixes.some((pfx) => m.startsWith(pfx)))
+      .map((id) => ({ id, pricing: pricingForModel(id, tmpl.name) }));
+    if (models.length > 0) {
+      result.push({ provider: tmpl.name, active: activeNames.has(tmpl.name), models });
+    }
+  }
+
+  // Append online local providers with their dynamic models
+  for (const lp of localProviders) {
+    if (lp.isOnline && lp.models.length > 0) {
+      result.push({
+        provider: lp.name,
+        active: true,
+        models: lp.models.map((id) => ({ id, pricing: { input: 0, output: 0 } })),
+      });
+    }
   }
 
   return c.json({ providers: result });
+});
+
+// ── Local Providers ──────────────────────────────────────────────────────────
+
+app.get("/local-providers", (c) => {
+  return c.json({
+    providers: localProviders.map((lp) => ({
+      name: lp.name,
+      baseUrl: lp.baseUrl,
+      hasApiKey: !!lp.apiKey,
+      isOnline: lp.isOnline,
+      modelCount: lp.models.length,
+      models: lp.models,
+      lastChecked: lp.lastChecked,
+    })),
+  });
+});
+
+app.put("/local-providers/:name/url", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json<{ baseUrl: string; apiKey?: string }>();
+  if (!body.baseUrl?.trim()) return c.json({ error: "baseUrl is required" }, 400);
+
+  const updated = await updateLocalProviderUrl(name, body.baseUrl.trim(), body.apiKey?.trim());
+  if (!updated) return c.json({ error: "Unknown local provider" }, 404);
+
+  metrics.syncProviders();
+
+  return c.json({
+    name: updated.name,
+    baseUrl: updated.baseUrl,
+    hasApiKey: !!updated.apiKey,
+    isOnline: updated.isOnline,
+    modelCount: updated.models.length,
+    models: updated.models,
+  });
+});
+
+app.post("/local-providers/:name/refresh", async (c) => {
+  const name = c.req.param("name");
+  const lp = localProviders.find((p) => p.name === name);
+  if (!lp) return c.json({ error: "Unknown local provider" }, 404);
+
+  await probeLocalProvider(lp);
+  metrics.syncProviders();
+
+  return c.json({
+    name: lp.name,
+    baseUrl: lp.baseUrl,
+    hasApiKey: !!lp.apiKey,
+    isOnline: lp.isOnline,
+    modelCount: lp.models.length,
+    models: lp.models,
+    lastChecked: lp.lastChecked,
+  });
 });
 
 // Balance
@@ -462,6 +553,194 @@ app.get("/requests/:id", (c) => {
   const record = loadRequestById(id);
   if (!record) return c.json({ error: "Request not found" }, 404);
   return c.json(record);
+});
+
+// ── V2: Usage endpoints ───────────────────────────────────────────────────
+
+app.get("/usage/today", (c) => {
+  return c.json(queryTodayUsage());
+});
+
+app.get("/usage/month", (c) => {
+  return c.json(queryMonthUsage());
+});
+
+app.get("/usage/weekly", (c) => {
+  return c.json(queryWeeklyTrend());
+});
+
+app.get("/usage/models", (c) => {
+  return c.json(queryModelBreakdown());
+});
+
+app.get("/usage/suggestions", (c) => {
+  const month = queryMonthUsage();
+  const models = queryModelBreakdown();
+  const suggestions: { message: string; savingsEstimate?: string }[] = [];
+
+  // Budget alert
+  if (month.budgetPct >= 80) {
+    suggestions.push({ message: `You've used ${month.budgetPct}% of your monthly budget.` });
+  }
+
+  // Model diversity tip
+  if (models.length === 1) {
+    suggestions.push({ message: "Try routing to cheaper models for simple tasks to reduce costs.", savingsEstimate: "~30%" });
+  }
+
+  // High-cost model tip
+  const expensive = models.find((m) => m.pct > 60 && m.cost > 1);
+  if (expensive) {
+    suggestions.push({ message: `${expensive.model} accounts for ${expensive.pct}% of your spend. Consider alternatives for non-critical requests.`, savingsEstimate: "~20%" });
+  }
+
+  if (suggestions.length === 0) {
+    suggestions.push({ message: "Your usage looks well-optimized!" });
+  }
+
+  return c.json(suggestions);
+});
+
+// ── V2: Conversations ─────────────────────────────────────────────────────
+
+app.get("/conversations", (c) => {
+  const conversations = loadConversations();
+  return c.json({ conversations });
+});
+
+app.post("/conversations", async (c) => {
+  const body = await c.req.json<{ title?: string; model?: string; strategy?: string }>();
+  const conv = createConversation(
+    body.title?.trim() || "New Chat",
+    body.model?.trim() || "",
+    body.strategy?.trim() || "smart_auto",
+  );
+  return c.json(conv, 201);
+});
+
+app.get("/conversations/:id", (c) => {
+  const id = c.req.param("id");
+  const conv = loadConversation(id);
+  if (!conv) return c.json({ error: "Conversation not found" }, 404);
+  const messages = loadMessages(id);
+  return c.json({ ...conv, messages });
+});
+
+app.put("/conversations/:id", async (c) => {
+  const id = c.req.param("id");
+  const conv = loadConversation(id);
+  if (!conv) return c.json({ error: "Conversation not found" }, 404);
+
+  const body = await c.req.json<{ title?: string; model?: string; strategy?: string; pinned?: boolean; archived?: boolean }>();
+
+  if (body.pinned !== undefined) {
+    if (body.pinned !== (conv.pinned === 1)) togglePinConversation(id);
+  }
+  if (body.archived) {
+    archiveConversation(id);
+  }
+
+  updateConversation(
+    id,
+    body.title?.trim() ?? conv.title,
+    body.model?.trim() ?? conv.model,
+    body.strategy?.trim() ?? conv.strategy,
+  );
+
+  return c.json({ success: true });
+});
+
+app.delete("/conversations/:id", (c) => {
+  const id = c.req.param("id");
+  const conv = loadConversation(id);
+  if (!conv) return c.json({ error: "Conversation not found" }, 404);
+  deleteConversation(id);
+  return c.json({ success: true });
+});
+
+app.post("/conversations/:id/messages", async (c) => {
+  const id = c.req.param("id");
+  const conv = loadConversation(id);
+  if (!conv) return c.json({ error: "Conversation not found" }, 404);
+
+  const body = await c.req.json<{
+    role: string;
+    content: string;
+    model?: string;
+    provider?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    cost?: number;
+    latencyMs?: number;
+    cacheHit?: boolean;
+  }>();
+
+  if (!body.role || !body.content) {
+    return c.json({ error: "role and content are required" }, 400);
+  }
+
+  const msg = insertMessage(id, body.role, body.content, {
+    model: body.model,
+    provider: body.provider,
+    inputTokens: body.inputTokens,
+    outputTokens: body.outputTokens,
+    cost: body.cost,
+    latencyMs: body.latencyMs,
+    cacheHit: body.cacheHit,
+  });
+
+  return c.json(msg, 201);
+});
+
+// ── V2: Spotlight history ─────────────────────────────────────────────────
+
+app.get("/spotlight/history", (c) => {
+  const limit = parseInt(c.req.query("limit") ?? "3", 10);
+  const entries = loadRecentSpotlight(Math.min(limit, 20));
+  return c.json({ entries });
+});
+
+app.post("/spotlight/history", async (c) => {
+  const body = await c.req.json<{
+    prompt: string;
+    response: string;
+    model?: string;
+    provider?: string;
+    cost?: number;
+    tokens?: number;
+    latencyMs?: number;
+  }>();
+
+  if (!body.prompt) return c.json({ error: "prompt is required" }, 400);
+
+  const entry = saveSpotlightEntry(body.prompt, body.response ?? "", {
+    model: body.model,
+    provider: body.provider,
+    cost: body.cost,
+    tokens: body.tokens,
+    latencyMs: body.latencyMs,
+  });
+
+  return c.json(entry, 201);
+});
+
+// ── V2: Web Search (Brave) ─────────────────────────────────────────────────
+
+app.get("/search/status", (c) => {
+  const hasKey = !!getBraveApiKey();
+  return c.json({ enabled: hasKey, hasKey });
+});
+
+app.put("/search/key", async (c) => {
+  const body = await c.req.json<{ apiKey: string }>();
+  if (!body.apiKey?.trim()) return c.json({ error: "API key required" }, 400);
+  saveSetting("braveSearchApiKey", body.apiKey.trim());
+  return c.json({ success: true });
+});
+
+app.delete("/search/key", (c) => {
+  saveSetting("braveSearchApiKey", "");
+  return c.json({ success: true });
 });
 
 export default app;

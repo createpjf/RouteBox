@@ -29,8 +29,6 @@ pub fn run() {
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::Focused(false) = event {
                         let win = w.clone();
-                        // Small delay: if focus returns within 200ms (e.g. DevTools, HMR),
-                        // don't hide. This prevents the panel flickering in dev mode.
                         std::thread::spawn(move || {
                             std::thread::sleep(std::time::Duration::from_millis(200));
                             if !win.is_focused().unwrap_or(true) {
@@ -41,27 +39,70 @@ pub fn run() {
                 });
             }
 
-            // Register global hotkey: Cmd+Shift+R
+            // Hide spotlight when it loses focus
+            if let Some(window) = app.get_webview_window("spotlight") {
+                let w = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(false) = event {
+                        let win = w.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(200));
+                            if !win.is_focused().unwrap_or(true) {
+                                let _ = win.hide();
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Register global hotkeys
             #[cfg(desktop)]
             {
                 use tauri_plugin_global_shortcut::{
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
                 };
 
-                let shortcut =
+                let shortcut_panel =
                     Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::KeyR);
+                let shortcut_spotlight =
+                    Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::KeyX);
+                let shortcut_translate =
+                    Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::KeyT);
+                let shortcut_summarize =
+                    Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::KeyS);
+                let shortcut_explain =
+                    Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::KeyE);
 
                 let handle = app.handle().clone();
+                let sc_panel = shortcut_panel.clone();
+                let sc_spotlight = shortcut_spotlight.clone();
+                let sc_translate = shortcut_translate.clone();
+                let sc_summarize = shortcut_summarize.clone();
+
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
-                        .with_handler(move |_app, _shortcut, event| {
+                        .with_handler(move |_app, shortcut, event| {
                             if event.state() == ShortcutState::Pressed {
-                                let _ = commands::toggle_panel_internal(&handle);
+                                if *shortcut == sc_panel {
+                                    let _ = commands::toggle_panel_internal(&handle);
+                                } else if *shortcut == sc_spotlight {
+                                    let _ = commands::toggle_spotlight_internal(&handle);
+                                } else if *shortcut == sc_translate {
+                                    let _ = commands::clipboard_action_sync(&handle, "translate");
+                                } else if *shortcut == sc_summarize {
+                                    let _ = commands::clipboard_action_sync(&handle, "summarize");
+                                } else {
+                                    let _ = commands::clipboard_action_sync(&handle, "explain");
+                                }
                             }
                         })
                         .build(),
                 )?;
-                app.global_shortcut().register(shortcut)?;
+                app.global_shortcut().register(shortcut_panel)?;
+                app.global_shortcut().register(shortcut_spotlight)?;
+                app.global_shortcut().register(shortcut_translate)?;
+                app.global_shortcut().register(shortcut_summarize)?;
+                app.global_shortcut().register(shortcut_explain)?;
             }
 
             Ok(())
@@ -73,6 +114,10 @@ pub fn run() {
             commands::copy_to_clipboard,
             commands::show_notification,
             commands::toggle_panel,
+            commands::toggle_spotlight,
+            commands::open_chat,
+            commands::read_clipboard,
+            commands::clipboard_action,
             commands::spawn_gateway,
             commands::stop_gateway,
             commands::is_gateway_running,

@@ -19,6 +19,8 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
             "flex items-center gap-2 px-3 h-8 rounded-lg text-[11px] font-medium animate-slide-in pointer-events-auto",
             toast.type === "error"
               ? "bg-[rgba(255,59,48,0.06)] text-[#FF3B30] border border-[rgba(255,59,48,0.12)]"
+              : toast.type === "info"
+              ? "bg-[rgba(0,122,255,0.06)] text-[#007AFF] border border-[rgba(0,122,255,0.12)]"
               : "bg-[rgba(52,199,89,0.06)] text-[#34C759] border border-[rgba(52,199,89,0.12)]"
           )}
         >

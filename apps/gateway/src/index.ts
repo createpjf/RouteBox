@@ -7,6 +7,7 @@ import { authMiddleware } from "./lib/auth";
 import { providers, rebuildProviders } from "./lib/providers";
 import { loadAllProviderKeys } from "./lib/db";
 import { metrics } from "./lib/metrics";
+import { initLocalProviders, probeAllLocalProviders, startLocalProviderPolling, localProviders } from "./lib/local-providers";
 
 // ── Load DB keys on startup ─────────────────────────────────────────────────
 const dbKeys = new Map<string, string>();
@@ -17,6 +18,17 @@ if (dbKeys.size > 0) {
   rebuildProviders(dbKeys);
   metrics.syncProviders();
 }
+
+// ── Local provider discovery (Ollama, LM Studio) ────────────────────────────
+initLocalProviders();
+probeAllLocalProviders().then(() => {
+  const online = localProviders.filter((lp) => lp.isOnline);
+  if (online.length > 0) {
+    console.log(`   Local: ${online.map((lp) => `${lp.name} (${lp.models.length} models)`).join(", ")}`);
+  }
+  metrics.syncProviders();
+}).catch(() => {});
+startLocalProviderPolling();
 
 const app = new Hono();
 
@@ -49,6 +61,10 @@ app.get("/health", (c) => c.json({
   status: "ok",
   uptime: process.uptime(),
   providers: providers.map((p) => p.name),
+  localProviders: localProviders.filter((lp) => lp.isOnline).map((lp) => ({
+    name: lp.name,
+    models: lp.models.length,
+  })),
 }));
 
 // Auth for REST + proxy

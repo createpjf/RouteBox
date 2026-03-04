@@ -2,6 +2,8 @@
 // Provider registry — config, model mapping, pricing, adapters
 // ---------------------------------------------------------------------------
 
+import { getLocalProviderForModel, getLocalProviderConfigs, localProviders } from "./local-providers";
+
 export interface ProviderConfig {
   name: string;
   baseUrl: string;
@@ -13,6 +15,8 @@ export interface ProviderConfig {
   keySource: "byok" | "pool";
   /** Custom auth header name (default: "Authorization" with "Bearer " prefix) */
   authHeader?: string;
+  /** True for local providers (Ollama, LM Studio) — no API key, $0 cost */
+  isLocal?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +203,9 @@ export interface ProviderKeyInfo {
   keySource: "env" | "db" | null;
   maskedKey: string | null;
   isActive: boolean;
+  isLocal?: boolean;
+  baseUrl?: string;
+  modelCount?: number;
 }
 
 function maskKey(key: string): string {
@@ -244,6 +251,18 @@ export function getProviderKeyStatus(dbKeys: Map<string, string>): Record<string
       isActive: !!apiKey,
     };
   }
+  // Local providers — no key needed, show connection status
+  for (const lp of localProviders) {
+    result[lp.name] = {
+      hasKey: lp.isOnline,
+      keySource: null,
+      maskedKey: null,
+      isActive: lp.isOnline,
+      isLocal: true,
+      baseUrl: lp.baseUrl,
+      modelCount: lp.models.length,
+    };
+  }
   return result;
 }
 
@@ -256,8 +275,9 @@ export function rebuildProviders(dbKeys: Map<string, string>) {
   console.log(`   Providers rebuilt: ${providers.map(p => p.name).join(", ") || "(none)"}`);
 }
 
-/** Find the canonical provider for a model string (longest prefix wins) */
+/** Find the canonical provider for a model string (longest prefix wins, then local exact match) */
 export function providerForModel(model: string): ProviderConfig | undefined {
+  // 1. Cloud providers — longest prefix wins
   let best: ProviderConfig | undefined;
   let bestLen = 0;
   for (const p of providers) {
@@ -268,7 +288,10 @@ export function providerForModel(model: string): ProviderConfig | undefined {
       }
     }
   }
-  return best;
+  if (best) return best;
+
+  // 2. Local providers — exact model ID match
+  return getLocalProviderForModel(model);
 }
 
 /** Find ALL providers that can serve a model (not just the longest-prefix one) */
@@ -282,11 +305,20 @@ export function providersForModel(model: string): ProviderConfig[] {
       }
     }
   }
+  // Also check local providers for exact model match
+  const localConfig = getLocalProviderForModel(model);
+  if (localConfig && !result.some((p) => p.name === localConfig.name)) {
+    result.push(localConfig);
+  }
   return result;
 }
 
 /** Lookup pricing — checks provider-specific overrides, then global, then prefix match */
 export function pricingForModel(model: string, providerName?: string): { input: number; output: number } {
+  // Local providers are always free
+  if (providerName === "Ollama" || providerName === "LM Studio") {
+    return { input: 0, output: 0 };
+  }
   // Check provider-specific pricing override first
   if (providerName && PROVIDER_MODEL_PRICING[providerName]?.[model]) {
     return PROVIDER_MODEL_PRICING[providerName][model];

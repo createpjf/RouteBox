@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Check, Loader2, Trash2, ChevronRight, X, BookOpen, Play, Square, Download, RefreshCw, Wifi } from "lucide-react";
+import { Check, Loader2, Trash2, ChevronRight, X, BookOpen, Play, Square, Download, RefreshCw, Wifi, Globe } from "lucide-react";
 import clsx from "clsx";
 import { getGatewayUrl, setGatewayUrl as setGatewayUrlGlobal, setAuthToken, getPortFromUrl } from "@/lib/constants";
 import { checkGatewayHealth } from "@/lib/gateway-health";
@@ -42,6 +42,10 @@ export function Settings({ onClose, onShowOnboarding }: SettingsProps) {
     "idle" | "checking" | "upToDate" | "available" | "downloading" | "ready"
   >("idle");
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [searchKey, setSearchKey] = useState("");
+  const [searchHasKey, setSearchHasKey] = useState(false);
+  const [searchSaving, setSearchSaving] = useState(false);
+  const [searchSaved, setSearchSaved] = useState(false);
 
   useEffect(() => {
     tauriInvoke<string>("get_token")
@@ -70,6 +74,10 @@ export function Settings({ onClose, onShowOnboarding }: SettingsProps) {
       .then((res) => {
         if (res.monthly > 0) setBudgetAmount(String(res.monthly));
       })
+      .catch(() => {});
+
+    api.getSearchStatus()
+      .then((res) => setSearchHasKey(res.hasKey))
       .catch(() => {});
 
     // Gateway state — single HTTP health check (works for both spawned and external gateways)
@@ -200,6 +208,27 @@ export function Settings({ onClose, onShowOnboarding }: SettingsProps) {
     }
   }, []);
 
+  const handleSaveSearchKey = useCallback(async () => {
+    if (!searchKey.trim()) return;
+    setSearchSaving(true);
+    try {
+      await api.setSearchKey(searchKey.trim());
+      setSearchHasKey(true);
+      setSearchSaved(true);
+      setSearchKey("");
+      setTimeout(() => setSearchSaved(false), 2000);
+    } catch {}
+    setSearchSaving(false);
+  }, [searchKey]);
+
+  const handleDeleteSearchKey = useCallback(async () => {
+    try {
+      await api.deleteSearchKey();
+      setSearchHasKey(false);
+      setSearchKey("");
+    } catch {}
+  }, []);
+
   const handleRelaunch = useCallback(async () => {
     try {
       const { relaunch } = await import("@tauri-apps/plugin-process");
@@ -285,6 +314,69 @@ export function Settings({ onClose, onShowOnboarding }: SettingsProps) {
               <p className="mt-1.5 text-[10px] text-text-tertiary">
                 Alerts at 80% and 100%. Set to 0 to disable.
               </p>
+            </div>
+          </div>
+
+          {/* Web Search */}
+          <div>
+            <h3 className="section-header">Web Search</h3>
+            <div className="glass-card-static p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Globe size={14} strokeWidth={1.75} className="text-text-tertiary" />
+                <span className="text-[13px] text-text-primary font-medium">Brave Search</span>
+                {searchHasKey && (
+                  <span className="text-[10px] text-accent-green bg-accent-green/10 px-1.5 py-0.5 rounded-md font-medium">
+                    Active
+                  </span>
+                )}
+              </div>
+              {!searchHasKey && (
+                <p className="text-[11px] text-text-secondary mb-2 leading-relaxed">
+                  Add a Brave Search API key to enable web search in Chat and Spotlight.
+                  Get a free key at{" "}
+                  <span className="text-accent-cyan font-mono text-[10px]">brave.com/search/api</span>
+                </p>
+              )}
+              <label className="block text-[11px] text-text-tertiary font-medium mb-1.5">
+                {searchHasKey ? "API Key configured" : "Brave Search API Key"}
+              </label>
+              <input
+                type="password"
+                value={searchKey}
+                onChange={(e) => { setSearchKey(e.target.value); setSearchSaved(false); }}
+                placeholder={searchHasKey ? "Key saved • paste new to replace" : "BSA-xxxxxxxxxxxxxxxx"}
+                className="input"
+              />
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={handleSaveSearchKey}
+                  disabled={searchSaving || !searchKey.trim()}
+                  className={clsx(
+                    "flex items-center gap-1 text-[11px] font-medium h-8 px-2.5 rounded-lg transition-colors",
+                    searchSaving || !searchKey.trim()
+                      ? "text-text-tertiary cursor-not-allowed"
+                      : searchSaved
+                        ? "text-accent-green bg-accent-green/10"
+                        : "text-accent-cyan hover:bg-accent-cyan/10"
+                  )}
+                >
+                  {searchSaving ? (
+                    <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />
+                  ) : searchSaved ? (
+                    <Check size={12} strokeWidth={2} />
+                  ) : null}
+                  {searchSaved ? "Saved" : "Save"}
+                </button>
+                {searchHasKey && (
+                  <button
+                    onClick={handleDeleteSearchKey}
+                    className="flex items-center gap-1 text-[11px] text-accent-red/60 hover:text-accent-red h-8 px-2 rounded-lg hover:bg-accent-red/10 transition-colors"
+                  >
+                    <Trash2 size={12} strokeWidth={1.75} />
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

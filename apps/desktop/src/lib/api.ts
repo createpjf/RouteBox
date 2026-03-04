@@ -98,6 +98,25 @@ export interface ProviderRegistryEntry {
   keySource: "env" | "db" | null;
   maskedKey: string | null;
   isActive: boolean;
+  isLocal?: boolean;
+  baseUrl?: string;
+  modelCount?: number;
+}
+
+// ── Local Providers ──────────────────────────────────────────────────────────
+
+export interface LocalProviderInfo {
+  name: string;
+  baseUrl: string;
+  hasApiKey: boolean;
+  isOnline: boolean;
+  modelCount: number;
+  models: string[];
+  lastChecked: number;
+}
+
+export interface LocalProvidersResponse {
+  providers: LocalProviderInfo[];
 }
 
 export interface ProviderRegistryResponse {
@@ -164,6 +183,7 @@ export interface ModelInfo {
 
 export interface ProviderModels {
   provider: string;
+  active: boolean;
   models: ModelInfo[];
 }
 
@@ -295,4 +315,106 @@ export const api = {
       method: "DELETE",
       retries: 0,
     }),
+
+  // Local providers
+  getLocalProviders: () =>
+    request<LocalProvidersResponse>("/api/v1/local-providers"),
+  setLocalProviderUrl: (name: string, baseUrl: string, apiKey?: string) =>
+    request<LocalProviderInfo>(`/api/v1/local-providers/${encodeURIComponent(name)}/url`, {
+      method: "PUT",
+      body: JSON.stringify({ baseUrl, ...(apiKey !== undefined ? { apiKey } : {}) }),
+      retries: 0,
+    }),
+  refreshLocalProvider: (name: string) =>
+    request<LocalProviderInfo>(`/api/v1/local-providers/${encodeURIComponent(name)}/refresh`, {
+      method: "POST",
+      retries: 0,
+    }),
+
+  // V2: Usage
+  getUsageToday: () => request<UsageTodayResponse>("/api/v1/usage/today"),
+  getUsageMonth: () => request<UsageMonthResponse>("/api/v1/usage/month"),
+  getUsageWeekly: () => request<WeeklyTrendRow[]>("/api/v1/usage/weekly"),
+  getUsageModels: () => request<ModelBreakdownRow[]>("/api/v1/usage/models"),
+  getUsageSuggestions: () => request<UsageSuggestion[]>("/api/v1/usage/suggestions"),
+
+  // V2: Conversations
+  getConversations: () => request<ConversationsResponse>("/api/v1/conversations"),
+  createConversation: (title: string, model: string) =>
+    request<ConversationDetail>("/api/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify({ title, model }),
+      retries: 0,
+    }),
+  getConversation: (id: string) =>
+    request<ConversationDetail>(`/api/v1/conversations/${encodeURIComponent(id)}`),
+  deleteConversation: (id: string) =>
+    request<{ success: boolean }>(`/api/v1/conversations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      retries: 0,
+    }),
+  updateConversation: (id: string, data: { title?: string; pinned?: boolean; archived?: boolean }) =>
+    request<{ success: boolean }>(`/api/v1/conversations/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+      retries: 0,
+    }),
+  sendMessage: (conversationId: string, msg: { role: string; content: string; model?: string; provider?: string; inputTokens?: number; outputTokens?: number; cost?: number; latencyMs?: number }) =>
+    request<MessageResponse>(`/api/v1/conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: "POST",
+      body: JSON.stringify(msg),
+      retries: 0,
+    }),
+
+  // V2: Web Search
+  getSearchStatus: () => request<SearchStatusResponse>("/api/v1/search/status"),
+  setSearchKey: (apiKey: string) =>
+    request<{ success: boolean }>("/api/v1/search/key", {
+      method: "PUT",
+      body: JSON.stringify({ apiKey }),
+      retries: 0,
+    }),
+  deleteSearchKey: () =>
+    request<{ success: boolean }>("/api/v1/search/key", {
+      method: "DELETE",
+      retries: 0,
+    }),
+
+  // V2: Spotlight
+  getSpotlightHistory: (limit = 3) =>
+    request<SpotlightHistoryResponse>(`/api/v1/spotlight/history?limit=${limit}`),
+  saveSpotlightEntry: (data: { prompt: string; response: string; model?: string; provider?: string; cost?: number; tokens?: number; latencyMs?: number }) =>
+    request<SpotlightEntryResponse>("/api/v1/spotlight/history", {
+      method: "POST",
+      body: JSON.stringify(data),
+      retries: 0,
+    }),
 };
+
+// V2 response types
+
+export interface UsageTodayResponse { requests: number; tokens: number; cost: number; saved: number }
+export interface UsageMonthResponse { requests: number; tokens: number; cost: number; budgetPct: number }
+export interface WeeklyTrendRow { date: string; cost: number; requests: number }
+export interface ModelBreakdownRow { model: string; requests: number; cost: number; pct: number }
+export interface UsageSuggestion { message: string; savingsEstimate?: string }
+
+export interface ConversationSummary {
+  id: string; title: string; model: string; msg_count: number;
+  total_cost: number; pinned: number; updated_at: number;
+}
+export interface ConversationsResponse { conversations: ConversationSummary[] }
+export interface ConversationDetail extends ConversationSummary {
+  messages: MessageResponse[];
+}
+export interface MessageResponse {
+  id: string; conversation_id: string; role: string; content: string;
+  model: string; provider: string; input_tokens: number; output_tokens: number;
+  cost: number; latency_ms: number; created_at: number;
+}
+export interface SearchStatusResponse { enabled: boolean; hasKey: boolean }
+export interface SpotlightHistoryResponse { entries: SpotlightEntryResponse[] }
+export interface SpotlightEntryResponse {
+  id: string; prompt: string; response: string; model: string;
+  provider: string; cost: number; tokens: number; latency_ms: number; created_at: number;
+}
