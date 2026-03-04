@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Columns } from "lucide-react";
+import { Send, Square, Columns, MessageSquare, Globe } from "lucide-react";
 import { useStreamChat } from "../hooks/useStreamChat";
 import { ModelSwitcher } from "../components/shared/ModelSwitcher";
 import { CostBar } from "../components/shared/CostBar";
@@ -28,6 +28,8 @@ export const ChatWindow: React.FC = () => {
   const [input, setInput] = useState("");
   const [model, setModel] = useState("claude-sonnet-4");
   const [compareMode, setCompareMode] = useState(false);
+  const [searchEnabled, setSearchEnabled] = useState(false);
+  const [searchOn, setSearchOn] = useState(false);
   const { streaming, streamedText, meta, sendMessage, abort } = useStreamChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -42,6 +44,7 @@ export const ChatWindow: React.FC = () => {
 
   useEffect(() => {
     loadConversations();
+    api.getSearchStatus().then((s) => setSearchEnabled(s.enabled)).catch(() => {});
   }, [loadConversations]);
 
   // Load messages when active conversation changes
@@ -76,7 +79,6 @@ export const ChatWindow: React.FC = () => {
   // Append streamed response to messages when done
   useEffect(() => {
     if (!streaming && streamedText && meta && activeConvId) {
-      // Save assistant message to DB
       api.sendMessage(activeConvId, {
         role: "assistant",
         content: streamedText,
@@ -106,12 +108,19 @@ export const ChatWindow: React.FC = () => {
     }
   }, [streaming]);
 
+  // Auto-resize textarea
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const el = e.target;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+  };
+
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
 
     let convId = activeConvId;
 
-    // Create new conversation if needed
     if (!convId) {
       try {
         const conv = await api.createConversation(input.slice(0, 50), model);
@@ -123,7 +132,6 @@ export const ChatWindow: React.FC = () => {
       }
     }
 
-    // Save user message
     const userMsg = await api.sendMessage(convId, { role: "user", content: input });
     const newUserMsg: DisplayMessage = {
       id: userMsg.id,
@@ -132,14 +140,16 @@ export const ChatWindow: React.FC = () => {
     };
     setMessages((prev) => [...prev, newUserMsg]);
 
-    // Build history for API
     const history = [...messages, newUserMsg].map((m) => ({
       role: m.role as "user" | "assistant" | "system",
       content: m.content,
     }));
 
     setInput("");
-    await sendMessage(history, model);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+    await sendMessage(history, model, searchOn ? { search: true } : undefined);
   };
 
   const handleNewChat = () => {
@@ -162,8 +172,19 @@ export const ChatWindow: React.FC = () => {
     }
   };
 
+  const isEmpty = messages.length === 0 && !streaming;
+
   return (
-    <div style={{ display: "flex", width: "100%", height: "100vh", background: "#1A1A1C", color: "rgba(255,255,255,0.85)" }}>
+    <div
+      style={{
+        display: "flex",
+        width: "100%",
+        height: "100vh",
+        background: "#1A1A1C",
+        color: "rgba(255,255,255,0.85)",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+      }}
+    >
       {/* Sidebar */}
       <ChatSidebar
         conversations={conversations}
@@ -175,14 +196,16 @@ export const ChatWindow: React.FC = () => {
 
       {/* Main chat area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Header */}
+        {/* Header — draggable title bar */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "10px 16px",
+            padding: "8px 14px",
             borderBottom: "1px solid rgba(255,255,255,0.06)",
+            background: "rgba(255,255,255,0.015)",
+            minHeight: 44,
           }}
           data-tauri-drag-region
         >
@@ -192,46 +215,85 @@ export const ChatWindow: React.FC = () => {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 4,
-              padding: "4px 10px",
-              background: compareMode ? "rgba(88,166,255,0.15)" : "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 6,
-              color: compareMode ? "#58a6ff" : "rgba(255,255,255,0.5)",
+              gap: 5,
+              padding: "5px 10px",
+              background: compareMode ? "rgba(88,166,255,0.12)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${compareMode ? "rgba(88,166,255,0.2)" : "rgba(255,255,255,0.06)"}`,
+              borderRadius: 7,
+              color: compareMode ? "#58a6ff" : "rgba(255,255,255,0.4)",
               fontSize: 11,
+              fontWeight: 500,
               cursor: "pointer",
+              transition: "all 0.15s ease",
             }}
           >
             <Columns size={12} /> Compare
           </button>
         </div>
 
-        {/* Messages */}
-        <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        {/* Messages area */}
+        <div
+          style={{
+            flex: 1,
+            overflow: "auto",
+            padding: "16px 20px",
+          }}
+        >
+          {/* Empty state */}
+          {isEmpty && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                gap: 12,
+                opacity: 0.4,
+              }}
+            >
+              <MessageSquare size={32} strokeWidth={1.2} />
+              <span style={{ fontSize: 13, fontWeight: 500 }}>Start a conversation</span>
+              <span style={{ fontSize: 11, opacity: 0.7 }}>
+                Select a model and type a message below
+              </span>
+            </div>
+          )}
+
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
 
           {/* Streaming response */}
           {streaming && streamedText && (
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ marginBottom: 14 }}>
               <div
                 style={{
-                  padding: 12,
-                  background: "rgba(255,255,255,0.04)",
-                  borderRadius: 12,
-                  maxWidth: "80%",
+                  padding: "12px 14px",
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                  borderRadius: 14,
+                  maxWidth: "85%",
                 }}
               >
                 <MarkdownRenderer content={streamedText} />
-                <span style={{ display: "inline-block", width: 6, height: 14, background: "rgba(255,255,255,0.5)", animation: "pulse 1s infinite" }} />
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 2,
+                    height: 14,
+                    background: "rgba(255,255,255,0.5)",
+                    marginLeft: 2,
+                    animation: "pulse 1s infinite",
+                  }}
+                />
               </div>
             </div>
           )}
 
           {/* Streaming meta */}
           {!streaming && meta && streamedText && (
-            <div style={{ marginBottom: 12, maxWidth: "80%" }}>
+            <div style={{ marginBottom: 14, maxWidth: "85%" }}>
               <CostBar meta={meta} />
             </div>
           )}
@@ -239,59 +301,99 @@ export const ChatWindow: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
-        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        {/* Input area */}
+        <div
+          style={{
+            padding: "10px 16px 12px",
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            background: "rgba(255,255,255,0.015)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "flex-end",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 14,
+              padding: "4px 4px 4px 10px",
+            }}
+          >
+            {/* Search toggle */}
+            {searchEnabled && (
+              <button
+                onClick={() => setSearchOn(!searchOn)}
+                title={searchOn ? "Web search ON" : "Web search OFF"}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  border: "none",
+                  background: searchOn ? "rgba(52,199,89,0.15)" : "transparent",
+                  color: searchOn ? "#34C759" : "rgba(255,255,255,0.25)",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  flexShrink: 0,
+                  alignSelf: "flex-end",
+                }}
+              >
+                <Globe size={14} />
+              </button>
+            )}
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
+              placeholder="Send a message..."
               rows={1}
               style={{
                 flex: 1,
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: 10,
-                padding: "10px 14px",
+                background: "transparent",
+                border: "none",
+                padding: "8px 0",
                 color: "rgba(255,255,255,0.9)",
                 fontSize: 13,
+                lineHeight: "1.5",
                 fontFamily: "inherit",
                 resize: "none",
                 outline: "none",
-                maxHeight: 120,
+                maxHeight: 140,
               }}
             />
             <button
               onClick={() => streaming ? abort() : handleSend()}
+              disabled={!streaming && !input.trim()}
               style={{
-                padding: "10px 14px",
-                background: streaming ? "rgba(255,59,48,0.2)" : "rgba(88,166,255,0.15)",
-                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 34,
+                height: 34,
                 borderRadius: 10,
-                color: streaming ? "#FF3B30" : "#58a6ff",
-                cursor: "pointer",
+                border: "none",
+                background: streaming
+                  ? "rgba(255,59,48,0.15)"
+                  : input.trim()
+                    ? "rgba(88,166,255,0.2)"
+                    : "rgba(255,255,255,0.04)",
+                color: streaming
+                  ? "#FF3B30"
+                  : input.trim()
+                    ? "#58a6ff"
+                    : "rgba(255,255,255,0.2)",
+                cursor: streaming || input.trim() ? "pointer" : "default",
+                transition: "all 0.15s ease",
+                flexShrink: 0,
               }}
             >
-              <Send size={16} />
+              {streaming ? <Square size={14} fill="currentColor" /> : <Send size={14} />}
             </button>
           </div>
-        </div>
-
-        {/* Status bar */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "6px 16px",
-            fontSize: 10,
-            color: "rgba(255,255,255,0.3)",
-            borderTop: "1px solid rgba(255,255,255,0.04)",
-          }}
-        >
-          <span>📡 Gateway: ON</span>
         </div>
       </div>
     </div>
@@ -324,27 +426,30 @@ const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
       style={{
         display: "flex",
         justifyContent: isUser ? "flex-end" : "flex-start",
-        marginBottom: 12,
+        marginBottom: 14,
       }}
     >
-      <div
-        style={{
-          maxWidth: "80%",
-          padding: 12,
-          borderRadius: 12,
-          background: isUser ? "rgba(88,166,255,0.12)" : "rgba(255,255,255,0.04)",
-          border: `1px solid ${isUser ? "rgba(88,166,255,0.15)" : "rgba(255,255,255,0.06)"}`,
-        }}
-      >
-        {isUser ? (
-          <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{message.content}</div>
-        ) : (
-          <MarkdownRenderer content={message.content} />
-        )}
+      <div style={{ maxWidth: "85%", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div
+          style={{
+            padding: "10px 14px",
+            borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+            background: isUser
+              ? "rgba(88,166,255,0.12)"
+              : "rgba(255,255,255,0.03)",
+            border: `1px solid ${isUser ? "rgba(88,166,255,0.15)" : "rgba(255,255,255,0.05)"}`,
+          }}
+        >
+          {isUser ? (
+            <div style={{ fontSize: 13, lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
+              {message.content}
+            </div>
+          ) : (
+            <MarkdownRenderer content={message.content} />
+          )}
+        </div>
         {metaObj && metaObj.cost > 0 && (
-          <div style={{ marginTop: 6 }}>
-            <CostBar meta={metaObj} compact />
-          </div>
+          <CostBar meta={metaObj} compact />
         )}
       </div>
     </div>

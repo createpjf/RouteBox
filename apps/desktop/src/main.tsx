@@ -1,6 +1,7 @@
-import React, { lazy, Suspense } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
+import { setAuthToken } from "./lib/constants";
 import "./styles/globals.css";
 
 const SpotlightWindow = lazy(() =>
@@ -12,6 +13,24 @@ const ChatWindow = lazy(() =>
 
 function Root() {
   const hash = window.location.hash;
+  const [tokenReady, setTokenReady] = useState(false);
+
+  // Load auth token for ALL windows (panel, spotlight, chat)
+  useEffect(() => {
+    import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke<string>("get_token"))
+      .then((t) => { if (t) setAuthToken(t); })
+      .catch(() => {})
+      .finally(() => setTokenReady(true));
+  }, []);
+
+  // Main panel doesn't need to wait — App.tsx has its own token loading
+  if (!hash || hash === "#/") {
+    return <App />;
+  }
+
+  // Sub-windows wait for token before rendering
+  if (!tokenReady) return null;
 
   if (hash === "#/spotlight") {
     return (

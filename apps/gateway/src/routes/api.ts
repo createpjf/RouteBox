@@ -51,6 +51,7 @@ import {
 import { validateProviderKey } from "../lib/validate-key";
 import { refreshPreferencesCache, refreshTogglesCache, refreshRoutingRulesCache } from "../lib/router";
 import { localProviders, probeLocalProvider, updateLocalProviderUrl } from "../lib/local-providers";
+import { isSearchEnabled, getBraveApiKey } from "../lib/brave-search";
 
 const app = new Hono();
 
@@ -145,16 +146,23 @@ app.post("/providers/:name/validate", async (c) => {
   return c.json({ valid: result.ok, error: result.error ?? null });
 });
 
-// Models — list available models grouped by active provider
+// Models — list ALL known models grouped by provider (including unconfigured ones)
 app.get("/models", (c) => {
-  const activeProviders = providers;
-  const result: { provider: string; models: { id: string; pricing: { input: number; output: number } }[] }[] = [];
+  const activeNames = new Set(providers.map((p) => p.name));
 
-  for (const p of activeProviders) {
+  const result: {
+    provider: string;
+    active: boolean;
+    models: { id: string; pricing: { input: number; output: number } }[];
+  }[] = [];
+
+  for (const tmpl of PROVIDER_REGISTRY) {
     const models = Object.keys(MODEL_PRICING)
-      .filter((m) => p.prefixes.some((pfx) => m.startsWith(pfx)))
-      .map((id) => ({ id, pricing: pricingForModel(id, p.name) }));
-    result.push({ provider: p.name, models });
+      .filter((m) => tmpl.prefixes.some((pfx) => m.startsWith(pfx)))
+      .map((id) => ({ id, pricing: pricingForModel(id, tmpl.name) }));
+    if (models.length > 0) {
+      result.push({ provider: tmpl.name, active: activeNames.has(tmpl.name), models });
+    }
   }
 
   // Append online local providers with their dynamic models
@@ -162,6 +170,7 @@ app.get("/models", (c) => {
     if (lp.isOnline && lp.models.length > 0) {
       result.push({
         provider: lp.name,
+        active: true,
         models: lp.models.map((id) => ({ id, pricing: { input: 0, output: 0 } })),
       });
     }
@@ -177,6 +186,7 @@ app.get("/local-providers", (c) => {
     providers: localProviders.map((lp) => ({
       name: lp.name,
       baseUrl: lp.baseUrl,
+      hasApiKey: !!lp.apiKey,
       isOnline: lp.isOnline,
       modelCount: lp.models.length,
       models: lp.models,
@@ -187,15 +197,18 @@ app.get("/local-providers", (c) => {
 
 app.put("/local-providers/:name/url", async (c) => {
   const name = c.req.param("name");
-  const body = await c.req.json<{ baseUrl: string }>();
+  const body = await c.req.json<{ baseUrl: string; apiKey?: string }>();
   if (!body.baseUrl?.trim()) return c.json({ error: "baseUrl is required" }, 400);
 
-  const updated = await updateLocalProviderUrl(name, body.baseUrl.trim());
+  const updated = await updateLocalProviderUrl(name, body.baseUrl.trim(), body.apiKey?.trim());
   if (!updated) return c.json({ error: "Unknown local provider" }, 404);
+
+  metrics.syncProviders();
 
   return c.json({
     name: updated.name,
     baseUrl: updated.baseUrl,
+    hasApiKey: !!updated.apiKey,
     isOnline: updated.isOnline,
     modelCount: updated.models.length,
     models: updated.models,
@@ -208,10 +221,12 @@ app.post("/local-providers/:name/refresh", async (c) => {
   if (!lp) return c.json({ error: "Unknown local provider" }, 404);
 
   await probeLocalProvider(lp);
+  metrics.syncProviders();
 
   return c.json({
     name: lp.name,
     baseUrl: lp.baseUrl,
+    hasApiKey: !!lp.apiKey,
     isOnline: lp.isOnline,
     modelCount: lp.models.length,
     models: lp.models,
@@ -707,6 +722,25 @@ app.post("/spotlight/history", async (c) => {
   });
 
   return c.json(entry, 201);
+});
+
+// ── V2: Web Search (Brave) ─────────────────────────────────────────────────
+
+app.get("/search/status", (c) => {
+  const hasKey = !!getBraveApiKey();
+  return c.json({ enabled: hasKey, hasKey });
+});
+
+app.put("/search/key", async (c) => {
+  const body = await c.req.json<{ apiKey: string }>();
+  if (!body.apiKey?.trim()) return c.json({ error: "API key required" }, 400);
+  saveSetting("braveSearchApiKey", body.apiKey.trim());
+  return c.json({ success: true });
+});
+
+app.delete("/search/key", (c) => {
+  saveSetting("braveSearchApiKey", "");
+  return c.json({ success: true });
 });
 
 export default app;

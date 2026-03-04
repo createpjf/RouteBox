@@ -8,6 +8,7 @@ import { loadSetting, saveSetting } from "./db";
 export interface LocalProviderState {
   name: string;
   baseUrl: string;
+  apiKey: string;
   isOnline: boolean;
   models: string[];
   lastChecked: number;
@@ -30,9 +31,11 @@ let pollingHandle: ReturnType<typeof setInterval> | null = null;
 export function initLocalProviders() {
   localProviders = LOCAL_PROVIDER_DEFAULTS.map((d) => {
     const savedUrl = loadSetting(`localProvider:${d.name}:baseUrl`);
+    const savedKey = loadSetting(`localProvider:${d.name}:apiKey`);
     return {
       name: d.name,
       baseUrl: savedUrl || d.defaultBaseUrl,
+      apiKey: savedKey || "",
       isOnline: false,
       models: [],
       lastChecked: 0,
@@ -47,8 +50,11 @@ export function initLocalProviders() {
 export async function probeLocalProvider(state: LocalProviderState): Promise<void> {
   try {
     const url = `${state.baseUrl}/models`;
+    const headers: Record<string, string> = {};
+    if (state.apiKey) headers["Authorization"] = `Bearer ${state.apiKey}`;
     const res = await fetch(url, {
       method: "GET",
+      headers,
       signal: AbortSignal.timeout(2000),
     });
     if (!res.ok) {
@@ -101,7 +107,7 @@ export function getLocalProviderConfigs(): ProviderConfig[] {
     .map((lp) => ({
       name: lp.name,
       baseUrl: lp.baseUrl,
-      apiKey: "",
+      apiKey: lp.apiKey,
       prefixes: lp.models, // exact model IDs used as "prefixes"
       format: "openai" as const,
       keySource: "byok" as const,
@@ -116,7 +122,7 @@ export function getLocalProviderForModel(model: string): ProviderConfig | undefi
       return {
         name: lp.name,
         baseUrl: lp.baseUrl,
-        apiKey: "",
+        apiKey: lp.apiKey,
         prefixes: lp.models,
         format: "openai",
         keySource: "byok",
@@ -131,11 +137,15 @@ export function getLocalProviderForModel(model: string): ProviderConfig | undefi
 // Update base URL (from API)
 // ---------------------------------------------------------------------------
 
-export async function updateLocalProviderUrl(name: string, baseUrl: string): Promise<LocalProviderState | undefined> {
+export async function updateLocalProviderUrl(name: string, baseUrl: string, apiKey?: string): Promise<LocalProviderState | undefined> {
   const lp = localProviders.find((p) => p.name === name);
   if (!lp) return undefined;
   lp.baseUrl = baseUrl.replace(/\/+$/, "");
   saveSetting(`localProvider:${name}:baseUrl`, lp.baseUrl);
+  if (apiKey !== undefined) {
+    lp.apiKey = apiKey;
+    saveSetting(`localProvider:${name}:apiKey`, apiKey);
+  }
   await probeLocalProvider(lp);
   return lp;
 }

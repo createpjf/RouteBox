@@ -1,16 +1,84 @@
-import React from "react";
+import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { ChevronRight } from "lucide-react";
+import { stripThinkingTags } from "../../lib/thinking";
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /** If true, show thinking/reasoning blocks when present */
+  showThinking?: boolean;
 }
 
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className }) => {
+export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
+  content,
+  className,
+  showThinking = true,
+}) => {
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const { content: cleaned, thinking } = stripThinkingTags(content);
+
   return (
     <div className={`markdown-body ${className ?? ""}`}>
+      {/* Thinking block — collapsible */}
+      {showThinking && thinking && (
+        <div
+          style={{
+            marginBottom: 8,
+            borderRadius: 8,
+            border: "1px solid rgba(255,255,255,0.06)",
+            overflow: "hidden",
+          }}
+        >
+          <button
+            onClick={() => setThinkingOpen(!thinkingOpen)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              width: "100%",
+              padding: "6px 10px",
+              background: "rgba(255,255,255,0.03)",
+              border: "none",
+              color: "rgba(255,255,255,0.4)",
+              fontSize: 11,
+              fontWeight: 500,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <ChevronRight
+              size={12}
+              style={{
+                transform: thinkingOpen ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 0.15s ease",
+                flexShrink: 0,
+              }}
+            />
+            💭 Thinking{!thinkingOpen && "..."}
+          </button>
+          {thinkingOpen && (
+            <div
+              style={{
+                padding: "8px 10px",
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: "rgba(255,255,255,0.35)",
+                whiteSpace: "pre-wrap",
+                maxHeight: 200,
+                overflow: "auto",
+                borderTop: "1px solid rgba(255,255,255,0.04)",
+              }}
+            >
+              {thinking}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main content */}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
@@ -58,7 +126,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
           },
         }}
       >
-        {content}
+        {cleaned}
       </ReactMarkdown>
     </div>
   );

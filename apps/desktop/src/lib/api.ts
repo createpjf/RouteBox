@@ -108,6 +108,7 @@ export interface ProviderRegistryEntry {
 export interface LocalProviderInfo {
   name: string;
   baseUrl: string;
+  hasApiKey: boolean;
   isOnline: boolean;
   modelCount: number;
   models: string[];
@@ -182,6 +183,7 @@ export interface ModelInfo {
 
 export interface ProviderModels {
   provider: string;
+  active: boolean;
   models: ModelInfo[];
 }
 
@@ -317,10 +319,10 @@ export const api = {
   // Local providers
   getLocalProviders: () =>
     request<LocalProvidersResponse>("/api/v1/local-providers"),
-  setLocalProviderUrl: (name: string, baseUrl: string) =>
+  setLocalProviderUrl: (name: string, baseUrl: string, apiKey?: string) =>
     request<LocalProviderInfo>(`/api/v1/local-providers/${encodeURIComponent(name)}/url`, {
       method: "PUT",
-      body: JSON.stringify({ baseUrl }),
+      body: JSON.stringify({ baseUrl, ...(apiKey !== undefined ? { apiKey } : {}) }),
       retries: 0,
     }),
   refreshLocalProvider: (name: string) =>
@@ -364,6 +366,20 @@ export const api = {
       retries: 0,
     }),
 
+  // V2: Web Search
+  getSearchStatus: () => request<SearchStatusResponse>("/api/v1/search/status"),
+  setSearchKey: (apiKey: string) =>
+    request<{ success: boolean }>("/api/v1/search/key", {
+      method: "PUT",
+      body: JSON.stringify({ apiKey }),
+      retries: 0,
+    }),
+  deleteSearchKey: () =>
+    request<{ success: boolean }>("/api/v1/search/key", {
+      method: "DELETE",
+      retries: 0,
+    }),
+
   // V2: Spotlight
   getSpotlightHistory: (limit = 3) =>
     request<SpotlightHistoryResponse>(`/api/v1/spotlight/history?limit=${limit}`),
@@ -396,6 +412,7 @@ export interface MessageResponse {
   model: string; provider: string; input_tokens: number; output_tokens: number;
   cost: number; latency_ms: number; created_at: number;
 }
+export interface SearchStatusResponse { enabled: boolean; hasKey: boolean }
 export interface SpotlightHistoryResponse { entries: SpotlightEntryResponse[] }
 export interface SpotlightEntryResponse {
   id: string; prompt: string; response: string; model: string;

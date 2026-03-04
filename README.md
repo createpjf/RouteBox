@@ -1,6 +1,8 @@
 # RouteBox
 
-macOS menu bar app — LLM API proxy with intelligent routing, real-time monitoring, and cost tracking.
+macOS menu bar app — LLM API proxy with intelligent routing, real-time monitoring, cost tracking, built-in chat, and web search.
+
+**v2.3.0** · [Download DMG](https://github.com/createpjf/RouteBox/releases/latest) · MIT License
 
 ## What it does
 
@@ -9,9 +11,12 @@ RouteBox runs a local OpenAI-compatible proxy (`http://localhost:3001/v1`). You 
 1. **Routes** requests to the best provider based on your rules (cheapest, fastest, or smartest)
 2. **Tracks** tokens, cost, latency, and savings in real-time
 3. **Manages** multiple provider API keys securely in macOS Keychain
+4. **Chat** directly with any model via the built-in Chat window or Spotlight
+5. **Search** the web in real-time with Brave Search integration
 
 ```
 Your App  →  RouteBox (localhost:3001)  →  OpenAI / Anthropic / Google / DeepSeek / MiniMax / Kimi / FLock.io
+                                           ↑ Brave Search results injected as context
 ```
 
 ## Supported Providers
@@ -26,7 +31,66 @@ Your App  →  RouteBox (localhost:3001)  →  OpenAI / Anthropic / Google / Dee
 | [Kimi](https://kimi.ai) | Kimi K2.5, Kimi K2, Moonshot | [platform.moonshot.ai](https://platform.moonshot.ai/) |
 | [FLock.io](https://flock.io) | Qwen3-235B, Qwen3-30B, DeepSeek-V3.2, Kimi K2.5 | [platform.flock.io](https://platform.flock.io) |
 
-> **Tip:** [FLock API Platform](https://platform.flock.io) provides access to open-source models (Qwen3, DeepSeek, Kimi)— a good option for cost-effective routing.
+**Local models**: Ollama and LM Studio are auto-discovered on your network — no API key needed.
+
+> **Tip:** [FLock API Platform](https://platform.flock.io) provides access to open-source models (Qwen3, DeepSeek, Kimi) — a good option for cost-effective routing.
+
+## Features
+
+### Three Windows
+
+| Window | Shortcut | Description |
+|--------|----------|-------------|
+| **Panel** | `⌘⇧R` | Menu bar dashboard — routing, analytics, logs, settings |
+| **Spotlight** | `⌘⇧Space` | Quick floating window — ask a question, get an instant answer |
+| **Chat** | Via panel | Full chat interface with conversation history and sidebar |
+
+### Dashboard Tabs
+
+| Tab | What it shows |
+|-----|---------------|
+| **Dashboard** | Requests, tokens, cost, savings, traffic sparkline, provider status |
+| **Routing** | Strategy selector, model preferences (pin/exclude), content-aware rules |
+| **Logs** | Full request history with model, provider, latency, cost per request |
+| **Analytics** | Charts for cost trends, provider latency, model usage breakdown |
+| **My Usage** | Today/month usage, budget tracking, weekly trends, model breakdown |
+
+### Web Search (Brave Search)
+
+RouteBox can inject real-time web search results into any LLM conversation:
+
+1. Go to **Settings → Web Search** and add your [Brave Search API key](https://brave.com/search/api) (free tier available)
+2. Toggle the 🌐 button in Chat or Spotlight to enable search for a message
+3. RouteBox searches the web, injects results as context, and the model responds with up-to-date information and source citations
+
+### Intelligent Routing
+
+| Strategy | Behavior |
+|----------|----------|
+| Smart Auto | AI picks the best route per request |
+| Cost First | Always pick the cheapest provider |
+| Speed First | Always pick the lowest latency provider |
+| Quality First | Always pick the best available model |
+
+### Routing Rules
+
+| Rule Type | Triggers when... | Example use |
+|-----------|-------------------|-------------|
+| **Alias** | Model name matches your virtual name | `route-code` → `deepseek-coder` |
+| **Code** | Request contains ≥3 code markers | Auto-route code tasks to DeepSeek |
+| **Long** | Message ≥8,000 characters | Auto-route long context to Gemini |
+| **General** | Catch-all fallback | Default model for everything else |
+
+### Model Preferences
+
+Pin a model to a specific provider, or exclude a provider for a model:
+
+- **Pin**: `gpt-4o` → always use OpenAI (never fall back)
+- **Exclude**: `gpt-4o` → never use provider X
+
+### Thinking Model Support
+
+Models that output `<think>` blocks (DeepSeek-R1, Qwen3, etc.) are automatically handled — thinking content is hidden behind a collapsible "💭 Thinking..." section.
 
 ## Setup
 
@@ -78,45 +142,11 @@ client = OpenAI(
 )
 ```
 
-## App Tabs
+### 4. Enable Web Search (Optional)
 
-| Tab | What it shows |
-|-----|---------------|
-| **Dashboard** | Requests, tokens, cost, savings, traffic sparkline, provider status |
-| **Routing** | Strategy selector, model preferences (pin/exclude), content-aware rules |
-| **Logs** | Full request history with model, provider, latency, cost per request |
-| **Analytics** | Charts for cost trends, provider latency, model usage breakdown |
+Go to **Settings → Web Search** → Paste your Brave Search API key → Save.
 
-## Routing
-
-### Strategy
-
-Pick one in the Routing tab:
-
-| Strategy | Behavior |
-|----------|----------|
-| Smart Auto | AI picks the best route per request |
-| Cost First | Always pick the cheapest provider |
-| Speed First | Always pick the lowest latency provider |
-| Quality First | Always pick the best available model |
-
-### Rules
-
-Create rules to route specific request types:
-
-| Rule Type | Triggers when... | Example use |
-|-----------|-------------------|-------------|
-| **Alias** | Model name matches your virtual name | `route-code` → `deepseek-coder` |
-| **Code** | Request contains ≥3 code markers | Auto-route code tasks to DeepSeek |
-| **Long** | Message ≥8,000 characters | Auto-route long context to Gemini |
-| **General** | Catch-all fallback | Default model for everything else |
-
-### Model Preferences
-
-Pin a model to a specific provider, or exclude a provider for a model:
-
-- **Pin**: `gpt-4o` → always use OpenAI (never fall back)
-- **Exclude**: `gpt-4o` → never use provider X
+Then toggle 🌐 in Chat or Spotlight before sending a message to include web results.
 
 ## Build DMG
 
@@ -146,6 +176,7 @@ docker build -t routebox-gateway .
 docker run -p 3001:3001 \
   -e OPENAI_API_KEY=sk-... \
   -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e BRAVE_API_KEY=BSA-... \
   -v routebox-data:/data \
   routebox-gateway
 ```
@@ -158,6 +189,7 @@ See [`apps/gateway/.env.example`](apps/gateway/.env.example) for all environment
 |---------|----------|-------|
 | Provider API Keys | Settings → Providers | Stored in macOS Keychain |
 | Monthly Budget | Settings → Budget | Alerts at 80% and 100% |
+| Web Search | Settings → Web Search | Brave Search API key for real-time search |
 | Gateway URL | Settings → Connection | Default `http://localhost:3001`, customizable |
 | Auth Token | Settings → Authentication | Auto-generated, stored in Keychain |
 | Auto-start Gateway | Settings → Gateway | On/off toggle |
@@ -168,13 +200,29 @@ See [`apps/gateway/.env.example`](apps/gateway/.env.example) for all environment
 | Shortcut | Action |
 |----------|--------|
 | `⌘⇧R` | Toggle panel (global) |
+| `⌘⇧Space` | Toggle Spotlight (global) |
 | `⌘C` | Copy API key |
 | `⌘P` | Pause/resume traffic |
+| `⌘⏎` | Send message (Spotlight) |
+| `Esc` | Close Spotlight |
+
+## Architecture
+
+```
+RouteBox/
+├── apps/
+│   ├── desktop/          Tauri v2 + React 19 (panel, spotlight, chat windows)
+│   │   └── src-tauri/    Rust backend (system tray, global shortcuts, keychain)
+│   └── gateway/          Bun + Hono (proxy, routing, analytics, search)
+├── package.json          pnpm monorepo root
+└── README.md
+```
 
 ## Tech Stack
 
 - **Desktop**: Tauri v2 (Rust) + React 19 + TypeScript + Tailwind CSS v4
 - **Gateway**: Bun + Hono + bun:sqlite
+- **Search**: Brave Search API
 - **Design**: SF Pro, frosted glass (macOS native)
 
 ## License

@@ -19,6 +19,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   const [successProvider, setSuccessProvider] = useState<string | null>(null);
   const [editingLocalUrl, setEditingLocalUrl] = useState<string | null>(null);
   const [localUrlInput, setLocalUrlInput] = useState("");
+  const [localApiKeyInput, setLocalApiKeyInput] = useState("");
   const [refreshingLocal, setRefreshingLocal] = useState<string | null>(null);
 
   const fetchRegistry = useCallback(async () => {
@@ -85,18 +86,20 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
     setSaving(true);
     setError(null);
     try {
-      const updated = await api.setLocalProviderUrl(name, localUrlInput.trim());
+      const apiKeyArg = localApiKeyInput.trim() || undefined;
+      const updated = await api.setLocalProviderUrl(name, localUrlInput.trim(), apiKeyArg);
       setLocalProviders((prev) =>
         prev.map((lp) => lp.name === name ? { ...lp, ...updated } : lp)
       );
       setEditingLocalUrl(null);
       setLocalUrlInput("");
+      setLocalApiKeyInput("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update URL");
     } finally {
       setSaving(false);
     }
-  }, [localUrlInput]);
+  }, [localUrlInput, localApiKeyInput]);
 
   if (loading) {
     return (
@@ -142,6 +145,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
                   if (!isEditingUrl) {
                     setEditingLocalUrl(lp.name);
                     setLocalUrlInput(lp.baseUrl);
+                    setLocalApiKeyInput("");
                     setError(null);
                   }
                 }}
@@ -154,6 +158,11 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
                 />
                 <span className="text-[13px] text-text-primary flex-1">{lp.name}</span>
                 <div className="flex items-center gap-1.5">
+                  {lp.hasApiKey && (
+                    <span title="API key configured">
+                      <Key size={10} strokeWidth={1.75} className="text-text-tertiary/60" />
+                    </span>
+                  )}
                   {lp.isOnline ? (
                     <span className="text-[11px] text-text-tertiary">
                       {lp.modelCount} model{lp.modelCount !== 1 ? "s" : ""}
@@ -188,13 +197,14 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
                         setLocalUrlInput(e.target.value);
                         setError(null);
                       }}
-                      placeholder={`Base URL (e.g. http://localhost:11434/v1)`}
+                      placeholder={`Base URL (e.g. http://192.168.1.100:1234/v1)`}
                       className="input input-mono flex-1 !h-8 !text-[11px]"
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleSaveLocalUrl(lp.name);
                         if (e.key === "Escape") {
                           setEditingLocalUrl(null);
+                          setLocalApiKeyInput("");
                           setError(null);
                         }
                       }}
@@ -214,6 +224,21 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
                       )}
                     </button>
                   </div>
+                  <input
+                    type="password"
+                    value={localApiKeyInput}
+                    onChange={(e) => setLocalApiKeyInput(e.target.value)}
+                    placeholder={lp.hasApiKey ? "API Key (configured — leave blank to keep)" : "API Key (optional)"}
+                    className="input input-mono w-full !h-8 !text-[11px] mt-1.5"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveLocalUrl(lp.name);
+                      if (e.key === "Escape") {
+                        setEditingLocalUrl(null);
+                        setLocalApiKeyInput("");
+                        setError(null);
+                      }
+                    }}
+                  />
                   {error && editingLocalUrl === lp.name && (
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <AlertCircle size={12} strokeWidth={1.75} className="text-accent-red shrink-0" />

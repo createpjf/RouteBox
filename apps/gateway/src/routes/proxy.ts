@@ -17,6 +17,7 @@ import {
 import { selectRoute } from "../lib/router";
 import { metrics, type RequestRecord } from "../lib/metrics";
 import { localProviders } from "../lib/local-providers";
+import { braveSearch, formatSearchContext, isSearchEnabled } from "../lib/brave-search";
 
 const app = new Hono();
 
@@ -71,13 +72,15 @@ async function forwardOpenAI(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  // Skip auth for local providers (Ollama, LM Studio)
+  // Cloud providers: required auth; Local providers: optional auth (e.g. remote LM Studio with API key)
   if (!provider.isLocal) {
     if (provider.authHeader) {
       headers[provider.authHeader] = provider.apiKey;
     } else {
       headers["Authorization"] = `Bearer ${provider.apiKey}`;
     }
+  } else if (provider.apiKey) {
+    headers["Authorization"] = `Bearer ${provider.apiKey}`;
   }
   return fetch(`${provider.baseUrl}/chat/completions`, {
     method: "POST",
@@ -475,6 +478,33 @@ app.post("/chat/completions", async (c) => {
   // For OpenAI-compatible streaming, request usage in the stream
   if (isStream && provider.format === "openai") {
     body.stream_options = { include_usage: true };
+  }
+
+  // ── Web Search injection ──────────────────────────────────────────────
+  if ((body as Record<string, unknown>).routebox_search === true && isSearchEnabled()) {
+    try {
+      // Extract query from the last user message
+      const lastUserMsg = [...body.messages].reverse().find((m) => m.role === "user");
+      if (lastUserMsg) {
+        const query = typeof lastUserMsg.content === "string"
+          ? lastUserMsg.content.slice(0, 200)
+          : "";
+        if (query) {
+          const results = await braveSearch(query, 5);
+          const context = formatSearchContext(results);
+          if (context) {
+            body.messages = [
+              { role: "system", content: context },
+              ...body.messages,
+            ];
+          }
+        }
+      }
+    } catch {
+      // Search failed — proceed without search results
+    }
+    // Remove the custom field before forwarding to LLM provider
+    delete (body as Record<string, unknown>).routebox_search;
   }
 
   const startMs = performance.now();

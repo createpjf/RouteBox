@@ -11,7 +11,7 @@ interface UseStreamChatReturn {
   streaming: boolean;
   streamedText: string;
   meta: RouteboxMeta | null;
-  sendMessage: (messages: ChatMessage[], model: string) => Promise<void>;
+  sendMessage: (messages: ChatMessage[], model: string, options?: { search?: boolean }) => Promise<void>;
   abort: () => void;
 }
 
@@ -28,7 +28,7 @@ export function useStreamChat(): UseStreamChatReturn {
   }, []);
 
   const sendMessage = useCallback(
-    async (messages: ChatMessage[], model: string) => {
+    async (messages: ChatMessage[], model: string, options?: { search?: boolean }) => {
       // Reset state
       setStreamedText("");
       setMeta(null);
@@ -51,6 +51,7 @@ export function useStreamChat(): UseStreamChatReturn {
             model,
             messages,
             stream: true,
+            ...(options?.search ? { routebox_search: true } : {}),
           }),
           signal: controller.signal,
         });

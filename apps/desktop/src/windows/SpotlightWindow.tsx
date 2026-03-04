@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Search, Copy, MessageSquare, ExternalLink } from "lucide-react";
+import { Search, Copy, MessageSquare, ExternalLink, Globe } from "lucide-react";
 import { useStreamChat } from "../hooks/useStreamChat";
 import { MarkdownRenderer } from "../components/shared/MarkdownRenderer";
 import { ModelSwitcher } from "../components/shared/ModelSwitcher";
@@ -13,13 +13,16 @@ export const SpotlightWindow: React.FC = () => {
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState("claude-sonnet-4");
   const [recents, setRecents] = useState<SpotlightEntryResponse[]>([]);
+  const [searchEnabled, setSearchEnabled] = useState(false);
+  const [searchOn, setSearchOn] = useState(false);
   const { streaming, streamedText, meta, sendMessage, abort } = useStreamChat();
   const inputRef = useRef<HTMLInputElement>(null);
   const hasResponse = streamedText.length > 0;
 
-  // Load recent history
+  // Load recent history + search status
   useEffect(() => {
     api.getSpotlightHistory(3).then((r) => setRecents(r.entries)).catch(() => {});
+    api.getSearchStatus().then((s) => setSearchEnabled(s.enabled)).catch(() => {});
   }, []);
 
   // Auto-focus input
@@ -48,7 +51,7 @@ export const SpotlightWindow: React.FC = () => {
     async (overridePrompt?: string) => {
       const text = overridePrompt ?? prompt;
       if (!text.trim() || streaming) return;
-      await sendMessage([{ role: "user", content: text }], model);
+      await sendMessage([{ role: "user", content: text }], model, searchOn ? { search: true } : undefined);
     },
     [prompt, model, streaming, sendMessage],
   );
@@ -156,10 +159,31 @@ export const SpotlightWindow: React.FC = () => {
         </button>
       </div>
 
-      {/* Model switcher */}
+      {/* Model switcher + search toggle */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
         <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Model:</span>
         <ModelSwitcher value={model} onChange={setModel} compact />
+        {searchEnabled && (
+          <button
+            onClick={() => setSearchOn(!searchOn)}
+            title={searchOn ? "Web search ON" : "Web search OFF"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              background: searchOn ? "rgba(52,199,89,0.15)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${searchOn ? "rgba(52,199,89,0.25)" : "rgba(255,255,255,0.08)"}`,
+              borderRadius: 6,
+              color: searchOn ? "#34C759" : "rgba(255,255,255,0.4)",
+              fontSize: 11,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Globe size={11} /> Web
+          </button>
+        )}
       </div>
 
       {/* Response area */}

@@ -851,7 +851,7 @@ export function queryMonthUsage(): UsageMonthResult {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const row = usageMonthStmt.get(startOfMonth) as { requests: number; tokens: number; cost: number } | null;
   const cost = row?.cost ?? 0;
-  const budgetStr = loadSetting("monthly_budget");
+  const budgetStr = loadSetting("budgetMonthly");
   const budget = budgetStr ? parseFloat(budgetStr) : 0;
   const budgetPct = budget > 0 ? Math.round((cost / budget) * 100) : 0;
   return { requests: row?.requests ?? 0, tokens: row?.tokens ?? 0, cost, budgetPct };
