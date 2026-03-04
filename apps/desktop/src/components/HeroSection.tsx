@@ -1,4 +1,4 @@
-import { Settings, Loader2 } from "lucide-react";
+import { Settings, Loader2, MessageSquare, Sparkles } from "lucide-react";
 
 type GatewayState = "idle" | "checking" | "starting" | "running" | "failed";
 
@@ -8,9 +8,11 @@ interface HeroSectionProps {
   gatewayState?: GatewayState;
   gatewayError?: string | null;
   onOpenSettings: () => void;
+  onOpenChat?: () => void;
+  onOpenSpotlight?: () => void;
 }
 
-export function HeroSection({ connected, stale, gatewayState, gatewayError, onOpenSettings }: HeroSectionProps) {
+export function HeroSection({ connected, stale, gatewayState, gatewayError, onOpenSettings, onOpenChat, onOpenSpotlight }: HeroSectionProps) {
   // Derive status text & color
   let statusText = connected ? "Online" : "Offline";
   let statusColor = connected ? "#34C759" : "#C7C7CC";
@@ -68,12 +70,32 @@ export function HeroSection({ connected, stale, gatewayState, gatewayError, onOp
           </div>
         </div>
 
-        <button
-          onClick={onOpenSettings}
-          className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[#E8E8ED] transition-colors"
-        >
-          <Settings size={16} strokeWidth={1.6} className="text-[#AEAEB2]" />
-        </button>
+        <div className="flex items-center gap-1">
+          {onOpenSpotlight && (
+            <button
+              onClick={onOpenSpotlight}
+              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[#E8E8ED] transition-colors"
+              title="Spotlight (⌘⇧X)"
+            >
+              <Sparkles size={15} strokeWidth={1.6} className="text-[#AEAEB2]" />
+            </button>
+          )}
+          {onOpenChat && (
+            <button
+              onClick={onOpenChat}
+              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[#E8E8ED] transition-colors"
+              title="Chat"
+            >
+              <MessageSquare size={15} strokeWidth={1.6} className="text-[#AEAEB2]" />
+            </button>
+          )}
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[#E8E8ED] transition-colors"
+          >
+            <Settings size={16} strokeWidth={1.6} className="text-[#AEAEB2]" />
+          </button>
+        </div>
       </div>
       {gatewayState === "failed" && shortError && (
         <div className="px-5 pb-2 -mt-1">

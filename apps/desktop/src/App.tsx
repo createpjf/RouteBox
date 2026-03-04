@@ -176,6 +176,12 @@ export function App() {
           gatewayState={gatewayState}
           gatewayError={gatewayError}
           onOpenSettings={() => setShowSettings(true)}
+          onOpenChat={() => {
+            import("@tauri-apps/api/core").then(({ invoke }) => invoke("open_chat")).catch(() => {});
+          }}
+          onOpenSpotlight={() => {
+            import("@tauri-apps/api/core").then(({ invoke }) => invoke("toggle_spotlight")).catch(() => {});
+          }}
         />
         {alert && (
           <AlertBanner
