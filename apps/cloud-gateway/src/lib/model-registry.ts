@@ -37,6 +37,13 @@ export interface ModelRegistryEntry {
 
   allowedPlans: string[];
 
+  // Per-model user pricing (NULL = fall back to legacy markup logic)
+  userPriceInput?:      number;  // $/M tokens charged to user
+  userPriceOutput?:     number;
+  purchasePriceInput?:  number;  // RouteBox purchase cost
+  purchasePriceOutput?: number;
+  profitBonus:          number;  // scoring bonus (default 0)
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,6 +74,11 @@ function rowToEntry(r: Record<string, unknown>): ModelRegistryEntry {
     priceOutput: r.price_output as number,
     isFlockNode: r.is_flock_node as boolean,
     allowedPlans: (r.allowed_plans as string[]) ?? ["all"],
+    userPriceInput:      r.user_price_input != null ? Number(r.user_price_input) : undefined,
+    userPriceOutput:     r.user_price_output != null ? Number(r.user_price_output) : undefined,
+    purchasePriceInput:  r.purchase_price_input != null ? Number(r.purchase_price_input) : undefined,
+    purchasePriceOutput: r.purchase_price_output != null ? Number(r.purchase_price_output) : undefined,
+    profitBonus:         Number(r.profit_bonus ?? 0),
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   };

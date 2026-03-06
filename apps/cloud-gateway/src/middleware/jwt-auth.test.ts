@@ -91,7 +91,7 @@ describe("jwtAuth", () => {
     expect(body.userPlan).toBe("business");
   });
 
-  test("defaults to free plan when user not found", async () => {
+  test("defaults to starter plan when user not found", async () => {
     // @ts-ignore
     globalThis.__dbMockSqlResults = [[]];
     const app = createApp();
@@ -100,6 +100,62 @@ describe("jwtAuth", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.userPlan).toBe("free");
+    expect(body.userPlan).toBe("starter");
+  });
+
+  test("returns 503 when DB is unavailable during JWT plan lookup", async () => {
+    // Empty queue → sql mock throws, simulating DB failure
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [];
+    const app = createApp();
+    const res = await app.request("/protected", {
+      headers: { Authorization: "Bearer valid-token" },
+    });
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error.type).toBe("server_error");
+  });
+});
+
+describe("jwtAuth — API key (rb_)", () => {
+  test("returns 200 for valid rb_ API key", async () => {
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [{ user_id: "user-5", plan: "pro", email: "apikey@test.com" }], // key lookup (SELECT)
+      [],  // fire-and-forget last_used_at UPDATE
+    ];
+    const app = createApp();
+    const res = await app.request("/protected", {
+      headers: { Authorization: "Bearer rb_validkey123" },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.userId).toBe("user-5");
+    expect(body.userPlan).toBe("pro");
+  });
+
+  test("returns 401 when rb_ key is not found", async () => {
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [[]]; // empty row array = key not found
+    const app = createApp();
+    const res = await app.request("/protected", {
+      headers: { Authorization: "Bearer rb_badkey" },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.type).toBe("auth_error");
+  });
+
+  test("returns 503 when DB is unavailable during rb_ key lookup", async () => {
+    // Empty queue → sql mock throws, simulating DB failure
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [];
+    const app = createApp();
+    const res = await app.request("/protected", {
+      headers: { Authorization: "Bearer rb_somekey" },
+    });
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error.type).toBe("server_error");
   });
 });

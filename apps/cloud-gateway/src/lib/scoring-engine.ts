@@ -152,6 +152,9 @@ export async function scoreAndRank(input: {
       bonus += BONUS_FLOCK;
     }
 
+    // Per-model profit bonus (drives traffic to high-margin discount models)
+    bonus += model.profitBonus ?? 0;
+
     const totalScore = Math.max(0, baseScore + bonus);
 
     // Find provider configs for this model

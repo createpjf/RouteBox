@@ -90,18 +90,26 @@ describe("calculateCost", () => {
 
 describe("calculateUserCostCents", () => {
   test("applies markup and returns cents", () => {
-    const cents = calculateUserCostCents("gpt-4o", 1_000_000, 1_000_000, 1.5);
+    // gpt-4o: $2.5 input + $10 output = $12.5/M each, × 1.5 markup = $18.75/M → 1875¢
+    const cents = calculateUserCostCents(1_000_000, 1_000_000, { input: 2.5, output: 10, markup: 1.5 });
     expect(cents).toBe(1875);
   });
 
   test("rounds up to at least 1 cent", () => {
-    const cents = calculateUserCostCents("gpt-4o-mini", 1, 1, 1.0);
+    const cents = calculateUserCostCents(1, 1, { input: 0.15, output: 0.6, markup: 1.0 });
     expect(cents).toBeGreaterThanOrEqual(1);
   });
 
   test("with no markup (1.0x)", () => {
-    const cents = calculateUserCostCents("gpt-4o", 1_000_000, 0, 1.0);
+    // gpt-4o: $2.5/M input × 1M tokens × 1.0 markup = $2.50 = 250¢
+    const cents = calculateUserCostCents(1_000_000, 0, { input: 2.5, output: 10, markup: 1.0 });
     expect(cents).toBe(250);
+  });
+
+  test("discount model: uses registry price directly (markup=1.0)", () => {
+    // kimi-k2.5 user price: $0.90/M input, $2.70/M output
+    const cents = calculateUserCostCents(1_000_000, 1_000_000, { input: 0.90, output: 2.70, markup: 1.0 });
+    expect(cents).toBe(360); // (0.90 + 2.70) = $3.60 = 360¢
   });
 });
 

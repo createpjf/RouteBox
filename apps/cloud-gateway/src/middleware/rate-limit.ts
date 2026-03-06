@@ -152,10 +152,17 @@ async function checkLimit(
 // ---------------------------------------------------------------------------
 
 const LIMITS = {
-  auth: { windowMs: 15 * 60_000, max: 10 } as RateLimitConfig, // 10 req / 15 min per IP
-  api: { windowMs: 60_000, max: 60 } as RateLimitConfig, // 60 req / min per userId
-  account: { windowMs: 60_000, max: 30 } as RateLimitConfig, // 30 req / min per userId
-  billing: { windowMs: 60_000, max: 10 } as RateLimitConfig, // 10 req / min per userId
+  auth:    { windowMs: 60_000, max: 5    } as RateLimitConfig, // 5 req/min per IP
+  api:     { windowMs: 60_000, max: 1000 } as RateLimitConfig, // default (overridden per plan)
+  account: { windowMs: 60_000, max: 500  } as RateLimitConfig, // 500 req/min per userId
+  billing: { windowMs: 60_000, max: 10   } as RateLimitConfig, // 10 req/min per IP
+};
+
+/** Per-plan API rate limits */
+const API_LIMITS_BY_PLAN: Record<string, RateLimitConfig> = {
+  starter: { windowMs: 60_000, max: 50   },
+  pro:     { windowMs: 60_000, max: 500  },
+  max:     { windowMs: 60_000, max: 2000 },
 };
 
 function getClientIP(c: Context): string {
@@ -203,7 +210,7 @@ export async function rateLimitAuth(c: Context, next: Next) {
   await next();
 }
 
-/** Rate limit API routes by userId */
+/** Rate limit API routes by userId — limit varies by plan */
 export async function rateLimitApi(c: Context<CloudEnv>, next: Next) {
   const userId = c.get("userId") as string | undefined;
   if (!userId) {
@@ -211,15 +218,20 @@ export async function rateLimitApi(c: Context<CloudEnv>, next: Next) {
     return;
   }
 
-  const result = await checkLimit("api", userId, LIMITS.api, Date.now());
+  const userPlan = (c.get("userPlan") as string | undefined) ?? "starter";
+  const config = API_LIMITS_BY_PLAN[userPlan] ?? API_LIMITS_BY_PLAN.starter;
+
+  const result = await checkLimit("api", userId, config, Date.now());
 
   if (!result.allowed) {
-    log.warn("rate_limit_hit", { limiter: "api", key: userId, retryAfterMs: result.retryAfterMs });
+    log.warn("rate_limit_hit", { limiter: "api", key: userId, plan: userPlan, retryAfterMs: result.retryAfterMs });
     incCounter("rate_limit_hits_total", { limiter: "api" });
     return rejectWithLimit(c, result.retryAfterMs);
   }
 
   c.header("X-RateLimit-Remaining", String(result.remaining));
+  c.header("X-RateLimit-Limit", String(config.max));
+  c.header("X-RateLimit-Plan", userPlan);
   await next();
 }
 

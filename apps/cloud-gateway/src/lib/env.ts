@@ -34,7 +34,7 @@ export function validateEnv(): void {
   const providerKeys = [
     "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",
     "DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "KIMI_API_KEY",
-    "OPENROUTER_API_KEY",
+    "OPENROUTER_API_KEY", "FLOCK_API_KEY", "GLM_API_KEY",
   ];
   const hasProvider = providerKeys.some((k) => !!process.env[k]);
   if (!hasProvider) {

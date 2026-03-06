@@ -25,6 +25,7 @@ async function request<T>(
       const res = await fetch(`${getGatewayUrl()}${path}`, {
         ...options,
         headers,
+        signal: options?.signal ?? AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -261,6 +262,8 @@ export interface CloudAccountResponse {
 
 export interface CloudBalanceResponse {
   balance_cents: number;
+  bonus_cents: number;
+  total_cents: number;
 }
 
 export interface CloudCreditPackage {

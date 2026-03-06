@@ -17,6 +17,7 @@ import { getCircuitBreaker } from "../lib/circuit-breaker";
 import { deductCredits, recordCloudRequest } from "../lib/credits";
 import { getMarkupForPlan } from "../lib/polar";
 import { getRegistryEntry } from "../lib/model-registry";
+import { checkDailyQuota, incrementDailyQuota } from "../lib/quota";
 import { log } from "../lib/logger";
 import { incCounter, observeHistogram, incGauge, decGauge } from "../lib/metrics";
 import { creditsCheck } from "../middleware/credits-check";
@@ -80,6 +81,11 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "kimi-k2":          { input: 0.40, output: 1.60 },
   "moonshot-v1-128k": { input: 0.84, output: 0.84 },
   "moonshot-v1-32k":  { input: 0.34, output: 0.34 },
+  // FLock.io models
+  "qwen3-235b-a22b-thinking-2507":  { input: 0.70, output: 2.80 },
+  "qwen3-30b-a3b-instruct-2507":    { input: 0.15, output: 0.60 },
+  "qwen3-30b-a3b-instruct-coding":  { input: 0.15, output: 0.60 },
+  "deepseek-v3.2":                  { input: 0.27, output: 1.10 },
   // OpenRouter models
   "openrouter/stepfun/step-3.5-flash:free": { input: 0, output: 0 },
 };
@@ -113,10 +119,36 @@ export function calculateCost(model: string, inputTokens: number, outputTokens: 
   return (inputTokens * p.input + outputTokens * p.output) / 1_000_000;
 }
 
-/** Cost in cents with plan-based markup */
-export function calculateUserCostCents(model: string, inputTokens: number, outputTokens: number, markup: number): number {
-  const providerCost = calculateCost(model, inputTokens, outputTokens);
-  return Math.ceil(providerCost * markup * 100);
+/** Effective pricing for a model+plan combination.
+ *  Registry-priced models (discount models) use fixed user prices (markup=1.0).
+ *  All other models use MODEL_PRICING × plan markup. */
+export async function getModelUserPrice(
+  model: string,
+  userPlan: string,
+): Promise<{ input: number; output: number; markup: number }> {
+  const entry = await getRegistryEntry(model);
+
+  if (entry?.userPriceInput != null && entry?.userPriceOutput != null) {
+    // Discount model: registry price already includes margin, no additional markup
+    return { input: entry.userPriceInput, output: entry.userPriceOutput, markup: 1.0 };
+  }
+
+  // Legacy markup path
+  const p = pricingFor(model);
+  const markup = userPlan === "max" ? 1.05
+               : userPlan === "pro" ? 1.08
+               : 1.08; // starter same as pro
+  return { input: p.input, output: p.output, markup };
+}
+
+/** Cost in cents using effective pricing (including markup) */
+export function calculateUserCostCents(
+  inputTokens: number,
+  outputTokens: number,
+  pricing: { input: number; output: number; markup: number },
+): number {
+  const cost = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
+  return Math.ceil(cost * pricing.markup * 100);
 }
 
 // ---------------------------------------------------------------------------
@@ -425,7 +457,7 @@ function openaiStreamPassthrough(
 // ---------------------------------------------------------------------------
 
 app.get("/models", (c) => {
-  const userPlan = c.get("userPlan") ?? "free";
+  const userPlan = c.get("userPlan") ?? "starter";
   const modelIds = new Set<string>();
   for (const p of cloudProviders) {
     if (!isProviderAllowed(p.name, userPlan)) continue;
@@ -447,8 +479,7 @@ app.get("/models", (c) => {
 
 app.post("/chat/completions", creditsCheck, async (c) => {
   const userId = c.get("userId") as string;
-  const userPlan = c.get("userPlan") ?? "free";
-  const markup = getMarkupForPlan(userPlan);
+  const userPlan = c.get("userPlan") ?? "starter";
   const body = await c.req.json<ChatRequest>();
 
   // Validate
@@ -493,6 +524,23 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       }, 403);
     }
   }
+
+  // ── Daily quota check (Starter plan) ─────────────────────────────────────
+  const quotaResult = await checkDailyQuota(userId, requestedModel, userPlan);
+  if (!quotaResult.allowed) {
+    return c.json({
+      error: {
+        message: `Daily quota exceeded for ${requestedModel}. Resets at midnight UTC.`,
+        type: "quota_exceeded",
+        code: "daily_quota_exceeded",
+        reset_at: quotaResult.resetAt.toISOString(),
+        remaining: 0,
+      },
+    }, 429);
+  }
+
+  // ── Pre-resolve effective pricing (captured in streaming closure) ─────────
+  const modelPricing = await getModelUserPrice(requestedModel, userPlan);
 
   // ── Scoring Engine → Provider Chain ─────────────────────────────────────
   // Try scoring engine first; fall back to prefix matching if model not in registry
@@ -777,7 +825,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
         incCounter("stream_aborted_total", { provider: finalProvider.name, model: requestedModel });
       }
 
-      const costCents = calculateUserCostCents(requestedModel, usage.input, usage.output, markup);
+      const costCents = calculateUserCostCents(usage.input, usage.output, modelPricing);
 
       // Token metrics
       incCounter("provider_tokens_total", { provider: finalProvider.name, model: requestedModel, direction: "input" }, usage.input);
@@ -785,7 +833,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
       // Deduct credits (even for partial streams — bill consumed tokens)
       if (costCents > 0) {
-        await deductCredits(userId, costCents, {
+        const deductResult = await deductCredits(userId, costCents, {
           model: requestedModel,
           provider: finalProvider.name,
           inputTokens: usage.input,
@@ -795,6 +843,17 @@ app.post("/chat/completions", creditsCheck, async (c) => {
             requestId, userId, model: requestedModel, costCents,
             error: err instanceof Error ? err.message : String(err),
           });
+          return null;
+        });
+        if (deductResult && !deductResult.success) {
+          log.error("deduct_credits_insufficient", { requestId, userId, model: requestedModel, costCents });
+        }
+      }
+
+      // Increment daily quota (fire-and-forget) — skip on zero-token responses
+      if (usage.input + usage.output > 0) {
+        incrementDailyQuota(userId, requestedModel).catch((err) => {
+          log.error("quota_increment_failed", { userId, model: requestedModel, error: err?.message });
         });
       }
 
@@ -836,7 +895,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   const usage = json.usage as Record<string, number> | undefined;
   const inputTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
   const outputTokens = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
-  const costCents = calculateUserCostCents(requestedModel, inputTokens, outputTokens, markup);
+  const costCents = calculateUserCostCents(inputTokens, outputTokens, modelPricing);
   const providerCost = calculateCost(requestedModel, inputTokens, outputTokens);
 
   // Token metrics
@@ -845,7 +904,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // Deduct credits
   if (costCents > 0) {
-    await deductCredits(userId, costCents, {
+    const deductResult = await deductCredits(userId, costCents, {
       model: requestedModel,
       provider: activeProvider.name,
       inputTokens, outputTokens,
@@ -854,6 +913,17 @@ app.post("/chat/completions", creditsCheck, async (c) => {
         requestId, userId, model: requestedModel, costCents,
         error: err instanceof Error ? err.message : String(err),
       });
+      return null;
+    });
+    if (deductResult && !deductResult.success) {
+      log.error("deduct_credits_insufficient", { requestId, userId, model: requestedModel, costCents });
+    }
+  }
+
+  // Increment daily quota (fire-and-forget) — skip on zero-token responses
+  if (inputTokens + outputTokens > 0) {
+    incrementDailyQuota(userId, requestedModel).catch((err) => {
+      log.error("quota_increment_failed", { userId, model: requestedModel, error: err?.message });
     });
   }
 

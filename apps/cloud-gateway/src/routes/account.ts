@@ -5,7 +5,7 @@
 
 import { Hono } from "hono";
 import { getUserById } from "../lib/users";
-import { getBalance, getTransactions } from "../lib/credits";
+import { getBalanceInfo, getTransactions } from "../lib/credits";
 import { getOrCreateReferralCode } from "../lib/referrals";
 import { sql } from "../lib/db-cloud";
 import type { CloudEnv } from "../types";
@@ -52,8 +52,12 @@ app.get("/me", async (c) => {
 
 app.get("/balance", async (c) => {
   const userId = c.get("userId") as string;
-  const balance = await getBalance(userId);
-  return c.json({ balance_cents: balance });
+  const info = await getBalanceInfo(userId);
+  return c.json({
+    balance_cents: info.balance_cents,
+    bonus_cents: info.bonus_cents,
+    total_cents: info.total_cents,
+  });
 });
 
 // ── GET /transactions — transaction history ─────────────────────────────────
@@ -128,7 +132,7 @@ app.get("/api-keys", async (c) => {
 
 app.post("/api-keys", async (c) => {
   const userId = c.get("userId") as string;
-  const body = await c.req.json<{ name?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
 
   // Generate rb_ key: "rb_" + 32 hex chars = 35 chars total
   const randomBytes = crypto.getRandomValues(new Uint8Array(16));

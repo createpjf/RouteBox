@@ -95,40 +95,55 @@ export function reloadCreditPackages(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Subscription plans — monthly subscriptions with reduced markup
+// Subscription plans — three-tier (starter / pro / max) + first-month promos
 // ---------------------------------------------------------------------------
 
 export interface SubscriptionPlan {
   id: string;
-  polarProductId: string;  // Polar product UUID
+  polarProductId: string;
+  polarProductIdPromo?: string;  // optional first-month discounted product
   label: string;
-  monthlyPrice: number;   // price in cents (USD)
-  markup: number;          // cost multiplier (1.0 = no markup)
+  monthlyPrice: number;          // price in cents (USD)
+  markup: number;                // fallback markup for non-registry models
+  includedCreditsCents: number;  // credits issued on activation + renewal
   features: string[];
 }
 
 export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlan> = {
-  free: {
-    id: "free",
+  starter: {
+    id: "starter",
     polarProductId: "",
-    label: "Free",
+    label: "Starter",
     monthlyPrice: 0,
-    markup: 1.25,
-    features: ["Pay-as-you-go credits", "25% markup on API costs"],
+    markup: 1.08,
+    includedCreditsCents: 0,
+    features: ["Pay-as-you-go credits", "50 req/min", "Kimi K2.5 (50 req/day)"],
   },
   pro: {
     id: "pro",
-    polarProductId: process.env.POLAR_PRODUCT_PRO ?? "",
+    polarProductId: process.env.POLAR_PRO_PRODUCT_ID ?? "",
+    polarProductIdPromo: process.env.POLAR_PRO_PROMO_PRODUCT_ID,
     label: "Pro",
-    monthlyPrice: 990,     // $9.90/mo
-    markup: 1.10,
-    features: ["10% markup (save 60%)", "Priority routing", "Usage analytics"],
+    monthlyPrice: 999,
+    markup: 1.08,
+    includedCreditsCents: 300,   // $3 welcome credits
+    features: ["$3 monthly credits", "500 req/min", "All models", "8% markup on non-discount models"],
+  },
+  max: {
+    id: "max",
+    polarProductId: process.env.POLAR_MAX_PRODUCT_ID ?? "",
+    polarProductIdPromo: process.env.POLAR_MAX_PROMO_PRODUCT_ID,
+    label: "Max",
+    monthlyPrice: 1999,
+    markup: 1.05,
+    includedCreditsCents: 800,   // $8 welcome credits
+    features: ["$8 monthly credits", "2000 req/min", "Max-exclusive models", "5% markup on non-discount models"],
   },
 };
 
-/** Get markup multiplier for a given plan */
+/** Get markup multiplier for a given plan (for legacy non-registry-priced models) */
 export function getMarkupForPlan(plan: string): number {
-  return SUBSCRIPTION_PLANS[plan]?.markup ?? SUBSCRIPTION_PLANS.free.markup;
+  return SUBSCRIPTION_PLANS[plan]?.markup ?? SUBSCRIPTION_PLANS.starter.markup;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,20 +184,27 @@ export async function createSubscriptionCheckout(
   userId: string,
   _email: string,
   planId: string,
+  usePromo = false,
 ) {
   const plan = SUBSCRIPTION_PLANS[planId];
-  if (!plan || planId === "free") throw new Error(`Invalid subscription plan: ${planId}`);
-  if (!plan.polarProductId) throw new Error(`Polar product ID not configured for ${planId}`);
+  if (!plan || planId === "starter") throw new Error(`Invalid subscription plan: ${planId}`);
+
+  const productId = usePromo && plan.polarProductIdPromo
+    ? plan.polarProductIdPromo
+    : plan.polarProductId;
+
+  if (!productId) throw new Error(`Polar product ID not configured for ${planId}`);
 
   const polar = getPolar();
 
   const checkout = await polar.checkouts.create({
-    products: [plan.polarProductId],
+    products: [productId],
     externalCustomerId: userId,
     successUrl: `${process.env.APP_URL ?? "https://routebox.dev"}/billing/success`,
     metadata: {
       userId,
       planId,
+      usePromo: String(usePromo),
     },
   });
 

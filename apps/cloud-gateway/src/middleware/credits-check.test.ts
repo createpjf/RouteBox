@@ -7,14 +7,21 @@ import { Hono } from "hono";
 
 // ── Mock credits module ─────────────────────────────────────────────────────
 // db-cloud is already mocked via test-setup.ts preload.
-// We mock the credits module directly since we need to control getBalance.
+// We mock the credits module directly since we need to control getBalanceInfo.
 
-let mockBalance = 0;
+let mockBalanceCents = 0;
+let mockBonusCents = 0;
 
 mock.module("../lib/credits", () => ({
-  getBalance: async () => mockBalance,
+  getBalance: async () => mockBalanceCents,
+  getBalanceInfo: async () => ({
+    balance_cents: mockBalanceCents,
+    bonus_cents: mockBonusCents,
+    total_cents: mockBalanceCents + mockBonusCents,
+  }),
   deductCredits: async () => ({ success: true, newBalance: 0 }),
   addCredits: async () => 0,
+  addBonusCredits: async () => 0,
   recordCloudRequest: async () => {},
   getTransactions: async () => [],
 }));
@@ -44,7 +51,8 @@ describe("creditsCheck", () => {
   });
 
   test("allows request when balance >= 50 cents", async () => {
-    mockBalance = 50;
+    mockBalanceCents = 50;
+    mockBonusCents = 0;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -53,8 +61,9 @@ describe("creditsCheck", () => {
     expect(res.status).toBe(200);
   });
 
-  test("returns 402 when balance < 50 cents", async () => {
-    mockBalance = 49;
+  test("returns 402 when balance < 50 cents and no bonus", async () => {
+    mockBalanceCents = 49;
+    mockBonusCents = 0;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -66,8 +75,9 @@ describe("creditsCheck", () => {
     expect(body.error.balance_cents).toBe(49);
   });
 
-  test("returns 402 when balance is 0", async () => {
-    mockBalance = 0;
+  test("returns 402 when balance and bonus are both 0", async () => {
+    mockBalanceCents = 0;
+    mockBonusCents = 0;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -77,7 +87,8 @@ describe("creditsCheck", () => {
   });
 
   test("402 response has correct structure", async () => {
-    mockBalance = 10;
+    mockBalanceCents = 10;
+    mockBonusCents = 0;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -87,5 +98,42 @@ describe("creditsCheck", () => {
     expect(body.error).toHaveProperty("message");
     expect(body.error).toHaveProperty("type");
     expect(body.error.type).toBe("billing_error");
+  });
+
+  // ── Bonus credits scenarios ────────────────────────────────────────────────
+
+  test("allows request when balance=0 but bonus=200 (total >= 50)", async () => {
+    mockBalanceCents = 0;
+    mockBonusCents = 200;
+    const app = createApp();
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "X-Test-UserId": "user-5" },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("returns 402 when balance=0 and bonus=30 (total < 50)", async () => {
+    mockBalanceCents = 0;
+    mockBonusCents = 30;
+    const app = createApp();
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "X-Test-UserId": "user-6" },
+    });
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body.error.code).toBe("insufficient_credits");
+  });
+
+  test("allows when balance=20 and bonus=30 (total=50 >= threshold)", async () => {
+    mockBalanceCents = 20;
+    mockBonusCents = 30;
+    const app = createApp();
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "X-Test-UserId": "user-7" },
+    });
+    expect(res.status).toBe(200);
   });
 });

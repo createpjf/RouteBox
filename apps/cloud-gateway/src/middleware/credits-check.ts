@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Context, Next } from "hono";
-import { getBalance } from "../lib/credits";
+import { getBalanceInfo } from "../lib/credits";
 import type { CloudEnv } from "../types";
 
 /** Minimum balance in cents to allow a request (covers a moderate API call) */
@@ -22,15 +22,16 @@ export async function creditsCheck(c: Context<CloudEnv>, next: Next) {
     );
   }
 
-  const balance = await getBalance(userId);
-  if (balance < MIN_BALANCE_CENTS) {
+  const { total_cents, balance_cents } = await getBalanceInfo(userId);
+  if (total_cents < MIN_BALANCE_CENTS) {
     return c.json(
       {
         error: {
           message: "Insufficient credits. Please add credits to continue.",
           type: "billing_error",
           code: "insufficient_credits",
-          balance_cents: balance,
+          balance_cents,
+          total_cents,
         },
       },
       402,

@@ -87,7 +87,11 @@ export function AccountPage({ onGoToSettings, onCloudLoginSuccess, gatewayRunnin
     if (hasCloudToken || !!getCloudAuthToken()) {
       api.cloudGetMe()
         .then((res) => setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan }))
-        .catch(() => {});
+        .catch(() => {
+          // Token expired or revoked — reset to login form
+          setHasCloudToken(false);
+          setCloudAuthToken("");
+        });
       api.cloudGetReferral()
         .then((res) => setCloudReferral(res))
         .catch(() => setReferralError(true));
@@ -238,7 +242,7 @@ export function AccountPage({ onGoToSettings, onCloudLoginSuccess, gatewayRunnin
               </div>
 
               {/* Pro upgrade banner (free users only) */}
-              {cloudUser.plan === "free" && (
+              {cloudUser.plan === "starter" && (
                 <button
                   onClick={() => handleUpgradePlan("pro")}
                   className="w-full mb-3 p-3 rounded-xl text-left transition-all hover:scale-[1.01] active:scale-[0.99]"
@@ -273,7 +277,7 @@ export function AccountPage({ onGoToSettings, onCloudLoginSuccess, gatewayRunnin
                     <Crown
                       size={14}
                       strokeWidth={1.75}
-                      className={cloudUser.plan === "free" ? "text-[#86868B]" : "text-[#FFD60A]"}
+                      className={cloudUser.plan === "starter" ? "text-[#86868B]" : "text-[#FFD60A]"}
                     />
                     <span className="text-[14px] font-semibold text-[#1D1D1F] capitalize">
                       {cloudUser.plan}

@@ -12,8 +12,8 @@ import {
   constructWebhookEvent,
   WebhookVerificationError,
 } from "../lib/polar";
-import { addCredits } from "../lib/credits";
-import { processReferralReward } from "../lib/referrals";
+import { addCredits, addBonusCredits } from "../lib/credits";
+import { processReferralReward, claimReferralWelcome } from "../lib/referrals";
 import { sql } from "../lib/db-cloud";
 import { log } from "../lib/logger";
 import { jwtAuth } from "../middleware/jwt-auth";
@@ -47,6 +47,7 @@ app.get("/plans", (c) => {
       label: p.label,
       monthlyPrice: p.monthlyPrice,
       markup: p.markup,
+      includedCreditsCents: p.includedCreditsCents,
       features: p.features,
     })),
   });
@@ -83,7 +84,7 @@ app.post("/checkout", jwtAuth, async (c) => {
 app.post("/subscribe", jwtAuth, async (c) => {
   const userId = c.get("userId") as string;
   const email = c.get("email") as string;
-  const body = await c.req.json<{ planId: string }>();
+  const body = await c.req.json<{ planId: string; usePromo?: boolean }>();
 
   if (!body.planId) {
     return c.json(
@@ -93,7 +94,7 @@ app.post("/subscribe", jwtAuth, async (c) => {
   }
 
   try {
-    const session = await createSubscriptionCheckout(userId, email, body.planId);
+    const session = await createSubscriptionCheckout(userId, email, body.planId, body.usePromo ?? false);
     return c.json({ url: session.url, sessionId: session.id });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -153,7 +154,7 @@ app.post("/webhook", async (c) => {
     "webhook-signature": c.req.header("webhook-signature") ?? "",
   };
 
-  if (!headers["webhook-id"] || !headers["webhook-signature"]) {
+  if (!headers["webhook-id"] || !headers["webhook-timestamp"] || !headers["webhook-signature"]) {
     return c.json({ error: "Missing webhook signature headers" }, 400);
   }
 
@@ -181,28 +182,33 @@ app.post("/webhook", async (c) => {
           await addCredits(userId, amount, order.id, desc);
           log.info("credits_added", { userId, amountCents: amount, packageId });
 
-          // Check if this triggers a referral reward
-          await processReferralReward(userId).catch((err) => {
-            log.error("referral_reward_failed", {
+          // Check if this triggers a referral welcome bonus (first qualifying deposit)
+          await claimReferralWelcome(userId).catch((err) => {
+            log.error("referral_welcome_failed", {
               userId,
               error: err instanceof Error ? err.message : String(err),
             });
           });
         }
+      } else {
+        // Missing required metadata — payment received but credits cannot be issued
+        log.error("order_paid_missing_metadata", {
+          orderId: order.id,
+          hasUserId: !!userId,
+          hasCreditsCents: !!creditsCents,
+        });
       }
     }
 
-    // ── Subscription created ──
-    if (event.type === "subscription.created" || event.type === "subscription.active") {
+    // ── Subscription created — record subscription + plan, NO credits yet ──
+    // (subscription.active will fire next and issue the credits, avoiding double-grant)
+    if (event.type === "subscription.created") {
       const sub = event.data as {
         id: string;
         status: string;
         metadata?: Record<string, string>;
-        current_period_start?: string;
-        current_period_end?: string;
       };
-
-      const metadata = sub.metadata ?? {};
+      const metadata = (sub.metadata ?? {}) as Record<string, string>;
       const { userId, planId } = metadata;
 
       if (userId && planId) {
@@ -217,6 +223,51 @@ app.post("/webhook", async (c) => {
           WHERE id = ${userId}
         `;
         log.info("subscription_created", { userId, planId });
+      }
+    }
+
+    // ── Subscription active — grant credits (initial activation AND monthly renewal) ──
+    // Polar sends this for both initial activation and every renewal cycle.
+    // By handling credits here only, we avoid double-grant with subscription.created.
+    if (event.type === "subscription.active") {
+      const sub = event.data as {
+        id: string;
+        status: string;
+        metadata?: Record<string, string>;
+        current_period_start?: string;
+        current_period_end?: string;
+      };
+      const metadata = (sub.metadata ?? {}) as Record<string, string>;
+      const { userId, planId } = metadata;
+
+      if (userId && planId) {
+        // Check if subscription already existed before this event (= renewal vs initial activation)
+        const [existingBefore] = await sql`
+          SELECT id FROM subscriptions WHERE polar_subscription_id = ${sub.id}
+        `;
+
+        await sql`
+          INSERT INTO subscriptions (user_id, polar_subscription_id, plan, status)
+          VALUES (${userId}, ${sub.id}, ${planId}, 'active')
+          ON CONFLICT (polar_subscription_id) DO UPDATE
+          SET status = 'active', updated_at = now()
+        `;
+        await sql`
+          UPDATE users SET plan = ${planId}, updated_at = now()
+          WHERE id = ${userId}
+        `;
+
+        // Grant included credits for this billing period
+        const plan = SUBSCRIPTION_PLANS[planId];
+        if (plan?.includedCreditsCents > 0) {
+          await addBonusCredits(userId, plan.includedCreditsCents, "subscription_welcome").catch((err) => {
+            log.error("subscription_credits_failed", {
+              userId, planId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
+        log.info(existingBefore ? "subscription_renewed" : "subscription_activated", { userId, planId });
       }
     }
 
@@ -246,7 +297,7 @@ app.post("/webhook", async (c) => {
       `;
       if (subRow) {
         await sql`
-          UPDATE users SET plan = 'free', updated_at = now()
+          UPDATE users SET plan = 'starter', updated_at = now()
           WHERE id = ${subRow.user_id as string}
         `;
         await sql`

@@ -4,7 +4,13 @@
 
 import { sql, withTx } from "./db-cloud";
 
-/** Get current balance in cents */
+export interface BalanceInfo {
+  balance_cents: number;
+  bonus_cents: number;
+  total_cents: number;
+}
+
+/** Get current balance (balance + bonus) */
 export async function getBalance(userId: string): Promise<number> {
   const [row] = await sql`
     SELECT balance_cents FROM credits WHERE user_id = ${userId}
@@ -12,7 +18,18 @@ export async function getBalance(userId: string): Promise<number> {
   return row?.balance_cents ?? 0;
 }
 
-/** Deduct credits (transactional — prevents overdraft) */
+/** Get full balance info including bonus */
+export async function getBalanceInfo(userId: string): Promise<BalanceInfo> {
+  const [row] = await sql`
+    SELECT balance_cents, bonus_cents FROM credits WHERE user_id = ${userId}
+  `;
+  const balance = (row?.balance_cents as number) ?? 0;
+  const bonus = (row?.bonus_cents as number) ?? 0;
+  return { balance_cents: balance, bonus_cents: bonus, total_cents: balance + bonus };
+}
+
+/** Deduct credits (transactional — prevents overdraft).
+ *  Consumes bonus_cents first, then balance_cents. */
 export async function deductCredits(
   userId: string,
   costCents: number,
@@ -24,35 +41,41 @@ export async function deductCredits(
     description?: string;
   },
 ): Promise<{ success: boolean; newBalance: number }> {
-  // Use a transaction with row-level lock
   const result = await withTx(async (tx) => {
     // Lock the credits row
     const [row] = await tx`
-      SELECT balance_cents FROM credits
+      SELECT balance_cents, bonus_cents FROM credits
       WHERE user_id = ${userId}
       FOR UPDATE
     `;
 
-    if (!row || row.balance_cents < costCents) {
-      return { success: false, newBalance: (row?.balance_cents as number) ?? 0 };
+    const balance = (row?.balance_cents as number) ?? 0;
+    const bonus = (row?.bonus_cents as number) ?? 0;
+    const total = balance + bonus;
+
+    if (!row || total < costCents) {
+      return { success: false, newBalance: balance };
     }
 
-    const newBalance = (row.balance_cents as number) - costCents;
+    // Consume bonus first, then balance
+    const deductBonus = Math.min(costCents, bonus);
+    const deductBalance = costCents - deductBonus;
+    const newBalance = balance - deductBalance;
+    const newBonus = bonus - deductBonus;
 
-    // Update balance
     await tx`
       UPDATE credits
       SET balance_cents = ${newBalance},
+          bonus_cents = ${newBonus},
           total_used_cents = total_used_cents + ${costCents},
           updated_at = now()
       WHERE user_id = ${userId}
     `;
 
-    // Insert transaction record
     await tx`
       INSERT INTO transactions (user_id, type, amount_cents, balance_after_cents,
         description, model, input_tokens, output_tokens)
-      VALUES (${userId}, 'usage', ${-costCents}, ${newBalance},
+      VALUES (${userId}, 'usage', ${-costCents}, ${newBalance + newBonus},
         ${meta.description ?? `${meta.model} via ${meta.provider}`},
         ${meta.model}, ${meta.inputTokens}, ${meta.outputTokens})
     `;
@@ -81,7 +104,6 @@ export async function addCredits(
       return (row?.balance_cents as number) ?? 0;
     }
 
-    // Update balance
     const [row] = await tx`
       UPDATE credits
       SET balance_cents = balance_cents + ${amountCents},
@@ -93,7 +115,6 @@ export async function addCredits(
 
     const newBalance = row.balance_cents as number;
 
-    // Insert transaction record
     await tx`
       INSERT INTO transactions (user_id, type, amount_cents, balance_after_cents,
         description, payment_ref)
@@ -102,6 +123,37 @@ export async function addCredits(
     `;
 
     return newBalance;
+  });
+
+  return result;
+}
+
+/** Add bonus credits (referral rewards, subscription welcome, promos).
+ *  Bonus credits are consumed before regular balance. */
+export async function addBonusCredits(
+  userId: string,
+  bonusCents: number,
+  reason: "referral_welcome" | "referral_earning" | "subscription_welcome" | "promo",
+): Promise<number> {
+  const result = await withTx(async (tx) => {
+    const [row] = await tx`
+      UPDATE credits
+      SET bonus_cents = bonus_cents + ${bonusCents},
+          updated_at = now()
+      WHERE user_id = ${userId}
+      RETURNING balance_cents, bonus_cents
+    `;
+
+    const newBalance = (row?.balance_cents as number) ?? 0;
+    const newBonus = (row?.bonus_cents as number) ?? 0;
+
+    await tx`
+      INSERT INTO transactions (user_id, type, amount_cents, balance_after_cents, description)
+      VALUES (${userId}, 'bonus', ${bonusCents}, ${newBalance + newBonus},
+        ${{ referral_welcome: 'Referral welcome bonus', referral_earning: 'Referral earnings', subscription_welcome: 'Subscription welcome credits', promo: 'Promotional bonus' }[reason]})
+    `;
+
+    return newBalance + newBonus;
   });
 
   return result;

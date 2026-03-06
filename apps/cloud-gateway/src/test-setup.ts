@@ -21,12 +21,28 @@ mock.module("./lib/db-cloud", () => ({
     // @ts-ignore
     (globalThis.__dbMockSqlCalls as unknown[][]).push(values);
     // @ts-ignore
-    return Promise.resolve((globalThis.__dbMockSqlResults as unknown[]).shift() ?? []);
+    const result = (globalThis.__dbMockSqlResults as unknown[]).shift();
+    if (result === undefined) {
+      throw new Error(
+        `sql() was called but no mock result is queued. ` +
+        `Check test setup: add the missing entry to globalThis.__dbMockSqlResults.\n` +
+        `Query params: ${JSON.stringify(values)}`
+      );
+    }
+    return Promise.resolve(result);
   },
   withTx: async (fn: any) => {
     const tx = (strings: TemplateStringsArray, ...values: unknown[]) => {
       // @ts-ignore
-      return Promise.resolve((globalThis.__dbMockTxResults as unknown[]).shift() ?? []);
+      const txResult = (globalThis.__dbMockTxResults as unknown[]).shift();
+      if (txResult === undefined) {
+        throw new Error(
+          `tx() was called inside withTx but no mock tx result is queued. ` +
+          `Check test setup: add the missing entry to globalThis.__dbMockTxResults.\n` +
+          `Query params: ${JSON.stringify(values)}`
+        );
+      }
+      return Promise.resolve(txResult);
     };
     return fn(tx);
   },
@@ -49,8 +65,10 @@ const _credits = await import("./lib/credits");
 // @ts-ignore
 globalThis.__realCredits = {
   getBalance: _credits.getBalance,
+  getBalanceInfo: _credits.getBalanceInfo,
   deductCredits: _credits.deductCredits,
   addCredits: _credits.addCredits,
+  addBonusCredits: _credits.addBonusCredits,
   recordCloudRequest: _credits.recordCloudRequest,
   getTransactions: _credits.getTransactions,
 };

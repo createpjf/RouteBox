@@ -25,6 +25,7 @@ import {
   getUserModelBreakdown,
 } from "../lib/admin-queries";
 import { sql } from "../lib/db-cloud";
+import { processMonthlyReferralEarnings } from "../lib/referrals";
 import type { CloudEnv } from "../types";
 
 const app = new Hono<CloudEnv>();
@@ -129,9 +130,9 @@ app.patch("/users/:id", async (c) => {
   if (!body.plan) {
     return c.json({ error: { message: "plan is required", type: "validation_error" } }, 400);
   }
-  const validPlans = ["free", "pro"];
+  const validPlans = ["starter", "pro", "max"];
   if (!validPlans.includes(body.plan)) {
-    return c.json({ error: { message: "plan must be 'free' or 'pro'", type: "validation_error" } }, 400);
+    return c.json({ error: { message: "plan must be 'starter', 'pro', or 'max'", type: "validation_error" } }, 400);
   }
   try {
     await updateUserPlan(id, body.plan);
@@ -146,8 +147,11 @@ app.patch("/users/:id", async (c) => {
 app.post("/users/:id/adjust", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<{ amountCents: number; reason: string }>();
-  if (typeof body.amountCents !== "number" || body.amountCents === 0) {
-    return c.json({ error: { message: "amountCents must be a non-zero number", type: "validation_error" } }, 400);
+  if (typeof body.amountCents !== "number" || !Number.isInteger(body.amountCents) || body.amountCents === 0) {
+    return c.json({ error: { message: "amountCents must be a non-zero integer", type: "validation_error" } }, 400);
+  }
+  if (Math.abs(body.amountCents) > 10_000_000) {
+    return c.json({ error: { message: "amountCents exceeds maximum allowed adjustment ($100,000)", type: "validation_error" } }, 400);
   }
   if (!body.reason || typeof body.reason !== "string") {
     return c.json({ error: { message: "reason is required", type: "validation_error" } }, 400);
@@ -219,9 +223,9 @@ app.put("/provider-access/:providerName", async (c) => {
   const { setProviderAccess, loadProviderAccess } = await import("../lib/provider-config");
   const providerName = c.req.param("providerName");
   const body = await c.req.json<{ isEnabled: boolean; allowedPlans: string[] }>();
-  const validPlans = ["all", "free", "pro"];
+  const validPlans = ["all", "starter", "pro", "max"];
   if (!Array.isArray(body.allowedPlans) || !body.allowedPlans.every((p: string) => validPlans.includes(p))) {
-    return c.json({ error: { message: "allowedPlans must be array of 'all', 'free', 'pro'", type: "validation_error" } }, 400);
+    return c.json({ error: { message: "allowedPlans must be array of 'all', 'starter', 'pro', 'max'", type: "validation_error" } }, 400);
   }
   await setProviderAccess(providerName, body.isEnabled, body.allowedPlans);
   await loadProviderAccess();
@@ -471,6 +475,19 @@ app.post("/announcements", async (c) => {
   if (body.type && !validTypes.includes(body.type)) {
     return c.json({ error: { message: "type must be info, warning, or error", type: "validation_error" } }, 400);
   }
+  if (body.startsAt && body.endsAt) {
+    const start = new Date(body.startsAt);
+    const end = new Date(body.endsAt);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return c.json({ error: { message: "startsAt and endsAt must be valid dates", type: "validation_error" } }, 400);
+    }
+    if (end <= start) {
+      return c.json({ error: { message: "endsAt must be after startsAt", type: "validation_error" } }, 400);
+    }
+  }
+  if (body.endsAt && !body.startsAt && new Date(body.endsAt) <= new Date()) {
+    return c.json({ error: { message: "endsAt cannot be in the past", type: "validation_error" } }, 400);
+  }
 
   const [row] = await sql`
     INSERT INTO announcements (title, message, type, starts_at, ends_at)
@@ -555,37 +572,129 @@ app.delete("/api-keys/:id", async (c) => {
   return c.json({ success: true });
 });
 
-// ── User API Keys (admin view) ─────────────────────────────────────────────
+// ── GET /revenue/margin — per-model gross margin analysis ─────────────────
 
-app.get("/users/:id/api-keys", async (c) => {
-  const userId = c.req.param("id");
+app.get("/revenue/margin", async (c) => {
   const rows = await sql`
-    SELECT id, name, key_prefix, last_used_at, is_active, created_at
-    FROM api_keys
-    WHERE user_id = ${userId}
-    ORDER BY created_at DESC
+    SELECT
+      model_id,
+      display_name,
+      provider,
+      user_price_input,
+      user_price_output,
+      purchase_price_input,
+      purchase_price_output,
+      profit_bonus,
+      CASE
+        WHEN purchase_price_input IS NOT NULL AND user_price_input IS NOT NULL
+          AND user_price_input > 0
+        THEN ROUND(((user_price_input - purchase_price_input) / user_price_input * 100)::numeric, 1)
+        ELSE NULL
+      END AS margin_input_pct,
+      CASE
+        WHEN purchase_price_output IS NOT NULL AND user_price_output IS NOT NULL
+          AND user_price_output > 0
+        THEN ROUND(((user_price_output - purchase_price_output) / user_price_output * 100)::numeric, 1)
+        ELSE NULL
+      END AS margin_output_pct
+    FROM model_registry
+    WHERE status != 'deprecated'
+    ORDER BY margin_input_pct DESC NULLS LAST, model_id
   `;
-  return c.json({
-    apiKeys: rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      keyPrefix: r.key_prefix,
-      lastUsedAt: r.last_used_at,
-      isActive: r.is_active,
-      createdAt: r.created_at,
-    })),
-  });
+  return c.json({ models: rows });
 });
 
-app.delete("/api-keys/:id", async (c) => {
-  const id = c.req.param("id");
-  const result = await sql`
-    UPDATE api_keys SET is_active = false WHERE id = ${id}
+// ── GET /quota/usage — Starter daily quota usage overview ────────────────
+
+app.get("/quota/usage", async (c) => {
+  const date = c.req.query("date") ?? new Date().toISOString().slice(0, 10);
+  const rows = await sql`
+    SELECT dqu.user_id, u.email, dqu.model_id, dqu.used_count, dqu.quota_date
+    FROM daily_quota_usage dqu
+    JOIN users u ON u.id = dqu.user_id
+    WHERE dqu.quota_date = ${date}
+    ORDER BY dqu.used_count DESC
+    LIMIT 200
   `;
-  if (result.count === 0) {
-    return c.json({ error: { message: "API key not found", type: "not_found" } }, 404);
+  return c.json({ date, usage: rows });
+});
+
+// ── POST /referrals/process — trigger monthly referral earnings settlement ─
+
+app.post("/referrals/process", async (c) => {
+  const rawBody = await c.req.json<{ month?: string }>().catch(() => ({ month: undefined }));
+  const month = (rawBody as { month?: string }).month ?? new Date().toISOString().slice(0, 7);
+  try {
+    const result = await processMonthlyReferralEarnings(month);
+    return c.json({ success: true, month, ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: { message: msg, type: "server_error" } }, 500);
   }
-  return c.json({ success: true });
+});
+
+// ── GET /models/registry/:id/pricing — model pricing detail ─────────────
+
+app.get("/models/registry/:id/pricing", async (c) => {
+  const [row] = await sql`
+    SELECT model_id, display_name, provider,
+           user_price_input, user_price_output,
+           purchase_price_input, purchase_price_output,
+           profit_bonus, price_input, price_output
+    FROM model_registry WHERE id = ${c.req.param("id")}
+  `;
+  if (!row) return c.json({ error: { message: "Model not found", type: "not_found" } }, 404);
+  return c.json(row);
+});
+
+// ── PATCH /models/registry/:id/pricing — update model user/purchase pricing ─
+
+app.patch("/models/registry/:id/pricing", async (c) => {
+  const { reloadRegistry } = await import("../lib/model-registry");
+  const id = c.req.param("id");
+  const body = await c.req.json<{
+    userPriceInput?: number;
+    userPriceOutput?: number;
+    purchasePriceInput?: number;
+    purchasePriceOutput?: number;
+    profitBonus?: number;
+  }>();
+
+  const setObj: Record<string, unknown> = {};
+  if (body.userPriceInput !== undefined) setObj.user_price_input = body.userPriceInput;
+  if (body.userPriceOutput !== undefined) setObj.user_price_output = body.userPriceOutput;
+  if (body.purchasePriceInput !== undefined) setObj.purchase_price_input = body.purchasePriceInput;
+  if (body.purchasePriceOutput !== undefined) setObj.purchase_price_output = body.purchasePriceOutput;
+  if (body.profitBonus !== undefined) setObj.profit_bonus = body.profitBonus;
+
+  if (Object.keys(setObj).length === 0) {
+    return c.json({ error: { message: "No pricing fields to update", type: "validation_error" } }, 400);
+  }
+
+  setObj.updated_at = sql`now()`;
+  const [row] = await sql`
+    UPDATE model_registry SET ${sql(setObj)} WHERE id = ${id} RETURNING *
+  `;
+  if (!row) return c.json({ error: { message: "Model not found", type: "not_found" } }, 404);
+  reloadRegistry();
+  return c.json({ success: true, model: row });
+});
+
+// ── GET /plans/stats — user count + revenue by plan ──────────────────────
+
+app.get("/plans/stats", async (c) => {
+  const rows = await sql`
+    SELECT
+      u.plan,
+      COUNT(*)::int AS user_count,
+      COALESCE(SUM(c.total_used_cents), 0)::int AS total_api_spend_cents,
+      COALESCE(SUM(c.total_deposited_cents), 0)::int AS total_deposited_cents
+    FROM users u
+    LEFT JOIN credits c ON c.user_id = u.id
+    GROUP BY u.plan
+    ORDER BY u.plan
+  `;
+  return c.json({ plans: rows });
 });
 
 export default app;

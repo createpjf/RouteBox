@@ -35,44 +35,46 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
 
   // ── API key path ──────────────────────────────────────────────────────────
   if (token.startsWith("rb_")) {
+    const hash = await sha256Hex(token);
+
+    // DB query in its own try/catch — DB failure → 503, not 401
+    let key: Record<string, unknown> | undefined;
     try {
-      const hash = await sha256Hex(token);
-      const [key] = await sql`
+      [key] = await sql`
         SELECT ak.user_id, ak.key_hash, u.plan, u.email
         FROM api_keys ak
         JOIN users u ON u.id = ak.user_id
         WHERE ak.key_hash = ${hash} AND ak.is_active = true
       `;
-      if (!key) {
-        return c.json(
-          { error: { message: "Invalid or revoked API key", type: "auth_error" } },
-          401,
-        );
-      }
-      // Update last_used_at asynchronously (fire-and-forget)
-      sql`UPDATE api_keys SET last_used_at = now() WHERE key_hash = ${hash}`.catch(() => {});
-
-      c.set("userId", key.user_id);
-      c.set("email", key.email);
-      c.set("userPlan", (key.plan as string) ?? "free");
     } catch {
+      return c.json(
+        { error: { message: "Service temporarily unavailable", type: "server_error" } },
+        503,
+      );
+    }
+
+    if (!key) {
       return c.json(
         { error: { message: "Invalid or revoked API key", type: "auth_error" } },
         401,
       );
     }
+
+    // Update last_used_at asynchronously (fire-and-forget)
+    sql`UPDATE api_keys SET last_used_at = now() WHERE key_hash = ${hash}`.catch(() => {});
+
+    c.set("userId", key.user_id as string);
+    c.set("email", key.email as string);
+    c.set("userPlan", (key.plan as string) ?? "starter");
     await next();
     return;
   }
 
   // ── JWT path ──────────────────────────────────────────────────────────────
+  // Token verification in its own try/catch → 401 on bad token
+  let payload: { sub: string; email: string };
   try {
-    const payload = await verifyToken(token);
-    c.set("userId", payload.sub);
-    c.set("email", payload.email);
-
-    const [user] = await sql`SELECT plan FROM users WHERE id = ${payload.sub}`;
-    c.set("userPlan", (user?.plan as string) ?? "free");
+    payload = await verifyToken(token);
   } catch {
     return c.json(
       { error: { message: "Invalid or expired token", type: "auth_error" } },
@@ -80,5 +82,20 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
     );
   }
 
+  c.set("userId", payload.sub);
+  c.set("email", payload.email);
+
+  // Plan lookup in its own try/catch — DB failure → 503, not 401
+  let user: Record<string, unknown> | undefined;
+  try {
+    [user] = await sql`SELECT plan FROM users WHERE id = ${payload.sub}`;
+  } catch {
+    return c.json(
+      { error: { message: "Service temporarily unavailable", type: "server_error" } },
+      503,
+    );
+  }
+
+  c.set("userPlan", (user?.plan as string) ?? "starter");
   await next();
 }

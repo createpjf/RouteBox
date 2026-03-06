@@ -85,6 +85,23 @@ export const PROVIDER_REGISTRY: ProviderTemplate[] = [
     prefixes: ["openrouter/"],
     format: "openai",
   },
+  {
+    name: "FLock.io",
+    envKey: "FLOCK_API_KEY",
+    baseUrlEnvKey: "FLOCK_BASE_URL",
+    defaultBaseUrl: "https://api.flock.io/v1",
+    prefixes: ["qwen3-", "deepseek-v3"],
+    format: "openai",
+    authHeader: "x-litellm-api-key",
+  },
+  {
+    name: "GLM",
+    envKey: "GLM_API_KEY",
+    baseUrlEnvKey: "GLM_BASE_URL",
+    defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    prefixes: ["glm-"],
+    format: "openai",
+  },
 ];
 
 function env(key: string): string {
