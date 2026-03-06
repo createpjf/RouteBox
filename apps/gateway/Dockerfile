@@ -6,7 +6,6 @@ COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
 COPY src/ src/
-COPY bunfig.toml ./
 
 # ---- Runtime stage ----
 FROM oven/bun:1-slim
