@@ -1,0 +1,22 @@
+{
+  "name": "@routebox/cloud-gateway",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "find . -path ./node_modules -prune -o -name '._*' -delete 2>/dev/null; bun test",
+    "test:watch": "bun test --watch"
+  },
+  "dependencies": {
+    "@polar-sh/sdk": "^0.46.2",
+    "@sentry/bun": "^10.42.0",
+    "hono": "^4",
+    "ioredis": "^5.10.0",
+    "jose": "^6",
+    "postgres": "^3.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

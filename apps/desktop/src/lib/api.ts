@@ -28,10 +28,12 @@ async function request<T>(
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new ApiError(
-          (body as Record<string, string>).error || `HTTP ${res.status}`,
-          res.status
-        );
+        const errObj = (body as any)?.error;
+        const errMsg =
+          typeof errObj === "string"
+            ? errObj
+            : errObj?.message ?? `HTTP ${res.status}`;
+        throw new ApiError(errMsg, res.status);
       }
       return (await res.json()) as T;
     } catch (err) {
@@ -221,6 +223,86 @@ export interface RoutingRulesResponse {
   rules: RoutingRule[];
 }
 
+// ── Cloud Auth / Account / Billing types ─────────────────────────────────
+
+export interface CloudAuthResponse {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    displayName: string | null;
+    plan: string;
+    balanceCents: number;
+  };
+}
+
+export interface CloudAccountResponse {
+  id: string;
+  email: string;
+  displayName: string | null;
+  plan: string;
+  balanceCents: number;
+  totalDepositedCents: number;
+  totalUsedCents: number;
+  createdAt: string;
+}
+
+export interface CloudBalanceResponse {
+  balance_cents: number;
+}
+
+export interface CloudCreditPackage {
+  id: string;
+  amount: number;
+  credits: number;
+  label: string;
+  bonus?: string;
+}
+
+export interface CloudPackagesResponse {
+  packages: CloudCreditPackage[];
+}
+
+export interface CloudCheckoutResponse {
+  url: string;
+  sessionId: string;
+}
+
+export interface CloudTransaction {
+  id: string;
+  type: string;
+  amountCents: number;
+  balanceAfterCents: number;
+  description: string | null;
+  model: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  createdAt: string;
+}
+
+export interface CloudTransactionsResponse {
+  transactions: CloudTransaction[];
+}
+
+export interface CloudSubscriptionPlan {
+  id: string;
+  label: string;
+  monthlyPrice: number;   // cents
+  markup: number;          // multiplier e.g. 1.25
+  features: string[];
+  checkoutUrl?: string;
+}
+
+export interface CloudPlansResponse {
+  plans: CloudSubscriptionPlan[];
+}
+
+export interface CloudReferralResponse {
+  code: string;
+  uses: number;
+  totalRewardCents: number;
+}
+
 export const api = {
   getProviders: () => request<ProvidersResponse>("/api/v1/providers"),
   getModels: () => request<ModelsResponse>("/api/v1/models"),
@@ -389,6 +471,63 @@ export const api = {
       body: JSON.stringify(data),
       retries: 0,
     }),
+
+  // ── Cloud Auth ──────────────────────────────────────────────────────────
+  cloudRegister: (email: string, password: string, name?: string, referralCode?: string) =>
+    request<CloudAuthResponse>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, name, ...(referralCode ? { referralCode } : {}) }),
+      retries: 0,
+    }),
+  cloudLogin: (email: string, password: string) =>
+    request<CloudAuthResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+      retries: 0,
+    }),
+  cloudGetMe: () =>
+    request<{ user: CloudAccountResponse }>("/auth/me"),
+
+  // ── Cloud Account ───────────────────────────────────────────────────────
+  cloudGetAccount: () =>
+    request<CloudAccountResponse>("/account/me"),
+  cloudGetBalance: () =>
+    request<CloudBalanceResponse>("/account/balance"),
+  cloudGetTransactions: (limit = 50, offset = 0) =>
+    request<CloudTransactionsResponse>(`/account/transactions?limit=${limit}&offset=${offset}`),
+
+  // ── Cloud Billing ───────────────────────────────────────────────────────
+  cloudGetPackages: () =>
+    request<CloudPackagesResponse>("/billing/packages"),
+  cloudCreateCheckout: (packageId: string) =>
+    request<CloudCheckoutResponse>("/billing/checkout", {
+      method: "POST",
+      body: JSON.stringify({ packageId }),
+      retries: 0,
+    }),
+
+  // ── Cloud Analytics ─────────────────────────────────────────────────────
+  cloudGetAnalytics: (period = "today") =>
+    request<AnalyticsResponse>(`/account/analytics?period=${period}`),
+
+  // ── Cloud Subscription ──────────────────────────────────────────────────
+  cloudGetPlans: () =>
+    request<CloudPlansResponse>("/billing/plans"),
+  cloudSubscribe: (planId: string) =>
+    request<CloudCheckoutResponse>("/billing/subscribe", {
+      method: "POST",
+      body: JSON.stringify({ planId }),
+      retries: 0,
+    }),
+  cloudCancelSubscription: () =>
+    request<{ success: boolean }>("/billing/cancel-subscription", {
+      method: "POST",
+      retries: 0,
+    }),
+
+  // ── Cloud Referral ──────────────────────────────────────────────────────
+  cloudGetReferral: () =>
+    request<CloudReferralResponse>("/account/referral"),
 };
 
 // V2 response types

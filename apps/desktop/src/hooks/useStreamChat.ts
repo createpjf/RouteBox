@@ -13,6 +13,7 @@ interface UseStreamChatReturn {
   meta: RouteboxMeta | null;
   sendMessage: (messages: ChatMessage[], model: string, options?: { search?: boolean }) => Promise<void>;
   abort: () => void;
+  clearStream: () => void;
 }
 
 export function useStreamChat(): UseStreamChatReturn {
@@ -25,6 +26,11 @@ export function useStreamChat(): UseStreamChatReturn {
     abortRef.current?.abort();
     abortRef.current = null;
     setStreaming(false);
+  }, []);
+
+  const clearStream = useCallback(() => {
+    setStreamedText("");
+    setMeta(null);
   }, []);
 
   const sendMessage = useCallback(
@@ -111,5 +117,5 @@ export function useStreamChat(): UseStreamChatReturn {
     [],
   );
 
-  return { streaming, streamedText, meta, sendMessage, abort };
+  return { streaming, streamedText, meta, sendMessage, abort, clearStream };
 }

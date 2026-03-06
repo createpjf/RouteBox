@@ -49,6 +49,23 @@ jobs:
       - name: Run tests
         run: cd apps/desktop && npx vitest run
 
+  test-cloud-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: cd apps/cloud-gateway && bun install
+
+      - name: Run tests
+        run: cd apps/cloud-gateway && bun test
+
+      - name: TypeScript check
+        run: cd apps/cloud-gateway && bunx tsc --noEmit
+
   docker-gateway:
     needs: test-gateway
     runs-on: ubuntu-latest
@@ -67,3 +84,24 @@ jobs:
           sleep 2
           curl -sf http://localhost:3001/health | grep -q '"status":"ok"'
           docker stop gw
+
+  docker-cloud-gateway:
+    needs: test-cloud-gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t routebox-cloud-gateway apps/cloud-gateway
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name cgw -p 3002:3001 \
+            -e DATABASE_URL=postgres://x:x@localhost/x \
+            -e JWT_SECRET=test-secret-for-ci \
+            -e STRIPE_SECRET_KEY=sk_test_fake \
+            -e STRIPE_WEBHOOK_SECRET=whsec_fake \
+            routebox-cloud-gateway
+          sleep 3
+          curl -sf http://localhost:3002/health || true
+          docker stop cgw

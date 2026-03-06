@@ -31,8 +31,17 @@ jobs:
       - run: cd apps/desktop && npx tsc --noEmit
       - run: cd apps/desktop && npx vitest run
 
+  test-cloud-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd apps/cloud-gateway && bun install
+      - run: cd apps/cloud-gateway && bun test
+      - run: cd apps/cloud-gateway && bunx tsc --noEmit
+
   build-macos:
-    needs: [test-gateway, test-desktop]
+    needs: [test-gateway, test-desktop, test-cloud-gateway]
     runs-on: macos-14
     strategy:
       matrix:
@@ -115,6 +124,41 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: apps/gateway
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  docker-cloud-gateway:
+    needs: [test-cloud-gateway]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/cloud-gateway
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/cloud-gateway
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RouteBox — One API, All AI Models</title>
+  <meta name="description" content="RouteBox is a lightweight desktop app that routes your AI requests to the best model at the lowest cost. One unified API for OpenAI, Claude, Gemini, DeepSeek and more." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Segoe UI', 'Roboto', 'sans-serif'] },
+          colors: {
+            apple: { bg: '#f5f5f7', text: '#1d1d1f', sub: '#86868b', muted: '#aeaeb2' },
+            accent: { DEFAULT: '#34C759', light: '#e8f5e9' },
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; color: #1d1d1f; }
+    .gradient-text { background: linear-gradient(135deg, #34C759 0%, #007AFF 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .glass { background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.5); }
+    .feature-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: transform 0.2s, box-shadow 0.2s; }
+    .feature-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .hero-bg { background: linear-gradient(180deg, #f5f5f7 0%, #ffffff 50%, #f5f5f7 100%); }
+    .pricing-card { border: 1px solid #e5e5e5; border-radius: 20px; background: #fff; }
+    .pricing-card.pro { border: 2px solid #34C759; background: linear-gradient(180deg, #f8fff9 0%, #fff 100%); }
+    .check { color: #34C759; font-weight: 600; }
+    .download-btn { background: linear-gradient(135deg, #1d1d1f 0%, #424245 100%); color: #fff; border-radius: 12px; padding: 14px 32px; font-weight: 600; font-size: 16px; display: inline-flex; align-items: center; gap: 8px; transition: transform 0.15s, box-shadow 0.15s; }
+    .download-btn:hover { transform: scale(1.02); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+    .download-btn:active { transform: scale(0.98); }
+    .pro-btn { background: linear-gradient(135deg, #34C759 0%, #30D158 100%); color: #fff; border-radius: 12px; padding: 14px 32px; font-weight: 600; font-size: 16px; transition: transform 0.15s; }
+    .pro-btn:hover { transform: scale(1.02); }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+    .float { animation: float 6s ease-in-out infinite; }
+  </style>
+</head>
+<body class="bg-apple-bg">
+
+  <!-- ── Nav ──────────────────────────────────────────────────────────────── -->
+  <nav class="fixed top-0 w-full z-50 glass">
+    <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
+      <a href="#" class="flex items-center gap-2">
+        <span class="text-xl">📦</span>
+        <span class="font-bold text-lg text-apple-text">RouteBox</span>
+      </a>
+      <div class="hidden sm:flex items-center gap-8 text-sm text-apple-sub">
+        <a href="#features" class="hover:text-apple-text transition">Features</a>
+        <a href="#pricing" class="hover:text-apple-text transition">Pricing</a>
+        <a href="#download" class="hover:text-apple-text transition">Download</a>
+      </div>
+      <a href="#download" class="text-sm font-medium text-accent hover:underline">Get Started</a>
+    </div>
+  </nav>
+
+  <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+  <section class="hero-bg pt-32 pb-24 px-6">
+    <div class="max-w-3xl mx-auto text-center">
+      <div class="inline-block px-4 py-1.5 rounded-full text-xs font-medium bg-accent/10 text-accent mb-6">
+        Now available for macOS
+      </div>
+      <h1 class="text-5xl sm:text-6xl font-bold tracking-tight leading-tight mb-6">
+        One API.<br /><span class="gradient-text">All AI Models.</span>
+      </h1>
+      <p class="text-lg sm:text-xl text-apple-sub max-w-xl mx-auto mb-10 leading-relaxed">
+        RouteBox is a lightweight desktop app that intelligently routes your AI requests
+        to the best model — saving you money while keeping things simple.
+      </p>
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="#download" class="download-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+          Download for macOS
+        </a>
+        <a href="https://github.com/nicepkg/routebox" target="_blank" class="text-sm font-medium text-apple-sub hover:text-apple-text transition flex items-center gap-1.5">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Logos / Models ───────────────────────────────────────────────────── -->
+  <section class="py-12 px-6">
+    <div class="max-w-3xl mx-auto text-center">
+      <p class="text-xs font-medium text-apple-muted uppercase tracking-widest mb-6">Works with all major providers</p>
+      <div class="flex flex-wrap items-center justify-center gap-8 text-apple-sub text-sm font-medium">
+        <span class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg bg-black flex items-center justify-center text-white text-xs font-bold">O</span>
+          OpenAI
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg bg-orange-600 flex items-center justify-center text-white text-xs font-bold">A</span>
+          Anthropic
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center text-white text-xs font-bold">G</span>
+          Google
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">D</span>
+          DeepSeek
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg bg-purple-500 flex items-center justify-center text-white text-xs font-bold">M</span>
+          MiniMax
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features ─────────────────────────────────────────────────────────── -->
+  <section id="features" class="py-20 px-6">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center mb-16">
+        <h2 class="text-3xl sm:text-4xl font-bold mb-4">Everything you need.<br />Nothing you don't.</h2>
+        <p class="text-apple-sub text-lg max-w-lg mx-auto">A single app replaces multiple API dashboards, SDKs, and billing accounts.</p>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Feature 1 -->
+        <div class="feature-card p-6">
+          <div class="w-10 h-10 rounded-2xl bg-green-50 flex items-center justify-center text-xl mb-4">🔀</div>
+          <h3 class="font-semibold text-base mb-2">Smart Routing</h3>
+          <p class="text-sm text-apple-sub leading-relaxed">Automatically routes each request to the best model based on quality, speed, and cost. One endpoint, many models.</p>
+        </div>
+        <!-- Feature 2 -->
+        <div class="feature-card p-6">
+          <div class="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-xl mb-4">💰</div>
+          <h3 class="font-semibold text-base mb-2">Cost Tracking</h3>
+          <p class="text-sm text-apple-sub leading-relaxed">Real-time usage dashboard with per-model breakdowns, daily trends, and savings reports. Know exactly where your money goes.</p>
+        </div>
+        <!-- Feature 3 -->
+        <div class="feature-card p-6">
+          <div class="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center text-xl mb-4">🔌</div>
+          <h3 class="font-semibold text-base mb-2">OpenAI-Compatible API</h3>
+          <p class="text-sm text-apple-sub leading-relaxed">Drop-in replacement for OpenAI. Change one URL and instantly access GPT-4o, Claude, Gemini, DeepSeek and more.</p>
+        </div>
+        <!-- Feature 4 -->
+        <div class="feature-card p-6">
+          <div class="w-10 h-10 rounded-2xl bg-orange-50 flex items-center justify-center text-xl mb-4">🖥️</div>
+          <h3 class="font-semibold text-base mb-2">Native Desktop App</h3>
+          <p class="text-sm text-apple-sub leading-relaxed">Built with Tauri for macOS. Runs a local gateway on your machine — your API keys never leave your device.</p>
+        </div>
+        <!-- Feature 5 -->
+        <div class="feature-card p-6">
+          <div class="w-10 h-10 rounded-2xl bg-red-50 flex items-center justify-center text-xl mb-4">☁️</div>
+          <h3 class="font-semibold text-base mb-2">Cloud Mode</h3>
+          <p class="text-sm text-apple-sub leading-relaxed">No API keys? Use RouteBox Cloud. Pre-pay credits, access all models instantly. Perfect for getting started fast.</p>
+        </div>
+        <!-- Feature 6 -->
+        <div class="feature-card p-6">
+          <div class="w-10 h-10 rounded-2xl bg-yellow-50 flex items-center justify-center text-xl mb-4">📊</div>
+          <h3 class="font-semibold text-base mb-2">Analytics & Insights</h3>
+          <p class="text-sm text-apple-sub leading-relaxed">7-day trends, model comparisons, provider breakdowns. See what works and optimize your AI spending.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How it works ─────────────────────────────────────────────────────── -->
+  <section class="py-20 px-6 bg-white">
+    <div class="max-w-4xl mx-auto">
+      <div class="text-center mb-16">
+        <h2 class="text-3xl sm:text-4xl font-bold mb-4">Three steps. That's it.</h2>
+      </div>
+
+      <div class="grid sm:grid-cols-3 gap-8">
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full bg-apple-bg flex items-center justify-center text-lg font-bold text-accent mx-auto mb-4">1</div>
+          <h3 class="font-semibold mb-2">Download & Install</h3>
+          <p class="text-sm text-apple-sub">Install the macOS app. It sets up a local API gateway automatically.</p>
+        </div>
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full bg-apple-bg flex items-center justify-center text-lg font-bold text-accent mx-auto mb-4">2</div>
+          <h3 class="font-semibold mb-2">Add Your API Keys</h3>
+          <p class="text-sm text-apple-sub">Paste your OpenAI, Anthropic, or Google keys. Or use Cloud mode with pre-paid credits.</p>
+        </div>
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full bg-apple-bg flex items-center justify-center text-lg font-bold text-accent mx-auto mb-4">3</div>
+          <h3 class="font-semibold mb-2">Use One API Endpoint</h3>
+          <p class="text-sm text-apple-sub">Point your code to <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">localhost:3001/v1</code>. RouteBox handles the rest.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Pricing ──────────────────────────────────────────────────────────── -->
+  <section id="pricing" class="py-20 px-6">
+    <div class="max-w-4xl mx-auto">
+      <div class="text-center mb-16">
+        <h2 class="text-3xl sm:text-4xl font-bold mb-4">Simple, transparent pricing</h2>
+        <p class="text-apple-sub text-lg">Use your own keys for free, or let us handle it with Cloud mode.</p>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+        <!-- Free -->
+        <div class="pricing-card p-8">
+          <div class="text-sm font-medium text-apple-sub mb-2">Free</div>
+          <div class="text-4xl font-bold mb-1">$0</div>
+          <div class="text-sm text-apple-muted mb-6">forever</div>
+          <ul class="space-y-3 text-sm mb-8">
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Use your own API keys</li>
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Smart routing engine</li>
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Real-time cost tracking</li>
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> All supported models</li>
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Analytics dashboard</li>
+          </ul>
+          <a href="#download" class="block text-center py-3 px-6 rounded-xl border border-gray-200 text-sm font-medium hover:bg-gray-50 transition">
+            Download Free
+          </a>
+        </div>
+
+        <!-- Pro (Cloud) -->
+        <div class="pricing-card pro p-8 relative">
+          <div class="absolute -top-3 right-6 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">Popular</div>
+          <div class="text-sm font-medium text-accent mb-2">Pro (Cloud)</div>
+          <div class="text-4xl font-bold mb-1">$9.90<span class="text-lg font-normal text-apple-sub">/mo</span></div>
+          <div class="text-sm text-apple-muted mb-6">+ pay-as-you-go credits</div>
+          <ul class="space-y-3 text-sm mb-8">
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> No API keys needed</li>
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> <strong>Only 10% markup</strong> (vs 25% Free Cloud)</li>
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> All Free features included</li>
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Priority routing & speed</li>
+            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Pre-paid credit balance</li>
+          </ul>
+          <a href="https://api.routebox.dev" class="pro-btn block text-center">
+            Get Pro
+          </a>
+        </div>
+      </div>
+
+      <div class="text-center mt-8">
+        <p class="text-xs text-apple-muted">Cloud mode: top-up credits ($5, $20, or custom). Pay only for what you use. No monthly minimums on Free tier.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Download ─────────────────────────────────────────────────────────── -->
+  <section id="download" class="py-20 px-6 bg-white">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl sm:text-4xl font-bold mb-4">Ready to simplify your AI stack?</h2>
+      <p class="text-apple-sub text-lg mb-10 max-w-lg mx-auto">Download RouteBox for macOS and start routing AI requests in under a minute.</p>
+
+      <div class="flex flex-col items-center gap-4">
+        <a href="https://github.com/nicepkg/routebox/releases/latest" target="_blank" class="download-btn text-lg">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 0-3.16 19.5c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.1.39-2 1.03-2.7-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.56 9.56 0 0 1 5 0c1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.7 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></svg>
+          Download .dmg (macOS)
+        </a>
+        <div class="flex items-center gap-6 text-xs text-apple-muted">
+          <span>macOS 11+ (Apple Silicon & Intel)</span>
+          <span>~3 MB</span>
+          <span>Code-signed</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ───────────────────────────────────────────────────────────── -->
+  <footer class="py-12 px-6 border-t border-gray-100">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">📦</span>
+        <span class="font-semibold text-sm text-apple-text">RouteBox</span>
+        <span class="text-xs text-apple-muted ml-2">&copy; 2025</span>
+      </div>
+      <div class="flex items-center gap-6 text-xs text-apple-sub">
+        <a href="https://github.com/nicepkg/routebox" target="_blank" class="hover:text-apple-text transition">GitHub</a>
+        <a href="https://api.routebox.dev" class="hover:text-apple-text transition">API</a>
+        <a href="mailto:support@routebox.dev" class="hover:text-apple-text transition">Contact</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

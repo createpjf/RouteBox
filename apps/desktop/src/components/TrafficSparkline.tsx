@@ -1,5 +1,5 @@
 import { Activity } from "lucide-react";
-import { AreaChart, Area, ResponsiveContainer, Tooltip } from "recharts";
+import { BarChart, Bar, ResponsiveContainer, Tooltip, Cell } from "recharts";
 import type { TrafficPoint } from "@/types/stats";
 
 interface TrafficSparklineProps {
@@ -21,24 +21,19 @@ export function TrafficSparkline({ data }: TrafficSparklineProps) {
         </div>
         {hasTraffic && (
           <span className="text-[11px] text-[#C7C7CC]">
-            Peak: {peak} req/s
+            Peak: {peak} req/min
           </span>
         )}
       </div>
       {!hasTraffic ? (
-        <div className="flex items-center justify-center h-[44px]">
+        <div className="flex items-center justify-center h-[56px]">
           <p className="text-[11px] text-text-tertiary">No traffic yet</p>
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={44}>
-          <AreaChart data={data} margin={{ top: 2, right: 2, bottom: 0, left: 2 }}>
-            <defs>
-              <linearGradient id="trafficGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#1D1D1F" stopOpacity={0.06} />
-                <stop offset="100%" stopColor="#1D1D1F" stopOpacity={0} />
-              </linearGradient>
-            </defs>
+        <ResponsiveContainer width="100%" height={56}>
+          <BarChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
             <Tooltip
+              cursor={{ fill: "rgba(0,0,0,0.03)", radius: 2 }}
               contentStyle={{
                 background: "#FFFFFF",
                 border: "0.5px solid rgba(0, 0, 0, 0.08)",
@@ -52,16 +47,16 @@ export function TrafficSparkline({ data }: TrafficSparklineProps) {
               labelStyle={{ display: "none" }}
               formatter={(value: number) => [`${value} req/min`, ""]}
             />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke="rgba(29,29,31,0.5)"
-              fill="url(#trafficGrad)"
-              strokeWidth={1.8}
-              dot={false}
-              activeDot={{ r: 3, fill: "#1D1D1F", strokeWidth: 0 }}
-            />
-          </AreaChart>
+            <Bar dataKey="value" radius={[2, 2, 0, 0]} maxBarSize={8}>
+              {data.map((entry, index) => (
+                <Cell
+                  key={index}
+                  fill={entry.value > 0 ? "#1D1D1F" : "transparent"}
+                  fillOpacity={entry.value > 0 ? 0.7 : 0}
+                />
+              ))}
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       )}
     </div>
