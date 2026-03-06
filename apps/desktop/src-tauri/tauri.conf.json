@@ -87,7 +87,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENBNkM3NjI5ODU0QzM5N0YKUldSL09VeUZLWFpzeWpqOFdDZWRRcmVNY3p3dGwvajlHd211YnRwZFJqZVRUOE9Oc0g3MTY2RzEK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERDMzIwODM1RDZFMjRCRkUKUldUK1MrTFdOUWd5M05HM1htelJYSnJZZDYvZHlOOGxzUlhWNzhBS1FQVkgvZzlFNmJUYytDQXMK",
       "endpoints": [
         "https://github.com/createpjf/RouteBox/releases/latest/download/latest.json"
       ]
