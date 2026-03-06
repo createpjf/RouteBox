@@ -15,6 +15,7 @@ type LocalStep = 1 | 2;
 export function Onboarding({ gatewayMode, hasProviders, authToken, onDismiss }: OnboardingProps) {
   const [step, setStep] = useState<LocalStep>(1);
   const [copiedField, setCopiedField] = useState<"url" | "token" | "curl" | null>(null);
+  const [tokenTimeout, setTokenTimeout] = useState(false);
 
   // Auto-advance step 1 → 2 when providers configured (local only)
   useEffect(() => {
@@ -23,6 +24,15 @@ export function Onboarding({ gatewayMode, hasProviders, authToken, onDismiss }: 
       return () => clearTimeout(timer);
     }
   }, [gatewayMode, step, hasProviders]);
+
+  // Show error if token hasn't appeared within 6s on step 2
+  useEffect(() => {
+    if (!authToken && step === 2) {
+      const t = setTimeout(() => setTokenTimeout(true), 6000);
+      return () => clearTimeout(t);
+    }
+    setTokenTimeout(false);
+  }, [authToken, step]);
 
   const handleCopy = useCallback((text: string, field: "url" | "token" | "curl") => {
     navigator.clipboard.writeText(text).then(() => {
@@ -71,6 +81,7 @@ export function Onboarding({ gatewayMode, hasProviders, authToken, onDismiss }: 
             <StepReady
               gatewayUrl={gatewayUrl}
               authToken={authToken}
+              tokenTimeout={tokenTimeout}
               copiedField={copiedField}
               onCopy={handleCopy}
               onDismiss={onDismiss}
@@ -115,6 +126,12 @@ function CloudConfirmation({ onDismiss }: { onDismiss: () => void }) {
         Open <span className="font-medium text-text-secondary">Settings → Gateway Mode</span> to sign in to your cloud account.
       </p>
 
+      <p className="text-[11px] text-text-tertiary leading-relaxed text-center">
+        Your gateway endpoint and API key are shown in the{" "}
+        <span className="font-medium text-text-secondary">Account tab</span>{" "}
+        after signing in.
+      </p>
+
       <button
         onClick={onDismiss}
         className="btn-primary w-full !h-10 !text-[14px]"
@@ -143,11 +160,12 @@ function StepProviders() {
   );
 }
 
-function CopyButton({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
+function CopyButton({ copied, onCopy, disabled }: { copied: boolean; onCopy: () => void; disabled?: boolean }) {
   return (
     <button
       onClick={onCopy}
-      className="flex items-center gap-1 text-[11px] font-medium text-text-secondary hover:text-text-primary h-7 px-2 rounded-lg hover:bg-bg-input transition-colors shrink-0"
+      disabled={disabled}
+      className="flex items-center gap-1 text-[11px] font-medium text-text-secondary hover:text-text-primary h-7 px-2 rounded-lg hover:bg-bg-input transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
     >
       {copied ? (
         <>
@@ -167,17 +185,24 @@ function CopyButton({ copied, onCopy }: { copied: boolean; onCopy: () => void })
 function StepReady({
   gatewayUrl,
   authToken,
+  tokenTimeout,
   copiedField,
   onCopy,
   onDismiss,
 }: {
   gatewayUrl: string;
   authToken: string;
+  tokenTimeout: boolean;
   copiedField: "url" | "token" | "curl" | null;
   onCopy: (text: string, field: "url" | "token" | "curl") => void;
   onDismiss: () => void;
 }) {
-  const tokenDisplay = authToken || "loading...";
+  const tokenReady = !!authToken;
+  const tokenDisplay = authToken
+    ? authToken
+    : tokenTimeout
+      ? "Gateway not ready — check Settings"
+      : "Loading…";
   const curlCommand = `curl ${gatewayUrl}/v1/chat/completions \\
   -H "Authorization: Bearer ${authToken || "YOUR_TOKEN"}" \\
   -H "Content-Type: application/json" \\
@@ -226,6 +251,7 @@ function StepReady({
           <CopyButton
             copied={copiedField === "token"}
             onCopy={() => onCopy(authToken, "token")}
+            disabled={!tokenReady}
           />
         </div>
         <p className="text-[10px] text-text-tertiary mt-1.5 text-left">
@@ -257,6 +283,7 @@ client = OpenAI(
           <CopyButton
             copied={copiedField === "curl"}
             onCopy={() => onCopy(curlCommand, "curl")}
+            disabled={!tokenReady}
           />
         </div>
         <pre className="text-[11px] font-mono text-text-secondary bg-bg-input p-2.5 rounded-lg overflow-x-auto leading-relaxed whitespace-pre-wrap break-all">

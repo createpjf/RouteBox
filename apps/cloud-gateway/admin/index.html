@@ -251,6 +251,36 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+    /* Sidebar layout */
+    .sidebar {
+      width: 220px; min-width: 220px;
+      background: rgba(255,255,255,0.04);
+      border-right: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      display: flex; flex-direction: column;
+      height: 100vh; position: sticky; top: 0;
+      overflow-y: auto;
+    }
+    .nav-group-label {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--text-dim);
+      padding: 0 12px; margin: 16px 0 4px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 12px; border-radius: 8px; margin: 1px 8px;
+      font-size: 13px; font-weight: 500; color: var(--text-muted);
+      cursor: pointer; transition: all 0.15s; border: 1px solid transparent;
+    }
+    .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+    .nav-item.active {
+      background: linear-gradient(135deg, rgba(139,92,246,0.25), rgba(6,182,212,0.2));
+      color: var(--text); border-color: rgba(139,92,246,0.3);
+    }
+    .nav-item svg { flex-shrink: 0; opacity: 0.7; }
+    .nav-item.active svg { opacity: 1; }
   </style>
 </head>
 <body>
@@ -294,25 +324,102 @@
   </div>
 
   <!-- Dashboard -->
-  <div id="dashboard">
-    <!-- Header -->
-    <div class="sticky top-0 z-10" style="background:rgba(8,8,16,0.7);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,0.07);">
-      <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#06B6D4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          </div>
-          <h1 class="text-base font-bold" style="color:var(--text)">RouteBox Admin</h1>
-          <span id="admin-email" class="text-xs" style="color:var(--text-dim)"></span>
+  <div id="dashboard" style="display:none;flex-direction:row;height:100vh;overflow:hidden;">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <!-- Logo + Title -->
+    <div style="padding:20px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.07);">
+      <div class="flex items-center gap-2" style="margin-bottom:6px;">
+        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#06B6D4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         </div>
-        <div class="flex items-center gap-3">
-          <button onclick="loadDashboard()" class="text-xs transition" style="color:var(--purple)">&#8635; Refresh</button>
-          <button onclick="logout()" class="text-xs transition" style="color:var(--text-dim)">Logout</button>
-        </div>
+        <span class="text-sm font-bold" style="color:var(--text)">RouteBox Admin</span>
       </div>
+      <span id="admin-email" class="text-xs" style="color:var(--text-dim);display:block;padding-left:2px;"></span>
     </div>
 
-    <div class="max-w-6xl mx-auto px-6 py-6 space-y-6">
+    <!-- Nav -->
+    <nav style="flex:1;padding:8px 0;">
+      <!-- OVERVIEW -->
+      <div class="nav-group-label">Overview</div>
+      <div class="nav-item tab active" data-tab="dashboard" onclick="switchTab('dashboard')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </div>
+
+      <!-- USERS -->
+      <div class="nav-group-label">Users</div>
+      <div class="nav-item tab" data-tab="users" onclick="switchTab('users')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Users
+      </div>
+      <div class="nav-item tab" data-tab="transactions" onclick="switchTab('transactions')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Transactions
+      </div>
+
+      <!-- MODELS -->
+      <div class="nav-group-label">Models</div>
+      <div class="nav-item tab" data-tab="models" onclick="switchTab('models')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Usage
+      </div>
+      <div class="nav-item tab" data-tab="registry" onclick="switchTab('registry')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        Registry
+      </div>
+
+      <!-- INFRASTRUCTURE -->
+      <div class="nav-group-label">Infrastructure</div>
+      <div class="nav-item tab" data-tab="providers" onclick="switchTab('providers')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        Providers
+      </div>
+      <div class="nav-item tab" data-tab="keys" onclick="switchTab('keys')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        Keys
+      </div>
+      <div class="nav-item tab" data-tab="access" onclick="switchTab('access')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Access
+      </div>
+
+      <!-- BILLING -->
+      <div class="nav-group-label">Billing</div>
+      <div class="nav-item tab" data-tab="packages" onclick="switchTab('packages')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        Packages
+      </div>
+      <div class="nav-item tab" data-tab="referrals" onclick="switchTab('referrals')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Referrals
+      </div>
+
+      <!-- SYSTEM -->
+      <div class="nav-group-label">System</div>
+      <div class="nav-item tab" data-tab="announcements" onclick="switchTab('announcements')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>
+        Announcements
+      </div>
+    </nav>
+
+    <!-- Bottom actions -->
+    <div style="padding:12px 8px;border-top:1px solid rgba(255,255,255,0.07);display:flex;gap:8px;">
+      <button onclick="loadDashboard()" class="text-xs transition" style="flex:1;padding:7px 10px;border-radius:8px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.25);color:var(--purple);cursor:pointer;">&#8635; Refresh</button>
+      <button onclick="logout()" class="text-xs transition" style="flex:1;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim);cursor:pointer;">Logout</button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="flex-1" style="overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:24px;">
+
+    <!-- Tab: Dashboard (stat cards + charts) -->
+    <div id="tab-dashboard">
+      <div style="margin-bottom:20px;">
+        <h2 class="text-lg font-bold" style="color:var(--text)">Dashboard</h2>
+        <p class="text-xs" style="color:var(--text-dim);margin-top:2px;">Overview of your RouteBox gateway</p>
+      </div>
       <!-- Stat Cards -->
       <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="stat-cards">
         <div class="card p-4"><div class="stat-label">Total Users</div><div class="stat-value" id="s-users">-</div><div class="stat-sub" id="s-users-sub"></div></div>
@@ -333,23 +440,10 @@
           <div class="chart-container"><canvas id="chart-revenue"></canvas></div>
         </div>
       </div>
+    </div>
 
-      <!-- Tabs -->
-      <div class="flex items-center gap-1 rounded-xl p-1 w-fit flex-wrap" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);">
-        <div class="tab active" data-tab="users" onclick="switchTab('users')">Users</div>
-        <div class="tab" data-tab="transactions" onclick="switchTab('transactions')">Transactions</div>
-        <div class="tab" data-tab="models" onclick="switchTab('models')">Model Usage</div>
-        <div class="tab" data-tab="registry" onclick="switchTab('registry')">Registry</div>
-        <div class="tab" data-tab="providers" onclick="switchTab('providers')">Providers</div>
-        <div class="tab" data-tab="keys" onclick="switchTab('keys')">API Keys</div>
-        <div class="tab" data-tab="access" onclick="switchTab('access')">Access</div>
-        <div class="tab" data-tab="packages" onclick="switchTab('packages')">Packages</div>
-        <div class="tab" data-tab="announcements" onclick="switchTab('announcements')">Announcements</div>
-        <div class="tab" data-tab="referrals" onclick="switchTab('referrals')">Referrals</div>
-      </div>
-
-      <!-- Tab Content -->
-      <div id="tab-users" class="card overflow-hidden">
+    <!-- Tab content divs -->
+    <div id="tab-users" class="card overflow-hidden">
         <div class="p-3 flex items-center gap-3" style="border-bottom:1px solid var(--border)">
           <input id="user-search" type="text" placeholder="Search by email..." class="input-sm w-64"
             oninput="debouncedSearchUsers(this.value)" />
@@ -722,8 +816,10 @@
           </table>
         </div>
       </div>
-    </div>
-  </div>
+
+  </main>
+
+</div>
 
 <script>
 const API_BASE = location.origin;
@@ -793,7 +889,7 @@ function logout() {
 
 async function showDashboard(email) {
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('dashboard').style.display = 'flex';
   document.getElementById('admin-email').textContent = email || '';
   await loadDashboard();
 }
@@ -1483,7 +1579,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab[data-tab]').forEach(el => el.classList.remove('active'));
   document.querySelector(`[data-tab="${name}"]`).classList.add('active');
 
-  ['users', 'transactions', 'models', 'registry', 'providers', 'keys', 'access', 'packages', 'announcements', 'referrals'].forEach(t => {
+  ['dashboard', 'users', 'transactions', 'models', 'registry', 'providers', 'keys', 'access', 'packages', 'announcements', 'referrals'].forEach(t => {
     document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
   });
 }

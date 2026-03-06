@@ -142,9 +142,13 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   if (providers.length === 0) {
     return (
       <div className="glass-card-static p-3">
-        <p className="text-[11px] text-text-tertiary text-center">
+        <p className="text-[11px] text-text-tertiary text-center mb-2">
           Connect to gateway to manage providers
         </p>
+        <button onClick={fetchRegistry} className="flex items-center gap-1 mx-auto text-[11px] text-[#007AFF] hover:underline">
+          <RefreshCw size={11} strokeWidth={1.75} />
+          Refresh
+        </button>
       </div>
     );
   }

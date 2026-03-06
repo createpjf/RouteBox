@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, LogOut, Zap, Copy, Gift, Crown, Wifi, Server, Settings, ArrowRight, Check } from "lucide-react";
+import { Loader2, LogOut, Zap, Copy, Gift, Crown, Wifi, Server, ArrowRight, Check } from "lucide-react";
 import clsx from "clsx";
 import {
   getGatewayMode,
@@ -9,13 +9,43 @@ import {
 import { api, type CloudCreditPackage } from "@/lib/api";
 import { ProviderKeyManager } from "./ProviderKeyManager";
 
+function CopyRow({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  }, [value]);
+  const display = secret ? (value ? value.slice(0, 8) + "…" : "—") : value;
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <span className="text-[10px] text-[#86868B] w-14 shrink-0">{label}</span>
+      <code className="flex-1 text-[10px] font-mono text-[#1D1D1F] bg-[#F2F2F7] px-2 py-1 rounded truncate">
+        {display}
+      </code>
+      <button
+        onClick={handleCopy}
+        className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-[#E8E8ED] transition-colors shrink-0"
+        title={`Copy ${label}`}
+      >
+        {copied
+          ? <Check size={11} strokeWidth={2.5} className="text-[#34C759]" />
+          : <Copy size={11} strokeWidth={1.75} className="text-[#86868B]" />
+        }
+      </button>
+    </div>
+  );
+}
+
 async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<T>(cmd, args);
 }
 
-export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void }) {
-  const [mode] = useState(getGatewayMode);
+export function AccountPage({ onGoToSettings, onCloudLoginSuccess, gatewayRunningAt }: { onGoToSettings?: () => void; onCloudLoginSuccess?: () => void; gatewayRunningAt?: number }) {
+  const mode = getGatewayMode();
   const isCloud = mode === "cloud";
 
   const [cloudUser, setCloudUser] = useState<{
@@ -26,11 +56,13 @@ export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void })
   const [cloudLoading, setCloudLoading] = useState(false);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [cloudPackages, setCloudPackages] = useState<CloudCreditPackage[]>([]);
+  const [packagesError, setPackagesError] = useState(false);
   const [cloudReferral, setCloudReferral] = useState<{
     code: string;
     uses: number;
     totalRewardCents: number;
   } | null>(null);
+  const [referralError, setReferralError] = useState(false);
   const [cloudMode, setCloudMode] = useState<"login" | "register">("login");
   const [cloudEmail, setCloudEmail] = useState("");
   const [cloudPassword, setCloudPassword] = useState("");
@@ -38,29 +70,30 @@ export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void })
   const [cloudReferralCode, setCloudReferralCode] = useState("");
   const [hasCloudToken, setHasCloudToken] = useState(!!getCloudAuthToken());
 
+  const retryPackages = useCallback(() => {
+    setPackagesError(false);
+    api.cloudGetPackages()
+      .then((res) => setCloudPackages(res.packages))
+      .catch(() => setPackagesError(true));
+  }, []);
+
   // Load cloud state
   useEffect(() => {
     if (!isCloud) return;
     api.cloudGetPackages()
       .then((res) => setCloudPackages(res.packages))
-      .catch(() => {});
+      .catch(() => setPackagesError(true));
 
-    if (hasCloudToken) {
+    if (hasCloudToken || !!getCloudAuthToken()) {
       api.cloudGetMe()
         .then((res) => setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan }))
         .catch(() => {});
       api.cloudGetReferral()
         .then((res) => setCloudReferral(res))
-        .catch(() => {});
+        .catch(() => setReferralError(true));
     }
   }, [isCloud, hasCloudToken]);
 
-  // Check for stored cloud token on mount
-  useEffect(() => {
-    tauriInvoke<string>("get_cloud_token")
-      .then((t) => { if (t) { setCloudAuthToken(t); setHasCloudToken(true); } })
-      .catch(() => {});
-  }, []);
 
   const handleCloudLogin = useCallback(async () => {
     if (!cloudEmail.trim() || !cloudPassword.trim()) return;
@@ -74,6 +107,7 @@ export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void })
       setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan });
       setCloudEmail("");
       setCloudPassword("");
+      onCloudLoginSuccess?.();
     } catch (err) {
       setCloudError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -100,6 +134,7 @@ export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void })
       setCloudPassword("");
       setCloudName("");
       setCloudReferralCode("");
+      onCloudLoginSuccess?.();
     } catch (err) {
       setCloudError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -180,15 +215,6 @@ export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void })
               : "Running locally"}
           </p>
         </div>
-        {onGoToSettings && (
-          <button
-            onClick={onGoToSettings}
-            className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0"
-            title="Open Settings"
-          >
-            <Settings size={12} strokeWidth={1.75} className="text-[#86868B]" />
-          </button>
-        )}
       </div>
 
       {/* Cloud Account Section */}
@@ -262,10 +288,22 @@ export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void })
                 </div>
               </div>
 
+              {/* Connect Your App */}
+              <div className="mb-3 p-2.5 rounded-xl" style={{ background: "rgba(0,0,0,0.03)" }}>
+                <p className="text-[10px] text-[#86868B] font-semibold mb-1">Connect Your App</p>
+                <CopyRow label="Endpoint" value="https://api.routebox.dev/v1" />
+                <CopyRow label="API Key" value={getCloudAuthToken()} secret />
+              </div>
+
               {/* Recharge packages — always shown; skeleton while loading */}
               <div>
                 <p className="text-[11px] text-[#86868B] font-medium mb-1.5">Add Credits</p>
-                {cloudPackages.length > 0 ? (
+                {packagesError ? (
+                  <p className="text-[10px] text-[#86868B] text-center py-3">
+                    Failed to load packages —{" "}
+                    <button onClick={retryPackages} className="text-[#00e5ff]">retry</button>
+                  </p>
+                ) : cloudPackages.length > 0 ? (
                   <div className="grid grid-cols-2 gap-2">
                     {cloudPackages.map((pkg) => (
                       <button
@@ -310,6 +348,13 @@ export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void })
               </div>
 
               {/* Referral */}
+              {referralError && (
+                <div className="mt-3 pt-3 border-t border-[rgba(0,0,0,0.06)]">
+                  <p className="text-[10px] text-[#AEAEB2] text-center">
+                    Referral program unavailable — try again later
+                  </p>
+                </div>
+              )}
               {cloudReferral && (
                 <div className="mt-3 pt-3 border-t border-[rgba(0,0,0,0.06)]">
                   <div className="flex items-center gap-1.5 mb-1.5">
@@ -467,7 +512,7 @@ export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void })
           <h3 className="text-[13px] font-semibold text-[#1D1D1F] mb-2">
             Your API Keys
           </h3>
-          <ProviderKeyManager />
+          <ProviderKeyManager key={gatewayRunningAt} />
         </div>
       )}
 

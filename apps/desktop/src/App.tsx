@@ -44,6 +44,7 @@ export function App() {
   const [token, setToken] = useState("");
   const [cloudAnnouncement, setCloudAnnouncement] = useState<CloudAnnouncement | null>(null);
   const [announcementDismissed, setAnnouncementDismissed] = useState(false);
+  const [gatewayRunningAt, setGatewayRunningAt] = useState(0);
   const { stats, connected, stale, history, requestLog, alert, dismissAlert } = useRealtimeStats(tokenLoaded);
   const { toasts, showToast, dismissToast } = useToast();
 
@@ -115,7 +116,7 @@ export function App() {
 
         const url = getGatewayUrl();
         const currentMode = getGatewayMode();
-        const isLocal = currentMode === "local" && isLocalGatewayUrl(url);
+        const isLocal = currentMode === "local" && isLocalGatewayUrl();
         setGatewayState("checking");
 
         // Already running / reachable?
@@ -143,8 +144,9 @@ export function App() {
             setGatewayState(healthy ? "running" : "failed");
           }
         } else {
-          // Remote gateway: just report not reachable
-          if (!cancelled) setGatewayState("failed");
+          // Remote gateway: health-check miss is not a hard failure — stay idle
+          // The WS connection or a subsequent check will upgrade to "running" if reachable
+          if (!cancelled) setGatewayState("idle");
         }
       } catch (err) {
         console.error("[RouteBox] auto-start failed:", err);
@@ -168,6 +170,11 @@ export function App() {
       setGatewayError(null);
     }
   }, [connected, gatewayState]);
+
+  // Track when gateway transitions to running so AccountPage can refetch providers
+  useEffect(() => {
+    if (gatewayState === "running") setGatewayRunningAt(Date.now());
+  }, [gatewayState]);
 
   // Fetch cloud announcement once token is loaded (cloud mode only)
   useEffect(() => {
@@ -218,6 +225,14 @@ export function App() {
     return () => clearTimeout(timer);
   }, [gatewayState, showToast]);
 
+  const handleCloudLoginSuccess = useCallback(async () => {
+    setGatewayState("checking");
+    setGatewayError(null);
+    const { checkGatewayHealth: check } = await import("@/lib/gateway-health");
+    const healthy = await check(getGatewayUrl());
+    setGatewayState(healthy ? "running" : "idle");
+  }, []);
+
   const handleDismissOnboarding = useCallback(async () => {
     setShowOnboarding(false);
     setOnboardingDismissed(true);
@@ -264,21 +279,21 @@ export function App() {
             onDismiss={() => setAnnouncementDismissed(true)}
           />
         )}
-        <div key={activeTab} className="flex flex-1 min-h-0 animate-page-in">
-          {activeTab === "dashboard" && (
-            <DashboardPage stats={currentStats} history={history} />
-          )}
-          {activeTab === "routing" && (
-            <RoutingPage stats={currentStats} showToast={showToast} />
-          )}
-          {activeTab === "logs" && (
-            <RequestLogPage
-              entries={requestLog}
-              onSelectEntry={setSelectedRequest}
-            />
-          )}
-          {activeTab === "usage" && <UsagePage />}
-          {activeTab === "account" && <AccountPage onGoToSettings={() => setShowSettings(true)} />}
+        <div className="flex flex-1 min-h-0 relative">
+          {(["dashboard", "routing", "logs", "usage", "account"] as const).map((tab) => (
+            <div
+              key={tab}
+              className={tab === activeTab
+                ? "flex flex-1 min-h-0 absolute inset-0 animate-page-in"
+                : "hidden"}
+            >
+              {tab === "dashboard" && <DashboardPage stats={currentStats} history={history} />}
+              {tab === "routing"   && <RoutingPage stats={currentStats} showToast={showToast} />}
+              {tab === "logs"      && <RequestLogPage entries={requestLog} onSelectEntry={setSelectedRequest} />}
+              {tab === "usage"     && <UsagePage />}
+              {tab === "account"   && <AccountPage onGoToSettings={() => setShowSettings(true)} onCloudLoginSuccess={handleCloudLoginSuccess} gatewayRunningAt={gatewayRunningAt} />}
+            </div>
+          ))}
         </div>
 
         {/* Request detail overlay */}

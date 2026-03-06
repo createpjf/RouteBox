@@ -41,6 +41,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [budgetSaved, setBudgetSaved] = useState(false);
+  const [budgetError, setBudgetError] = useState(false);
   const [autoStartGateway, setAutoStartGateway] = useState(true);
   const [gwRunning, setGwRunning] = useState(false);
   const [gwLoading, setGwLoading] = useState(false);
@@ -177,12 +178,13 @@ export function Settings({ onClose }: SettingsProps) {
   const handleSaveBudget = useCallback(async () => {
     const amount = parseFloat(budgetAmount) || 0;
     setBudgetSaving(true);
+    setBudgetError(false);
     try {
       await api.setBudget(amount);
       setBudgetSaved(true);
       setTimeout(() => setBudgetSaved(false), 2000);
     } catch {
-      // ignore
+      setBudgetError(true);
     } finally {
       setBudgetSaving(false);
     }
@@ -245,7 +247,6 @@ export function Settings({ onClose }: SettingsProps) {
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
       if (update) {
-        setUpdateState("available");
         setUpdateState("downloading");
         await update.downloadAndInstall();
         setUpdateState("ready");
@@ -663,15 +664,23 @@ export function Settings({ onClose }: SettingsProps) {
             <div className="glass-card-static p-3">
               <label className="block text-[11px] text-text-tertiary font-medium mb-1.5">Monthly Limit (USD)</label>
               <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={budgetAmount}
-                  onChange={(e) => { setBudgetAmount(e.target.value); setBudgetSaved(false); }}
-                  placeholder="0 (disabled)"
-                  min="0"
-                  step="1"
-                  className="input flex-1"
-                />
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    value={budgetAmount}
+                    onChange={(e) => { setBudgetAmount(e.target.value); setBudgetSaved(false); setBudgetError(false); }}
+                    placeholder="0 (disabled)"
+                    min="0"
+                    step="1"
+                    className="input w-full"
+                  />
+                  {budgetError && (
+                    <div
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-accent-red"
+                      title="Failed to save budget"
+                    />
+                  )}
+                </div>
                 <button
                   onClick={handleSaveBudget}
                   disabled={budgetSaving}
@@ -679,7 +688,9 @@ export function Settings({ onClose }: SettingsProps) {
                     "flex items-center gap-1 text-[11px] font-medium h-8 px-2.5 rounded-lg transition-colors",
                     budgetSaved
                       ? "text-accent-green bg-accent-green/10"
-                      : "text-accent-cyan hover:bg-accent-cyan/10"
+                      : budgetError
+                        ? "text-accent-red hover:bg-accent-red/10"
+                        : "text-accent-cyan hover:bg-accent-cyan/10"
                   )}
                 >
                   {budgetSaving ? (
@@ -690,6 +701,9 @@ export function Settings({ onClose }: SettingsProps) {
                   {budgetSaved ? "Saved" : "Save"}
                 </button>
               </div>
+              {budgetError && (
+                <p className="mt-1.5 text-[10px] text-accent-red">Failed to save budget limit.</p>
+              )}
               <p className="mt-1.5 text-[10px] text-text-tertiary">
                 Alerts at 80% and 100%. Set to 0 to disable.
               </p>

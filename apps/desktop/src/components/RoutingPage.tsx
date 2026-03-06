@@ -6,6 +6,7 @@ import { RoutingStrategy } from "@/components/RoutingStrategy";
 import { api } from "@/lib/api";
 import type { ModelPreference, RoutingRule } from "@/lib/api";
 import type { RealtimeStats } from "@/types/stats";
+import { getGatewayMode } from "@/lib/constants";
 
 interface RoutingPageProps {
   stats: RealtimeStats;
@@ -19,6 +20,7 @@ interface ModelProviderEntry {
 }
 
 export function RoutingPage({ stats, showToast }: RoutingPageProps) {
+  const isCloud = getGatewayMode() === "cloud";
   const [isPaused, setIsPaused] = useState(false);
   const [routingStrategy, setRoutingStrategy] = useState("smart_auto");
   const [copied, setCopied] = useState(false);
@@ -42,12 +44,15 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   // Structured model+provider selection
   const [modelIndex, setModelIndex] = useState<Map<string, ModelProviderEntry[]>>(new Map());
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [modelsError, setModelsError] = useState(false);
+  const [cloudModelIds, setCloudModelIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("");
 
-  // Fetch initial data (one-time)
+  // Fetch initial data (one-time) — local mode only
   useEffect(() => {
+    if (isCloud) return;
     api.getTrafficStatus()
       .then((res) => setIsPaused(res.paused))
       .catch(() => {});
@@ -60,10 +65,11 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     api.getRoutingRules()
       .then((res) => setRoutingRules(res.rules))
       .catch(() => {});
-  }, []);
+  }, [isCloud]);
 
-  // Fetch models — re-fetch when providers come online
+  // Fetch models — local mode only, re-fetch when providers come online
   useEffect(() => {
+    if (isCloud) return;
     api.getModels()
       .then((res) => {
         // Build reverse index: modelId → [{provider, pricing}]
@@ -77,9 +83,22 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         }
         setModelIndex(idx);
         setModelsLoaded(true);
+        setModelsError(false);
       })
-      .catch(() => { setModelsLoaded(true); });
-  }, [stats.providers.length]);
+      .catch(() => { setModelsError(true); setModelsLoaded(true); });
+  }, [isCloud, stats.providers.length]);
+
+  // Fetch models — cloud mode
+  useEffect(() => {
+    if (!isCloud) return;
+    api.cloudGetModels()
+      .then((res) => {
+        setCloudModelIds(res.data.map((m) => m.id).sort());
+        setModelsLoaded(true);
+        setModelsError(false);
+      })
+      .catch(() => setModelsError(true));
+  }, [isCloud]);
 
   // Sorted + filtered model list
   const filteredModels = useMemo(() => {
@@ -125,14 +144,16 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   }, [showToast]);
 
   const handleTogglePause = useCallback(async () => {
+    const prev = isPaused;
+    setIsPaused(!prev); // optimistic
     try {
-      if (isPaused) {
+      if (prev) {
         await api.resumeTraffic();
       } else {
         await api.pauseTraffic();
       }
-      setIsPaused(!isPaused);
     } catch (err) {
+      setIsPaused(prev); // rollback
       showToast(err instanceof Error ? err.message : "Failed to toggle traffic");
     }
   }, [isPaused, showToast]);
@@ -258,8 +279,44 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-4 pt-2 gap-3">
-      {/* Routing Strategy */}
-      <div>
+      {/* Cloud mode info card */}
+      {isCloud && (
+        <div className="m-1 p-4 rounded-xl bg-[#007AFF]/6 border border-[#007AFF]/15">
+          <p className="text-[13px] font-semibold text-[#007AFF] mb-1">Cloud Routing</p>
+          <p className="text-[11px] text-[#86868B] leading-relaxed">
+            RouteBox Cloud automatically selects the best model for each request.
+            Routing strategy, preferences, and rules are managed server-side.
+          </p>
+        </div>
+      )}
+
+      {/* Available Models — cloud mode */}
+      {isCloud && modelsLoaded && cloudModelIds.length > 0 && (
+        <div>
+          <h3 className="section-header">Available Models</h3>
+          <div className="glass-card-static overflow-hidden">
+            {cloudModelIds.slice(0, 20).map((modelId, i) => (
+              <div
+                key={modelId}
+                className={clsx(
+                  "flex items-center h-9 px-3",
+                  i < Math.min(cloudModelIds.length, 20) - 1 && "border-b border-border-light"
+                )}
+              >
+                <span className="text-[12px] font-mono text-[#1D1D1F] truncate">{modelId}</span>
+              </div>
+            ))}
+            {cloudModelIds.length > 20 && (
+              <div className="px-3 py-2 text-center border-t border-border-light">
+                <p className="text-[10px] text-[#86868B]">+{cloudModelIds.length - 20} more models</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Routing Strategy — local mode only */}
+      {!isCloud && <div>
         <h3 className="section-header">Routing Strategy</h3>
         <div className="glass-card-static p-2">
           <RoutingStrategy
@@ -267,10 +324,10 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
             onChange={handleChangeStrategy}
           />
         </div>
-      </div>
+      </div>}
 
-      {/* Model Preferences */}
-      <div>
+      {/* Model Preferences — local mode only */}
+      {!isCloud && <div>
         <h3 className="section-header">Model Preferences</h3>
         <div className="glass-card-static overflow-hidden">
           {preferences.length === 0 && !showAddPref ? (
@@ -492,10 +549,10 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
             </button>
           )}
         </div>
-      </div>
+      </div>}
 
-      {/* Routing Rules */}
-      <div>
+      {/* Routing Rules — local mode only */}
+      {!isCloud && <div>
         <h3 className="section-header">Routing Rules</h3>
         <div className="glass-card-static overflow-hidden">
           {routingRules.length === 0 && !showAddRule ? (
@@ -704,13 +761,22 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
             </button>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* Provider Status */}
       <ProviderStatus providers={stats.providers} />
 
-      {/* Controls — 2-column grid matching reference */}
-      <div>
+      {/* Models error message */}
+      {modelsError && (
+        <p className="text-[11px] text-[#86868B] text-center py-2">
+          {isCloud
+            ? "Failed to load models. Check your internet connection."
+            : "Failed to load models. Check your connection and gateway status."}
+        </p>
+      )}
+
+      {/* Controls — local mode only */}
+      {!isCloud && <div>
         <h3 className="section-header">Controls</h3>
         <div className="grid grid-cols-2 gap-2">
           <button className="glass-card p-3 flex items-center gap-2.5" onClick={handleCopyKey}>
@@ -741,7 +807,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
             </div>
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

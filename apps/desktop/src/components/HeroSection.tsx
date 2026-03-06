@@ -1,4 +1,5 @@
 import { Settings, Loader2, MessageSquare, BookOpen } from "lucide-react";
+import { getGatewayMode } from "@/lib/constants";
 
 type GatewayState = "idle" | "checking" | "starting" | "running" | "failed";
 
@@ -13,12 +14,19 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ connected, stale, gatewayState, gatewayError, onOpenSettings, onOpenChat, onShowOnboarding }: HeroSectionProps) {
+  const mode = getGatewayMode();
+  // In cloud mode, consider "online" if WS connected OR gateway health confirmed running
+  const effectivelyOnline = connected || (mode === "cloud" && gatewayState === "running");
+
   // Derive status text & color
-  let statusText = connected ? "Online" : "Offline";
-  let statusColor = connected ? "#34C759" : "#C7C7CC";
+  let statusText = effectivelyOnline ? "Online" : "Offline";
+  let statusColor = effectivelyOnline ? "#34C759" : "#C7C7CC";
   let showSpinner = false;
 
-  if (gatewayState === "checking" || gatewayState === "starting") {
+  if (gatewayState === "idle") {
+    statusText = "Not signed in";
+    statusColor = "#C7C7CC";
+  } else if (gatewayState === "checking" || gatewayState === "starting") {
     statusText = gatewayState === "checking" ? "Checking…" : "Starting gateway…";
     statusColor = "#FF9500"; // amber
     showSpinner = true;

@@ -15,7 +15,8 @@ export function getGatewayUrl() {
 // The gateway should log-scrub query params containing tokens.
 export function getWsUrl() {
   const base = gatewayUrl.replace(/^http/, "ws") + "/ws/stats";
-  return authToken ? `${base}?token=${encodeURIComponent(authToken)}` : base;
+  const token = gatewayMode === "cloud" ? cloudAuthToken : authToken;
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
 export function setGatewayUrl(url: string) {

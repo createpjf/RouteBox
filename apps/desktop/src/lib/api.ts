@@ -193,6 +193,18 @@ export interface ModelsResponse {
   providers: ProviderModels[];
 }
 
+export interface CloudModelEntry {
+  id: string;
+  object: string;
+  created: number;
+  owned_by: string;
+}
+
+export interface CloudModelsResponse {
+  object: string;
+  data: CloudModelEntry[];
+}
+
 // ── Model Toggles ───────────────────────────────────────────────────────
 
 export interface ModelToggle {
@@ -319,6 +331,7 @@ export interface CloudAnnouncementResponse {
 export const api = {
   getProviders: () => request<ProvidersResponse>("/api/v1/providers"),
   getModels: () => request<ModelsResponse>("/api/v1/models"),
+  cloudGetModels: () => request<CloudModelsResponse>("/v1/models"),
   getBalance: () => request<BalanceResponse>("/api/v1/balance"),
   getKeys: () => request<KeysResponse>("/api/v1/keys"),
   getRouting: () => request<RoutingResponse>("/api/v1/routing"),

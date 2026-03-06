@@ -4,7 +4,7 @@ import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import type { AnalyticsResponse } from "@/lib/api";
-import { PROVIDER_COLORS, isRouteboxCloud } from "@/lib/constants";
+import { PROVIDER_COLORS, getGatewayMode } from "@/lib/constants";
 
 type Period = "today" | "7d" | "30d";
 
@@ -73,7 +73,7 @@ export function UsagePage() {
       setLoading(true);
       setError(null);
       try {
-        const res = isRouteboxCloud()
+        const res = getGatewayMode() === "cloud"
           ? await api.cloudGetAnalytics(period)
           : await api.getAnalytics(period);
         if (!cancelled) setData(res);
@@ -111,9 +111,16 @@ export function UsagePage() {
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-red/8">
-          <AlertCircle size={12} strokeWidth={1.75} className="text-accent-red shrink-0" />
-          <p className="text-[11px] text-accent-red">{error}</p>
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-accent-red/8">
+          <AlertCircle size={12} strokeWidth={1.75} className="text-accent-red shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[11px] text-accent-red">{error}</p>
+            {getGatewayMode() === "local" && (
+              <p className="text-[10px] text-[#86868B] mt-0.5">
+                Check that your local gateway is running in the Dashboard or Settings.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -228,7 +235,7 @@ export function UsagePage() {
           </div>
 
           {/* Pro upsell */}
-          {isRouteboxCloud() && display.totals.cost > 0 && (
+          {getGatewayMode() === "cloud" && display.totals.cost > 0 && (
             <div
               className="rounded-xl p-3 cursor-pointer transition-all hover:scale-[1.005] active:scale-[0.995]"
               style={{
