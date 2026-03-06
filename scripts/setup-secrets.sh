@@ -57,7 +57,7 @@ echo ""
 echo "  Export your Developer ID Application certificate as .p12:"
 echo ""
 echo "  1. Open Keychain Access"
-echo "  2. Find: Developer ID Application: Jinfeng Peng (M2XH53X5DB)"
+echo "  2. Find your 'Developer ID Application' certificate"
 echo "  3. Right-click → Export Items → Save as .p12"
 echo "  4. Set an export password (you'll need it in Step 2)"
 echo ""
@@ -87,12 +87,25 @@ fi
 # ── Step 3: Apple ID + Team ─────────────────────────────────────────────────
 step "3/6: APPLE_SIGNING_IDENTITY + APPLE_TEAM_ID"
 
-echo "Developer ID Application: Jinfeng Peng (M2XH53X5DB)" | \
-  gh secret set APPLE_SIGNING_IDENTITY --repo "$REPO"
-info "APPLE_SIGNING_IDENTITY set!"
+ask "Signing identity (e.g. 'Developer ID Application: Your Name (TEAMID)'):"
+read -r SIGNING_IDENTITY
 
-echo "M2XH53X5DB" | gh secret set APPLE_TEAM_ID --repo "$REPO"
-info "APPLE_TEAM_ID set!"
+if [ "$SIGNING_IDENTITY" != "skip" ] && [ -n "$SIGNING_IDENTITY" ]; then
+  echo "$SIGNING_IDENTITY" | gh secret set APPLE_SIGNING_IDENTITY --repo "$REPO"
+  info "APPLE_SIGNING_IDENTITY set!"
+else
+  warn "Skipped APPLE_SIGNING_IDENTITY"
+fi
+
+ask "Apple Team ID (10-character string, or 'skip'):"
+read -r TEAM_ID
+
+if [ "$TEAM_ID" != "skip" ] && [ -n "$TEAM_ID" ]; then
+  echo "$TEAM_ID" | gh secret set APPLE_TEAM_ID --repo "$REPO"
+  info "APPLE_TEAM_ID set!"
+else
+  warn "Skipped APPLE_TEAM_ID"
+fi
 
 # ── Step 4: Apple ID for Notarization ───────────────────────────────────────
 step "4/6: APPLE_ID + APPLE_PASSWORD (for notarization)"
