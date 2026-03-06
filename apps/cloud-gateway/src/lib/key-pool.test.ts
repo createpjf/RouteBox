@@ -25,6 +25,8 @@ function saveAndClear() {
     "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
     "MINIMAX_API_KEY", "MINIMAX_BASE_URL",
     "KIMI_API_KEY", "KIMI_BASE_URL",
+    "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL",
+    "FLOCK_API_KEY", "FLOCK_BASE_URL",
   ];
   for (const k of envKeys) {
     savedEnv[k] = process.env[k];

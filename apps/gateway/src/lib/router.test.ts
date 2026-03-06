@@ -114,9 +114,10 @@ describe("selectRoute", () => {
     expect(route!.isFallback).toBe(true);
   });
 
-  test("returns null for completely unknown model with no tier", () => {
+  test("unknown model falls back to best available via wildcard routing", () => {
     const route = selectRoute("llama-3-70b", "smart_auto");
-    expect(route).toBeNull();
+    expect(route).not.toBeNull();
+    expect(route!.isFallback).toBe(true);
   });
 
   test("quality_first falls back when canonical is down", () => {

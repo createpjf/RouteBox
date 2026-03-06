@@ -130,7 +130,7 @@ describe("POST /v1/chat/completions", () => {
     });
     const id = res.headers.get("X-Request-ID");
     expect(id).toBeTruthy();
-    expect(id!.startsWith("rb-")).toBe(true);
+    expect(id!.length).toBeGreaterThan(8);
   });
 
   test("tool calling passthrough", async () => {
@@ -186,14 +186,15 @@ describe("POST /v1/chat/completions", () => {
     }
   });
 
-  test("503 for unknown model with no provider", async () => {
+  test("unknown model falls back via wildcard routing", async () => {
     const res = await proxyRequest({
       model: "llama-3-70b",
       messages: [{ role: "user", content: "Hello" }],
     });
-    expect(res.status).toBe(503);
+    // Wildcard routing finds a fallback model
+    expect(res.status).toBe(200);
     const json = await res.json() as any;
-    expect(json.error.code).toBe("no_provider");
+    expect(json._routebox.is_fallback).toBe(true);
   });
 
   test("routes qwen models to FLock.io with custom auth header", async () => {

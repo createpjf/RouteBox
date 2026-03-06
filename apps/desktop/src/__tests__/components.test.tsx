@@ -14,7 +14,7 @@ vi.mock("lucide-react", async () => {
     Wallet: icon, Activity: icon, XCircle: icon,
     Key: icon, Shield: icon, AlertCircle: icon, BookOpen: icon, ArrowRight: icon,
     BarChart3: icon, Pin: icon, Ban: icon, Plus: icon, Square: icon,
-    TrendingUp: icon, Cpu: icon, Clock: icon, PieChart: icon,
+    TrendingUp: icon, Cpu: icon, Clock: icon, PieChart: icon, UserCircle: icon,
   };
 });
 
@@ -169,7 +169,7 @@ describe("TabBar", () => {
     expect(screen.getByText("My Usage")).toBeDefined();
     expect(screen.getByText("Routing")).toBeDefined();
     expect(screen.getByText("Logs")).toBeDefined();
-    expect(screen.getByText("Analytics")).toBeDefined();
+    expect(screen.getByText("Account")).toBeDefined();
   });
 
   test("calls onTabChange when tab clicked", () => {
