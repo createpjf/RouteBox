@@ -162,13 +162,13 @@ flowchart LR
 
 | Provider | Models | API Key |
 | --- | --- | --- |
-| [OpenAI](https://openai.com) | GPT-5.2, GPT-5 | [platform.openai.com](https://platform.openai.com/api-keys) |
+| [OpenAI](https://openai.com) | GPT-5.4, GPT-5 | [platform.openai.com](https://platform.openai.com/api-keys) |
 | [Anthropic](https://anthropic.com) | Claude Opus 4.6, Claude Sonnet 4.6, Claude Haiku 4.5 | [console.anthropic.com](https://console.anthropic.com/) |
 | [Google](https://ai.google.dev) | Gemini 3.1 Pro, Gemini 3.1 Flash | [aistudio.google.com](https://aistudio.google.com/apikey) |
 | [DeepSeek](https://deepseek.com) | DeepSeek-V3.2, DeepSeek-R1 | [platform.deepseek.com](https://platform.deepseek.com/) |
 | [MiniMax](https://minimax.io) | MiniMax-M2.5, MiniMax-M2.1 | [platform.minimaxi.com](https://platform.minimaxi.com/) |
 | [Kimi](https://kimi.ai) | Kimi K2.5, Kimi K2, Moonshot | [platform.moonshot.ai](https://platform.moonshot.ai/) |
-| [FLock.io](https://flock.io) | Qwen3-235B, Qwen3-30B, DeepSeek-V3.2, Kimi K2.5 | [platform.flock.io](https://platform.flock.io) |
+| [FLock.io](https://flock.io) | Qwen3-235B, Qwen3.5, DeepSeek-V3.2, Kimi K2.5 | [platform.flock.io](https://platform.flock.io) |
 
 ### Local
 
