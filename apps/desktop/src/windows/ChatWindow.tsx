@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Square, Columns, MessageSquare, Globe } from "lucide-react";
+import { Send, Square, Columns, MessageSquare, Globe, Copy, Check } from "lucide-react";
 import { useStreamChat } from "../hooks/useStreamChat";
 import { ModelSwitcher } from "../components/shared/ModelSwitcher";
 import { CostBar } from "../components/shared/CostBar";
@@ -30,7 +30,7 @@ export const ChatWindow: React.FC = () => {
   const [compareMode, setCompareMode] = useState(false);
   const [searchEnabled, setSearchEnabled] = useState(false);
   const [searchOn, setSearchOn] = useState(false);
-  const { streaming, streamedText, meta, sendMessage, abort } = useStreamChat();
+  const { streaming, streamedText, meta, sendMessage, abort, clearStream } = useStreamChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -78,16 +78,16 @@ export const ChatWindow: React.FC = () => {
 
   // Append streamed response to messages when done
   useEffect(() => {
-    if (!streaming && streamedText && meta && activeConvId) {
+    if (!streaming && streamedText && activeConvId) {
       api.sendMessage(activeConvId, {
         role: "assistant",
         content: streamedText,
-        model: meta.model,
-        provider: meta.provider,
-        cost: meta.cost,
-        inputTokens: meta.usage.prompt_tokens,
-        outputTokens: meta.usage.completion_tokens,
-        latencyMs: meta.latency_ms,
+        model: meta?.model ?? model,
+        provider: meta?.provider,
+        cost: meta?.cost ?? 0,
+        inputTokens: meta?.usage.prompt_tokens ?? 0,
+        outputTokens: meta?.usage.completion_tokens ?? 0,
+        latencyMs: meta?.latency_ms ?? 0,
       }).then((savedMsg) => {
         setMessages((prev) => [
           ...prev,
@@ -95,15 +95,16 @@ export const ChatWindow: React.FC = () => {
             id: savedMsg.id,
             role: "assistant",
             content: streamedText,
-            model: meta.model,
-            provider: meta.provider,
-            cost: meta.cost,
-            latency_ms: meta.latency_ms,
-            input_tokens: meta.usage.prompt_tokens,
-            output_tokens: meta.usage.completion_tokens,
+            model: meta?.model ?? model,
+            provider: meta?.provider,
+            cost: meta?.cost ?? 0,
+            latency_ms: meta?.latency_ms ?? 0,
+            input_tokens: meta?.usage.prompt_tokens ?? 0,
+            output_tokens: meta?.usage.completion_tokens ?? 0,
           },
         ]);
         loadConversations();
+        clearStream();
       }).catch(() => {});
     }
   }, [streaming]);
@@ -264,8 +265,8 @@ export const ChatWindow: React.FC = () => {
             <MessageBubble key={msg.id} message={msg} />
           ))}
 
-          {/* Streaming response */}
-          {streaming && streamedText && (
+          {/* Streaming / pending-save response */}
+          {streamedText && (
             <div style={{ marginBottom: 14 }}>
               <div
                 style={{
@@ -277,16 +278,18 @@ export const ChatWindow: React.FC = () => {
                 }}
               >
                 <MarkdownRenderer content={streamedText} />
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 2,
-                    height: 14,
-                    background: "rgba(255,255,255,0.5)",
-                    marginLeft: 2,
-                    animation: "pulse 1s infinite",
-                  }}
-                />
+                {streaming && (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: 2,
+                      height: 14,
+                      background: "rgba(255,255,255,0.5)",
+                      marginLeft: 2,
+                      animation: "pulse 1s infinite",
+                    }}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -403,6 +406,15 @@ export const ChatWindow: React.FC = () => {
 // Inline message bubble component
 const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
   const isUser = message.role === "user";
+  const [hovered, setHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message.content).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const metaObj: RouteboxMeta | null =
     !isUser && message.model
       ? {
@@ -428,6 +440,8 @@ const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
         justifyContent: isUser ? "flex-end" : "flex-start",
         marginBottom: 14,
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <div style={{ maxWidth: "85%", display: "flex", flexDirection: "column", gap: 4 }}>
         <div
@@ -448,9 +462,33 @@ const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
             <MarkdownRenderer content={message.content} />
           )}
         </div>
-        {metaObj && metaObj.cost > 0 && (
-          <CostBar meta={metaObj} compact />
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {metaObj && metaObj.cost > 0 && (
+            <CostBar meta={metaObj} compact />
+          )}
+          {!isUser && (
+            <button
+              onClick={handleCopy}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                padding: "2px 6px",
+                background: "transparent",
+                border: "none",
+                borderRadius: 4,
+                color: copied ? "#34C759" : "rgba(255,255,255,0.35)",
+                fontSize: 11,
+                cursor: "pointer",
+                opacity: hovered || copied ? 1 : 0,
+                transition: "opacity 0.15s ease, color 0.15s ease",
+              }}
+            >
+              {copied ? <Check size={11} /> : <Copy size={11} />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

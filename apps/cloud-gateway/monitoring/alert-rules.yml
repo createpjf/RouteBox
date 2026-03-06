@@ -1,0 +1,42 @@
+groups:
+  - name: cloud-gateway
+    rules:
+      # ── Error rate alert ──────────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: rate(errors_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error rate > 5% for 2 minutes"
+          description: "The cloud gateway is experiencing elevated error rates."
+
+      # ── Latency alert ─────────────────────────────────────────────────
+      - alert: HighLatencyP99
+        expr: histogram_quantile(0.99, rate(http_request_duration_ms_bucket[5m])) > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 latency > 5s for 5 minutes"
+          description: "The cloud gateway P99 latency has exceeded 5 seconds."
+
+      # ── Rate limiting alert ───────────────────────────────────────────
+      - alert: HighRateLimiting
+        expr: rate(rate_limit_hits_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Sustained rate limiting activity"
+          description: "Rate limiting is actively rejecting requests for over 5 minutes."
+
+      # ── Provider latency alert ────────────────────────────────────────
+      - alert: ProviderHighLatency
+        expr: histogram_quantile(0.95, rate(provider_request_duration_ms_bucket[5m])) > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Provider P95 latency > 10s for 5 minutes"
+          description: "Upstream LLM provider responses are taking too long."

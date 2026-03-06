@@ -10,7 +10,7 @@ import type { TabId } from "@/components/TabBar";
 import { Settings } from "@/components/Settings";
 import { Onboarding } from "@/components/Onboarding";
 import { RequestDetail } from "@/components/RequestDetail";
-import { AnalyticsPage } from "@/components/AnalyticsPage";
+import { AccountPage } from "@/components/AccountPage";
 import { UsagePage } from "@/components/UsagePage";
 import { AlertBanner } from "@/components/AlertBanner";
 import { ToastContainer } from "@/components/ToastContainer";
@@ -198,8 +198,9 @@ export function App() {
           onOpenChat={() => {
             import("@tauri-apps/api/core").then(({ invoke }) => invoke("open_chat")).catch(() => {});
           }}
-          onOpenSpotlight={() => {
-            import("@tauri-apps/api/core").then(({ invoke }) => invoke("toggle_spotlight")).catch(() => {});
+          onShowOnboarding={() => {
+            setShowOnboarding(true);
+            setOnboardingDismissed(false);
           }}
         />
         {alert && (
@@ -223,7 +224,7 @@ export function App() {
             />
           )}
           {activeTab === "usage" && <UsagePage />}
-          {activeTab === "analytics" && <AnalyticsPage />}
+          {activeTab === "account" && <AccountPage />}
         </div>
 
         {/* Request detail overlay */}
@@ -237,10 +238,6 @@ export function App() {
         {showSettings && (
           <Settings
             onClose={() => setShowSettings(false)}
-            onShowOnboarding={() => {
-              setShowSettings(false);
-              setShowOnboarding(true);
-            }}
           />
         )}
 

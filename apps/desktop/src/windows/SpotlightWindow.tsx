@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Search, Copy, MessageSquare, ExternalLink, Globe } from "lucide-react";
+import { Search, Copy, Check, MessageSquare, ExternalLink, Globe } from "lucide-react";
 import { useStreamChat } from "../hooks/useStreamChat";
 import { MarkdownRenderer } from "../components/shared/MarkdownRenderer";
 import { ModelSwitcher } from "../components/shared/ModelSwitcher";
@@ -58,21 +58,24 @@ export const SpotlightWindow: React.FC = () => {
 
   // Save to spotlight history when response completes
   useEffect(() => {
-    if (!streaming && streamedText && meta) {
+    if (!streaming && streamedText) {
       api.saveSpotlightEntry({
         prompt,
         response: streamedText,
-        model: meta.model,
-        provider: meta.provider,
-        cost: meta.cost,
-        tokens: meta.usage.total_tokens,
-        latencyMs: meta.latency_ms,
+        model: meta?.model ?? model,
+        provider: meta?.provider,
+        cost: meta?.cost ?? 0,
+        tokens: meta?.usage.total_tokens ?? 0,
+        latencyMs: meta?.latency_ms ?? 0,
       }).catch(() => {});
     }
-  }, [streaming]);
+  }, [streaming, streamedText, meta, prompt]);
 
+  const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText(streamedText).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleSaveToChat = async () => {
@@ -221,8 +224,8 @@ export const SpotlightWindow: React.FC = () => {
       {/* Actions */}
       {hasResponse && !streaming && (
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={handleCopy} style={actionBtnStyle}>
-            <Copy size={12} /> Copy
+          <button onClick={handleCopy} style={{ ...actionBtnStyle, color: copied ? "#34C759" : actionBtnStyle.color }}>
+            {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied" : "Copy"}
           </button>
           <button onClick={handleSaveToChat} style={actionBtnStyle}>
             <MessageSquare size={12} /> Save to Chat

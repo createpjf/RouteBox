@@ -1,4 +1,4 @@
-import { Settings, Loader2, MessageSquare, Sparkles } from "lucide-react";
+import { Settings, Loader2, MessageSquare, BookOpen } from "lucide-react";
 
 type GatewayState = "idle" | "checking" | "starting" | "running" | "failed";
 
@@ -9,10 +9,10 @@ interface HeroSectionProps {
   gatewayError?: string | null;
   onOpenSettings: () => void;
   onOpenChat?: () => void;
-  onOpenSpotlight?: () => void;
+  onShowOnboarding?: () => void;
 }
 
-export function HeroSection({ connected, stale, gatewayState, gatewayError, onOpenSettings, onOpenChat, onOpenSpotlight }: HeroSectionProps) {
+export function HeroSection({ connected, stale, gatewayState, gatewayError, onOpenSettings, onOpenChat, onShowOnboarding }: HeroSectionProps) {
   // Derive status text & color
   let statusText = connected ? "Online" : "Offline";
   let statusColor = connected ? "#34C759" : "#C7C7CC";
@@ -71,13 +71,13 @@ export function HeroSection({ connected, stale, gatewayState, gatewayError, onOp
         </div>
 
         <div className="flex items-center gap-1">
-          {onOpenSpotlight && (
+          {onShowOnboarding && (
             <button
-              onClick={onOpenSpotlight}
+              onClick={onShowOnboarding}
               className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[#E8E8ED] transition-colors"
-              title="Spotlight (⌘⇧X)"
+              title="Setup Guide"
             >
-              <Sparkles size={15} strokeWidth={1.6} className="text-[#AEAEB2]" />
+              <BookOpen size={15} strokeWidth={1.6} className="text-[#AEAEB2]" />
             </button>
           )}
           {onOpenChat && (

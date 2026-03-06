@@ -306,6 +306,7 @@ function openaiStreamPassthrough(
   let buffer = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let metaInjected = false;
 
   return new ReadableStream({
     async start(controller) {
@@ -342,6 +343,7 @@ function openaiStreamPassthrough(
                   is_fallback: streamMeta.isFallback,
                 })}\n\n`));
                 controller.enqueue(encoder.encode(`${line}\n\n`));
+                metaInjected = true;
               } else {
                 try {
                   const chunk = JSON.parse(line.slice(6));
@@ -364,6 +366,22 @@ function openaiStreamPassthrough(
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: errorMessage, type: "stream_error" } })}\n\n`));
       } finally {
         reader.releaseLock();
+      }
+      // Fallback: if stream ended without [DONE], inject meta now (e.g. local LM Studio)
+      if (!metaInjected) {
+        const totalTok = inputTokens + outputTokens;
+        const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens, streamMeta.provider);
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          object: "routebox.meta",
+          provider: streamMeta.provider.toLowerCase(),
+          model: streamMeta.requestedModel,
+          requested_model: streamMeta.requestedModel,
+          usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
+          cost: metaCost,
+          latency_ms: Math.round(performance.now() - streamMeta.startMs),
+          is_fallback: streamMeta.isFallback,
+        })}\n\n`));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       }
       controller.close();
       onDone({ input: inputTokens, output: outputTokens });
@@ -475,8 +493,8 @@ app.post("/chat/completions", async (c) => {
   const { provider, model, isFallback } = route;
   // Update model in body to the routed model
   body.model = model;
-  // For OpenAI-compatible streaming, request usage in the stream
-  if (isStream && provider.format === "openai") {
+  // For OpenAI-compatible streaming, request usage in the stream (skip for local providers)
+  if (isStream && provider.format === "openai" && !provider.isLocal) {
     body.stream_options = { include_usage: true };
   }
 
@@ -525,7 +543,7 @@ app.post("/chat/completions", async (c) => {
       if (fallback && fallback.provider.name !== provider.name) {
         try {
           body.model = fallback.model;
-          if (isStream && fallback.provider.format === "openai") {
+          if (isStream && fallback.provider.format === "openai" && !fallback.provider.isLocal) {
             body.stream_options = { include_usage: true };
           }
           res = await forward(fallback.provider, body);
@@ -560,7 +578,7 @@ app.post("/chat/completions", async (c) => {
       if (fallback && fallback.provider.name !== activeProvider.name) {
         try {
           body.model = fallback.model;
-          if (isStream && fallback.provider.format === "openai") {
+          if (isStream && fallback.provider.format === "openai" && !fallback.provider.isLocal) {
             body.stream_options = { include_usage: true };
           }
           const retryRes = await forward(fallback.provider, body);

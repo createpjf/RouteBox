@@ -34,6 +34,33 @@ export function getPortFromUrl(url: string): number {
   }
 }
 
+/** Check if the gateway URL points to a local (self-hosted) gateway vs RouteBox Cloud */
+export function isLocalGatewayUrl(): boolean {
+  try {
+    const parsed = new URL(gatewayUrl);
+    return (
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "0.0.0.0" ||
+      parsed.hostname.endsWith(".local")
+    );
+  } catch {
+    return true;
+  }
+}
+
+/** Check if the gateway URL is the official RouteBox Cloud */
+export function isRouteboxCloud(): boolean {
+  try {
+    const parsed = new URL(gatewayUrl);
+    return parsed.hostname === "api.routebox.dev";
+  } catch {
+    return false;
+  }
+}
+
+export const ROUTEBOX_CLOUD_URL = "https://api.routebox.dev";
+
 export const WS_RECONNECT_MAX_DELAY = 30_000;
 export const WS_PING_INTERVAL = 25_000;
 

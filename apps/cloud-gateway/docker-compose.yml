@@ -1,0 +1,213 @@
+version: "3.8"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RouteBox Cloud Gateway — Optimized for 2GB RAM VPS
+#
+# Core services (always start):  gateway, postgres, redis, nginx, certbot, pg-backup
+# Monitoring (optional):         prometheus, grafana
+#
+# Usage:
+#   docker compose up -d                            # core only (~900MB)
+#   docker compose --profile monitoring up -d       # core + monitoring (~1.4GB)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  gateway:
+    build: .
+    expose:
+      - "3001"
+    environment:
+      DATABASE_URL: postgres://routebox:${DB_PASSWORD}@postgres:5432/routebox
+      JWT_SECRET: ${JWT_SECRET}
+      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN}
+      POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET}
+      POLAR_PRODUCT_CREDIT_5: ${POLAR_PRODUCT_CREDIT_5:-}
+      POLAR_PRODUCT_CREDIT_20: ${POLAR_PRODUCT_CREDIT_20:-}
+      POLAR_PRODUCT_PRO: ${POLAR_PRODUCT_PRO:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      APP_URL: ${APP_URL:-https://routebox.dev}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      PORT: "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "1.0"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: routebox
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: routebox
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=64MB"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "effective_cache_size=256MB"
+      - "-c"
+      - "max_connections=50"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U routebox"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    command: ["/bin/sh", "-c", "while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g 'daemon off;'"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./admin:/app/admin:ro
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+    depends_on:
+      - gateway
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        trap exit TERM
+        while :; do
+          certbot renew --webroot -w /var/lib/letsencrypt --quiet
+          sleep 43200
+        done
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    restart: unless-stopped
+
+  pg-backup:
+    image: postgres:16-alpine
+    volumes:
+      - ./scripts/pg-backup.sh:/usr/local/bin/pg-backup.sh:ro
+      - pgbackups:/backups
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        chmod +x /usr/local/bin/pg-backup.sh
+        echo "0 3 * * * /usr/local/bin/pg-backup.sh >> /var/log/backup.log 2>&1" | crontab -
+        crond -f -l 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    restart: unless-stopped
+
+  # ── Monitoring (optional — enable with: --profile monitoring) ───────────
+
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["monitoring"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+      - "--storage.tsdb.retention.size=1GB"
+    expose:
+      - "9090"
+    depends_on:
+      - gateway
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["monitoring"]
+    volumes:
+      - ./monitoring/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./monitoring/grafana/dashboard.json:/var/lib/grafana/dashboards/gateway.json:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/gateway.json
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  certbot-etc:
+  certbot-var:
+  redis-data:
+  pgbackups:
+  prometheus-data:
+  grafana-data:

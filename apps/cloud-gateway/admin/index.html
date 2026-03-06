@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RouteBox Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .stat-value { font-size: 28px; font-weight: 700; color: #1d1d1f; }
+    .stat-label { font-size: 12px; color: #86868b; font-weight: 500; }
+    .stat-sub { font-size: 11px; color: #aeaeb2; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+    .badge-free { background: #f0f0f0; color: #86868b; }
+    .badge-pro { background: #e8f5e9; color: #2e7d32; }
+    .badge-bonus { background: #e3f2fd; color: #1565c0; }
+    .tab { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; color: #86868b; }
+    .tab.active { background: #fff; color: #1d1d1f; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 11px; font-weight: 600; color: #86868b; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+    td { font-size: 13px; color: #1d1d1f; padding: 10px 12px; border-bottom: 1px solid #f5f5f7; }
+    tr:hover td { background: #fafafa; }
+    #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    #dashboard { display: none; }
+    .chart-container { position: relative; height: 200px; }
+    .toggle { position: relative; width: 36px; height: 20px; border-radius: 10px; background: #ddd; cursor: pointer; transition: background 0.2s; }
+    .toggle.on { background: #34C759; }
+    .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left 0.2s; }
+    .toggle.on::after { left: 18px; }
+    .btn-sm { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #e0e0e0; background: #fff; }
+    .btn-sm:hover { background: #f5f5f7; }
+    .btn-sm.danger { color: #d32f2f; border-color: #ffcdd2; }
+    .btn-sm.danger:hover { background: #ffebee; }
+    .btn-sm.primary { background: #007AFF; color: #fff; border-color: #007AFF; }
+    .btn-sm.primary:hover { background: #0066d6; }
+    .input-sm { padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; outline: none; }
+    .input-sm:focus { border-color: #007AFF; box-shadow: 0 0 0 2px rgba(0,122,255,0.1); }
+    select.input-sm { appearance: auto; }
+    #loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.7); z-index: 50; display: flex; align-items: center; justify-content: center; }
+    #loading-overlay.hidden { display: none; }
+    .page-controls { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid #f0f0f0; }
+    .page-info { font-size: 11px; color: #aeaeb2; }
+    .badge-admin_adjustment { background: #fff3e0; color: #e65100; }
+  </style>
+</head>
+<body>
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="hidden">
+    <div class="text-center">
+      <div class="text-sm text-gray-500">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Login Screen -->
+  <div id="login-screen">
+    <div class="card p-8" style="width: 380px;">
+      <div class="text-center mb-6">
+        <h1 class="text-xl font-bold text-gray-900">RouteBox Admin</h1>
+        <p class="text-sm text-gray-500 mt-1">Sign in with your admin account</p>
+      </div>
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Email</label>
+          <input type="email" id="login-email" required
+            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Password</label>
+          <input type="password" id="login-password" required
+            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div id="login-error" class="text-xs text-red-500 hidden"></div>
+        <button type="submit"
+          class="w-full py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
+          Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard">
+    <!-- Header -->
+    <div class="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100">
+      <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <h1 class="text-base font-bold text-gray-900">RouteBox Admin</h1>
+          <span id="admin-email" class="text-xs text-gray-400"></span>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="loadDashboard()" class="text-xs text-blue-500 hover:text-blue-700">&#8635; Refresh</button>
+          <button onclick="logout()" class="text-xs text-gray-400 hover:text-gray-600">Logout</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto px-6 py-6 space-y-6">
+      <!-- Stat Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="stat-cards">
+        <div class="card p-4"><div class="stat-label">Total Users</div><div class="stat-value" id="s-users">-</div><div class="stat-sub" id="s-users-sub"></div></div>
+        <div class="card p-4"><div class="stat-label">Total Revenue</div><div class="stat-value" id="s-revenue">-</div><div class="stat-sub" id="s-revenue-sub"></div></div>
+        <div class="card p-4"><div class="stat-label">API Requests</div><div class="stat-value" id="s-requests">-</div><div class="stat-sub" id="s-requests-sub"></div></div>
+        <div class="card p-4"><div class="stat-label">API Cost (Our)</div><div class="stat-value" id="s-cost">-</div><div class="stat-sub" id="s-cost-sub"></div></div>
+        <div class="card p-4"><div class="stat-label">Referrals</div><div class="stat-value" id="s-referrals">-</div><div class="stat-sub" id="s-referrals-sub"></div></div>
+      </div>
+
+      <!-- Charts row -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card p-4">
+          <div class="stat-label mb-2">Daily Usage (30 days)</div>
+          <div class="chart-container"><canvas id="chart-usage"></canvas></div>
+        </div>
+        <div class="card p-4">
+          <div class="stat-label mb-2">Daily Revenue (30 days)</div>
+          <div class="chart-container"><canvas id="chart-revenue"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
+        <div class="tab active" data-tab="users" onclick="switchTab('users')">Users</div>
+        <div class="tab" data-tab="transactions" onclick="switchTab('transactions')">Transactions</div>
+        <div class="tab" data-tab="models" onclick="switchTab('models')">Model Usage</div>
+        <div class="tab" data-tab="registry" onclick="switchTab('registry')">Registry</div>
+        <div class="tab" data-tab="providers" onclick="switchTab('providers')">Providers</div>
+        <div class="tab" data-tab="keys" onclick="switchTab('keys')">API Keys</div>
+        <div class="tab" data-tab="access" onclick="switchTab('access')">Access</div>
+        <div class="tab" data-tab="referrals" onclick="switchTab('referrals')">Referrals</div>
+      </div>
+
+      <!-- Tab Content -->
+      <div id="tab-users" class="card overflow-hidden">
+        <div class="p-3 border-b border-gray-100 flex items-center gap-3">
+          <input id="user-search" type="text" placeholder="Search by email..." class="input-sm w-64"
+            oninput="debouncedSearchUsers(this.value)" />
+        </div>
+        <table>
+          <thead><tr>
+            <th>Email</th><th>Plan</th><th>Balance</th><th>Deposited</th><th>Used</th><th>Requests</th><th>Joined</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+        <div id="users-pagination" class="page-controls hidden">
+          <span class="page-info" id="users-page-info"></span>
+          <div class="flex gap-1">
+            <button class="btn-sm" onclick="usersPage('prev')">Prev</button>
+            <button class="btn-sm" onclick="usersPage('next')">Next</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-transactions" class="card overflow-hidden hidden">
+        <table>
+          <thead><tr>
+            <th>Date</th><th>User</th><th>Type</th><th>Amount</th><th>Balance After</th><th>Description</th>
+          </tr></thead>
+          <tbody id="transactions-tbody"></tbody>
+        </table>
+        <div id="txn-pagination" class="page-controls hidden">
+          <span class="page-info" id="txn-page-info"></span>
+          <div class="flex gap-1">
+            <button class="btn-sm" onclick="txnPage('prev')">Prev</button>
+            <button class="btn-sm" onclick="txnPage('next')">Next</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-models" class="card overflow-hidden hidden">
+        <table>
+          <thead><tr>
+            <th>Model</th><th>Requests</th><th>Cost</th><th>Input Tokens</th><th>Output Tokens</th><th>Avg Latency</th>
+          </tr></thead>
+          <tbody id="models-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Registry Tab -->
+      <div id="tab-registry" class="hidden space-y-4">
+        <div class="card p-4">
+          <div class="flex items-center justify-between mb-4">
+            <div class="stat-label">Model Registry</div>
+            <div class="flex gap-2">
+              <button class="btn-sm" onclick="reloadRegistryCache()">&#8635; Reload Cache</button>
+              <button class="btn-sm primary" onclick="showModelForm()">+ Add Model</button>
+            </div>
+          </div>
+
+          <!-- Add/Edit Model Form -->
+          <div id="model-form" class="hidden mb-4 p-4 bg-gray-50 rounded-lg space-y-4">
+            <div class="text-sm font-semibold text-gray-700" id="model-form-title">Add Model</div>
+            <input type="hidden" id="mf-id" />
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Model ID *</label>
+                <input id="mf-modelId" type="text" placeholder="e.g. gpt-4o" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Display Name *</label>
+                <input id="mf-displayName" type="text" placeholder="e.g. GPT-4o" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Provider *</label>
+                <select id="mf-provider" class="input-sm w-full">
+                  <option value="">Select...</option>
+                  <option>OpenAI</option><option>Anthropic</option><option>Google</option>
+                  <option>DeepSeek</option><option>MiniMax</option><option>Kimi</option><option>FLock.io</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Status</label>
+                <select id="mf-status" class="input-sm w-full">
+                  <option value="active">Active</option>
+                  <option value="beta">Beta</option>
+                  <option value="deprecated">Deprecated</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Tier</label>
+                <select id="mf-tier" class="input-sm w-full">
+                  <option value="flagship">Flagship</option>
+                  <option value="fast">Fast</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="text-xs font-semibold text-gray-500 mt-2">Scores (0.00 – 1.00)</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Quality</label>
+                <input id="mf-quality" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Speed</label>
+                <input id="mf-speed" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Cost Efficiency</label>
+                <input id="mf-costEfficiency" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Code Strength</label>
+                <input id="mf-codeStrength" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
+              </div>
+            </div>
+
+            <div class="text-xs font-semibold text-gray-500 mt-2">Operational</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Max Context Tokens</label>
+                <input id="mf-maxContextTokens" type="number" value="128000" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Avg TTFT (ms)</label>
+                <input id="mf-avgTtftMs" type="number" value="500" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Price Input ($/1M)</label>
+                <input id="mf-priceInput" type="number" step="0.01" value="1.00" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Price Output ($/1M)</label>
+                <input id="mf-priceOutput" type="number" step="0.01" value="3.00" class="input-sm w-full" />
+              </div>
+            </div>
+
+            <div class="text-xs font-semibold text-gray-500 mt-2">Capabilities</div>
+            <div class="flex flex-wrap gap-4">
+              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" id="mf-supportsVision" /> Vision
+              </label>
+              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" id="mf-supportsFunctionCall" checked /> Function Call
+              </label>
+              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" id="mf-supportsLongContext" /> Long Context
+              </label>
+              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" id="mf-chineseOptimized" /> Chinese Optimized
+              </label>
+              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" id="mf-isFlockNode" /> FLock Node
+              </label>
+            </div>
+
+            <div class="flex gap-2 mt-2">
+              <button class="btn-sm primary" onclick="saveModel()">Save</button>
+              <button class="btn-sm" onclick="hideModelForm()">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Registry Table -->
+          <table>
+            <thead><tr>
+              <th>Model ID</th><th>Provider</th><th>Tier</th><th>Status</th>
+              <th>Q</th><th>S</th><th>C</th><th>Code</th>
+              <th>Caps</th><th></th>
+            </tr></thead>
+            <tbody id="registry-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="tab-providers" class="card overflow-hidden hidden">
+        <table>
+          <thead><tr>
+            <th>Provider</th><th>Requests</th><th>Cost</th><th>Total Tokens</th>
+          </tr></thead>
+          <tbody id="providers-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- API Keys Tab -->
+      <div id="tab-keys" class="hidden space-y-4">
+        <div class="card p-4">
+          <div class="flex items-center justify-between mb-4">
+            <div class="stat-label">Provider API Keys</div>
+            <button class="btn-sm primary" onclick="showAddKeyForm()">+ Add Key</button>
+          </div>
+          <div id="add-key-form" class="hidden mb-4 p-3 bg-gray-50 rounded-lg space-y-3">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <select id="ak-provider" class="input-sm">
+                <option value="">Provider...</option>
+                <option>OpenAI</option><option>Anthropic</option><option>Google</option>
+                <option>DeepSeek</option><option>MiniMax</option><option>Kimi</option><option>OpenRouter</option>
+              </select>
+              <input id="ak-key" type="password" placeholder="API Key" class="input-sm" />
+              <input id="ak-label" type="text" placeholder="Label (optional)" class="input-sm" />
+              <input id="ak-url" type="text" placeholder="Base URL (optional)" class="input-sm" />
+            </div>
+            <div class="flex gap-2">
+              <button class="btn-sm primary" onclick="addKey()">Save</button>
+              <button class="btn-sm" onclick="hideAddKeyForm()">Cancel</button>
+            </div>
+          </div>
+          <table>
+            <thead><tr>
+              <th>Provider</th><th>Label</th><th>Key</th><th>Base URL</th><th>Active</th><th>Created</th><th></th>
+            </tr></thead>
+            <tbody id="keys-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Access Tab -->
+      <div id="tab-access" class="hidden">
+        <div class="card p-4">
+          <div class="stat-label mb-4">Provider Access Control</div>
+          <table>
+            <thead><tr>
+              <th>Provider</th><th>Enabled</th><th>Allowed Plans</th><th></th>
+            </tr></thead>
+            <tbody id="access-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Referrals Tab -->
+      <div id="tab-referrals" class="hidden space-y-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="card p-4"><div class="stat-label">Total Codes</div><div class="stat-value" id="ref-codes">-</div></div>
+          <div class="card p-4"><div class="stat-label">Total Claims</div><div class="stat-value" id="ref-claims">-</div></div>
+          <div class="card p-4"><div class="stat-label">Rewards Given</div><div class="stat-value" id="ref-rewards">-</div></div>
+          <div class="card p-4"><div class="stat-label">Reward Value</div><div class="stat-value" id="ref-value">-</div></div>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="p-3 border-b border-gray-100"><span class="stat-label">Top Referrers</span></div>
+          <table>
+            <thead><tr>
+              <th>Email</th><th>Code</th><th>Uses</th><th>Rewards</th><th>Earned</th>
+            </tr></thead>
+            <tbody id="referrers-tbody"></tbody>
+          </table>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="p-3 border-b border-gray-100"><span class="stat-label">Recent Claims</span></div>
+          <table>
+            <thead><tr>
+              <th>Date</th><th>Referred</th><th>Referrer</th><th>Code</th><th>Referred Rewarded</th><th>Referrer Rewarded</th>
+            </tr></thead>
+            <tbody id="claims-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = location.origin;
+let token = localStorage.getItem('rb_admin_token');
+let charts = {};
+
+// ── Pagination state ─────────────────────────────────────────────────────
+
+const pageState = {
+  users: { offset: 0, limit: 100, total: 0, search: '' },
+  txn: { offset: 0, limit: 50, total: 0 },
+};
+
+// ── Registry model cache (for XSS-safe edit) ────────────────────────────
+let _registryModels = [];
+
+// ── Loading ──────────────────────────────────────────────────────────────
+
+function setLoading(show) {
+  document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.classList.add('hidden');
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error?.message || 'Login failed';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    token = data.token;
+    localStorage.setItem('rb_admin_token', token);
+    showDashboard(email);
+  } catch (err) {
+    errEl.textContent = 'Network error';
+    errEl.classList.remove('hidden');
+  }
+});
+
+function logout() {
+  token = null;
+  localStorage.removeItem('rb_admin_token');
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('dashboard').style.display = 'none';
+}
+
+async function showDashboard(email) {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('admin-email').textContent = email || '';
+  await loadDashboard();
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────
+
+async function api(path) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (res.status === 401 || res.status === 403) {
+    logout();
+    const data = await res.json().catch(() => ({}));
+    alert(data.error?.message || 'Admin access denied. Check ADMIN_EMAILS config.');
+    throw new Error('Unauthorized');
+  }
+  return res.json();
+}
+
+async function apiMutate(method, path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401 || res.status === 403) { logout(); throw new Error('Unauthorized'); }
+  return res.json();
+}
+
+// ── Load dashboard ────────────────────────────────────────────────────────
+
+async function loadDashboard() {
+  setLoading(true);
+  try {
+    const s = pageState.users;
+    const t = pageState.txn;
+    const [stats, usersRes, txnRes, models, providers, usageTrend, revTrend, keys, access, refStats, topRef, refClaims, registry] = await Promise.all([
+      api('/admin/stats'),
+      api(`/admin/users?limit=${s.limit}&offset=${s.offset}&search=${encodeURIComponent(s.search)}`),
+      api(`/admin/transactions?limit=${t.limit}&offset=${t.offset}`),
+      api('/admin/usage/models?days=7'),
+      api('/admin/usage/providers?days=7'),
+      api('/admin/usage/trend?days=30'),
+      api('/admin/revenue/trend?days=30'),
+      api('/admin/provider-keys'),
+      api('/admin/provider-access'),
+      api('/admin/referrals/stats'),
+      api('/admin/referrals/top'),
+      api('/admin/referrals/claims'),
+      api('/admin/models/registry'),
+    ]);
+
+    s.total = usersRes.total;
+    t.total = txnRes.total;
+
+    renderStats(stats);
+    renderUsers(usersRes.users);
+    renderUsersPagination();
+    renderTransactions(txnRes.transactions);
+    renderTxnPagination();
+    renderModels(models.models);
+    renderProviders(providers.providers);
+    renderUsageChart(usageTrend.trend);
+    renderRevenueChart(revTrend.trend);
+    renderKeys(keys.keys);
+    renderAccess(access.providers);
+    renderReferralStats(refStats);
+    renderTopReferrers(topRef.referrers);
+    renderReferralClaims(refClaims.claims);
+    renderRegistry(registry.models);
+  } catch (err) {
+    if (err.message !== 'Unauthorized') console.error('Dashboard load error:', err);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function fmtCents(cents) {
+  if (!cents && cents !== 0) return '$0.00';
+  const dollars = cents / 100;
+  if (dollars >= 1) return '$' + dollars.toFixed(2);
+  if (dollars >= 0.01) return '$' + dollars.toFixed(3);
+  return '$' + dollars.toFixed(4);
+}
+
+function fmtNum(n) {
+  if (n == null) return '0';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
+function fmtDate(d) {
+  if (!d) return '-';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtDateTime(d) {
+  if (!d) return '-';
+  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function esc(s) {
+  if (!s) return '';
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+// ── Render: Stats ─────────────────────────────────────────────────────────
+
+function renderStats(s) {
+  document.getElementById('s-users').textContent = s.users.total;
+  document.getElementById('s-users-sub').textContent = `+${s.users.todayRegistrations} today \u00b7 +${s.users.weekRegistrations} this week`;
+
+  document.getElementById('s-revenue').textContent = fmtCents(s.deposits.totalCents);
+  document.getElementById('s-revenue-sub').textContent = `+${fmtCents(s.deposits.todayCents)} today \u00b7 ${s.deposits.totalCount} deposits`;
+
+  document.getElementById('s-requests').textContent = fmtNum(s.usage.totalRequests);
+  document.getElementById('s-requests-sub').textContent = `+${fmtNum(s.usage.todayRequests)} today \u00b7 ${fmtNum(s.usage.totalTokens)} tokens`;
+
+  document.getElementById('s-cost').textContent = fmtCents(s.usage.totalCostCents);
+  document.getElementById('s-cost-sub').textContent = `+${fmtCents(s.usage.todayCostCents)} today \u00b7 ${fmtCents(s.balance.totalOutstandingCents)} outstanding`;
+
+  if (s.referrals) {
+    document.getElementById('s-referrals').textContent = s.referrals.totalClaims;
+    document.getElementById('s-referrals-sub').textContent = `${s.referrals.totalCodes} codes \u00b7 ${s.referrals.rewardsDistributed} rewards`;
+  }
+}
+
+// ── Render: Users ─────────────────────────────────────────────────────────
+
+function renderUsers(users) {
+  const tbody = document.getElementById('users-tbody');
+  tbody.innerHTML = users.map(u => `<tr>
+    <td class="font-medium">${esc(u.email)}</td>
+    <td>
+      <select class="input-sm text-xs" style="padding:2px 6px" onchange="changeUserPlan('${u.id}', this.value)">
+        <option value="free" ${u.plan === 'free' ? 'selected' : ''}>free</option>
+        <option value="pro" ${u.plan === 'pro' ? 'selected' : ''}>pro</option>
+      </select>
+    </td>
+    <td>${fmtCents(u.balanceCents)}</td>
+    <td>${fmtCents(u.totalDepositedCents)}</td>
+    <td>${fmtCents(u.totalUsedCents)}</td>
+    <td>${u.requestCount}</td>
+    <td class="text-gray-400 text-xs">${fmtDate(u.createdAt)}</td>
+    <td><button class="btn-sm" onclick="promptAdjustBalance('${u.id}', '${esc(u.email)}')">Adjust</button></td>
+  </tr>`).join('');
+}
+
+function renderUsersPagination() {
+  const s = pageState.users;
+  const el = document.getElementById('users-pagination');
+  const info = document.getElementById('users-page-info');
+  if (s.total <= s.limit) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const from = s.offset + 1;
+  const to = Math.min(s.offset + s.limit, s.total);
+  info.textContent = `Showing ${from}–${to} of ${s.total}`;
+}
+
+function usersPage(dir) {
+  const s = pageState.users;
+  if (dir === 'next' && s.offset + s.limit < s.total) s.offset += s.limit;
+  if (dir === 'prev' && s.offset > 0) s.offset = Math.max(0, s.offset - s.limit);
+  loadDashboard();
+}
+
+let _searchTimer;
+function debouncedSearchUsers(val) {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => {
+    pageState.users.search = val;
+    pageState.users.offset = 0;
+    loadDashboard();
+  }, 300);
+}
+
+async function changeUserPlan(userId, plan) {
+  try {
+    const res = await apiMutate('PATCH', `/admin/users/${userId}`, { plan });
+    if (res.error) { alert(res.error.message); return; }
+  } catch (err) { alert('Failed to update plan'); }
+}
+
+async function promptAdjustBalance(userId, email) {
+  const input = prompt(`Adjust balance for ${email}\nEnter amount in cents (positive to add, negative to deduct):`);
+  if (input === null) return;
+  const amountCents = parseInt(input);
+  if (isNaN(amountCents) || amountCents === 0) { alert('Invalid amount'); return; }
+  const reason = prompt('Reason for adjustment:');
+  if (!reason) { alert('Reason is required'); return; }
+  try {
+    const res = await apiMutate('POST', `/admin/users/${userId}/adjust`, { amountCents, reason });
+    if (res.error) { alert(res.error.message); return; }
+    await loadDashboard();
+  } catch (err) { alert('Failed to adjust balance'); }
+}
+
+// ── Render: Transactions ──────────────────────────────────────────────────
+
+function renderTransactions(txns) {
+  const tbody = document.getElementById('transactions-tbody');
+  tbody.innerHTML = txns.map(t => {
+    const isPositive = t.type === 'deposit' || t.type === 'bonus' || (t.type === 'admin_adjustment' && t.amountCents > 0);
+    const amtColor = isPositive ? 'text-green-600' : 'text-gray-600';
+    const sign = isPositive ? '+' : '';
+    const badgeMap = { deposit: 'badge-pro', bonus: 'badge-bonus', admin_adjustment: 'badge-admin_adjustment' };
+    const badgeClass = badgeMap[t.type] || 'badge-free';
+    return `<tr>
+      <td class="text-xs text-gray-400">${fmtDateTime(t.createdAt)}</td>
+      <td>${esc(t.userEmail)}</td>
+      <td><span class="badge ${badgeClass}">${t.type}</span></td>
+      <td class="${amtColor} font-medium">${sign}${fmtCents(Math.abs(t.amountCents))}</td>
+      <td>${fmtCents(t.balanceAfterCents)}</td>
+      <td class="text-xs text-gray-500 max-w-[200px] truncate">${esc(t.description || '-')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTxnPagination() {
+  const s = pageState.txn;
+  const el = document.getElementById('txn-pagination');
+  const info = document.getElementById('txn-page-info');
+  if (s.total <= s.limit) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const from = s.offset + 1;
+  const to = Math.min(s.offset + s.limit, s.total);
+  info.textContent = `Showing ${from}–${to} of ${s.total}`;
+}
+
+function txnPage(dir) {
+  const s = pageState.txn;
+  if (dir === 'next' && s.offset + s.limit < s.total) s.offset += s.limit;
+  if (dir === 'prev' && s.offset > 0) s.offset = Math.max(0, s.offset - s.limit);
+  loadDashboard();
+}
+
+// ── Render: Models ────────────────────────────────────────────────────────
+
+function renderModels(models) {
+  const tbody = document.getElementById('models-tbody');
+  tbody.innerHTML = models.map(m => `<tr>
+    <td class="font-medium">${esc(m.model)}</td>
+    <td>${fmtNum(m.requests)}</td>
+    <td>${fmtCents(m.costCents)}</td>
+    <td>${fmtNum(m.inputTokens)}</td>
+    <td>${fmtNum(m.outputTokens)}</td>
+    <td>${m.avgLatencyMs}ms</td>
+  </tr>`).join('');
+  if (models.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-4">No usage data yet</td></tr>';
+  }
+}
+
+// ── Render: Providers ─────────────────────────────────────────────────────
+
+function renderProviders(providers) {
+  const tbody = document.getElementById('providers-tbody');
+  tbody.innerHTML = providers.map(p => `<tr>
+    <td class="font-medium">${esc(p.provider)}</td>
+    <td>${fmtNum(p.requests)}</td>
+    <td>${fmtCents(p.costCents)}</td>
+    <td>${fmtNum(p.totalTokens)}</td>
+  </tr>`).join('');
+  if (providers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-4">No usage data yet</td></tr>';
+  }
+}
+
+// ── Render: API Keys ──────────────────────────────────────────────────────
+
+function renderKeys(keys) {
+  const tbody = document.getElementById('keys-tbody');
+  if (!keys || keys.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400 py-4">No DB-managed keys (using env vars only)</td></tr>';
+    return;
+  }
+  tbody.innerHTML = keys.map(k => `<tr>
+    <td class="font-medium">${esc(k.providerName)}</td>
+    <td>${esc(k.label || '-')}</td>
+    <td class="font-mono text-xs text-gray-500">${esc(k.maskedKey)}</td>
+    <td class="text-xs text-gray-500">${esc(k.baseUrl || 'default')}</td>
+    <td>
+      <div class="toggle ${k.isActive ? 'on' : ''}" onclick="toggleKey('${k.id}', ${!k.isActive})"></div>
+    </td>
+    <td class="text-xs text-gray-400">${fmtDate(k.createdAt)}</td>
+    <td><button class="btn-sm danger" onclick="deleteKey('${k.id}')">Delete</button></td>
+  </tr>`).join('');
+}
+
+function showAddKeyForm() { document.getElementById('add-key-form').classList.remove('hidden'); }
+function hideAddKeyForm() { document.getElementById('add-key-form').classList.add('hidden'); }
+
+async function addKey() {
+  const provider = document.getElementById('ak-provider').value;
+  const apiKey = document.getElementById('ak-key').value;
+  const label = document.getElementById('ak-label').value || undefined;
+  const baseUrl = document.getElementById('ak-url').value || undefined;
+  if (!provider || !apiKey) { alert('Provider and API Key are required'); return; }
+  try {
+    await apiMutate('POST', '/admin/provider-keys', { providerName: provider, apiKey, label, baseUrl });
+    hideAddKeyForm();
+    document.getElementById('ak-provider').value = '';
+    document.getElementById('ak-key').value = '';
+    document.getElementById('ak-label').value = '';
+    document.getElementById('ak-url').value = '';
+    await loadDashboard();
+  } catch (err) { alert('Failed to add key: ' + err.message); }
+}
+
+async function toggleKey(id, active) {
+  try {
+    await apiMutate('PATCH', `/admin/provider-keys/${id}`, { isActive: active });
+    await loadDashboard();
+  } catch (err) { alert('Failed to update key'); }
+}
+
+async function deleteKey(id) {
+  if (!confirm('Delete this API key?')) return;
+  try {
+    await apiMutate('DELETE', `/admin/provider-keys/${id}`);
+    await loadDashboard();
+  } catch (err) { alert('Failed to delete key'); }
+}
+
+// ── Render: Access Control ────────────────────────────────────────────────
+
+function renderAccess(providers) {
+  const tbody = document.getElementById('access-tbody');
+  if (!providers || providers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-4">No access rules configured</td></tr>';
+    return;
+  }
+  tbody.innerHTML = providers.map(p => {
+    const plans = p.allowedPlans.join(',');
+    return `<tr>
+      <td class="font-medium">${esc(p.providerName)}</td>
+      <td>
+        <div class="toggle ${p.isEnabled ? 'on' : ''}" onclick="toggleAccess('${esc(p.providerName)}', ${!p.isEnabled}, '${plans}')"></div>
+      </td>
+      <td>
+        <select class="input-sm" onchange="updateAccessPlans('${esc(p.providerName)}', ${p.isEnabled}, this.value)">
+          <option value="all" ${plans === 'all' ? 'selected' : ''}>All Users</option>
+          <option value="pro" ${plans === 'pro' ? 'selected' : ''}>Pro Only</option>
+          <option value="free,pro" ${plans === 'free,pro' ? 'selected' : ''}>Free + Pro</option>
+        </select>
+      </td>
+      <td class="text-xs text-gray-400">${p.isEnabled ? 'Active' : 'Disabled'}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleAccess(name, enabled, currentPlans) {
+  try {
+    await apiMutate('PUT', `/admin/provider-access/${encodeURIComponent(name)}`, {
+      isEnabled: enabled,
+      allowedPlans: currentPlans.split(','),
+    });
+    await loadDashboard();
+  } catch (err) { alert('Failed to update access'); }
+}
+
+async function updateAccessPlans(name, enabled, plans) {
+  try {
+    await apiMutate('PUT', `/admin/provider-access/${encodeURIComponent(name)}`, {
+      isEnabled: enabled,
+      allowedPlans: plans.split(','),
+    });
+    await loadDashboard();
+  } catch (err) { alert('Failed to update access'); }
+}
+
+// ── Render: Referrals ─────────────────────────────────────────────────────
+
+function renderReferralStats(s) {
+  document.getElementById('ref-codes').textContent = s.totalCodes;
+  document.getElementById('ref-claims').textContent = s.totalClaims;
+  document.getElementById('ref-rewards').textContent = s.rewardsGiven;
+  document.getElementById('ref-value').textContent = fmtCents(s.totalRewardCents);
+}
+
+function renderTopReferrers(referrers) {
+  const tbody = document.getElementById('referrers-tbody');
+  if (!referrers || referrers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-4">No referrals yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = referrers.map(r => `<tr>
+    <td>${esc(r.email)}</td>
+    <td class="font-mono text-xs">${esc(r.code)}</td>
+    <td>${r.uses}</td>
+    <td>${r.rewardsEarned}</td>
+    <td>${fmtCents(r.totalEarnedCents)}</td>
+  </tr>`).join('');
+}
+
+function renderReferralClaims(claims) {
+  const tbody = document.getElementById('claims-tbody');
+  if (!claims || claims.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-4">No claims yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = claims.map(c => `<tr>
+    <td class="text-xs text-gray-400">${fmtDateTime(c.createdAt)}</td>
+    <td>${esc(c.referredEmail)}</td>
+    <td>${esc(c.referrerEmail)}</td>
+    <td class="font-mono text-xs">${esc(c.code)}</td>
+    <td>${c.referredRewarded ? '\u2705' : '\u23f3'}</td>
+    <td>${c.referrerRewarded ? '\u2705' : '\u23f3'}</td>
+  </tr>`).join('');
+}
+
+// ── Render: Model Registry ───────────────────────────────────────────
+
+function renderRegistry(models) {
+  _registryModels = models || [];
+  const tbody = document.getElementById('registry-tbody');
+  if (!models || models.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-gray-400 py-4">No models in registry</td></tr>';
+    return;
+  }
+  tbody.innerHTML = models.map(m => {
+    const statusBadge = m.status === 'active' ? 'badge-pro' : m.status === 'beta' ? 'badge-bonus' : 'badge-free';
+    const tierLabel = m.tier === 'flagship' ? '<span class="text-amber-600 font-medium text-xs">Flagship</span>' : '<span class="text-gray-400 text-xs">Fast</span>';
+    const caps = [
+      m.supportsVision ? '<span title="Vision">V</span>' : '',
+      m.supportsFunctionCall ? '<span title="Function Call">F</span>' : '',
+      m.supportsLongContext ? '<span title="Long Context">L</span>' : '',
+      m.chineseOptimized ? '<span title="Chinese">ZH</span>' : '',
+      m.isFlockNode ? '<span title="FLock" class="text-purple-500">FL</span>' : '',
+    ].filter(Boolean).join(' ');
+    return `<tr>
+      <td class="font-medium text-xs">${esc(m.modelId)}<div class="text-gray-400 text-[10px]">${esc(m.displayName)}</div></td>
+      <td class="text-xs">${esc(m.provider)}</td>
+      <td>${tierLabel}</td>
+      <td><span class="badge ${statusBadge}">${m.status}</span></td>
+      <td><div class="w-10 bg-gray-100 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width:${m.quality * 100}%"></div></div><span class="text-[10px] text-gray-400">${m.quality.toFixed(2)}</span></td>
+      <td><div class="w-10 bg-gray-100 rounded-full h-1.5"><div class="bg-green-500 h-1.5 rounded-full" style="width:${m.speed * 100}%"></div></div><span class="text-[10px] text-gray-400">${m.speed.toFixed(2)}</span></td>
+      <td><div class="w-10 bg-gray-100 rounded-full h-1.5"><div class="bg-yellow-500 h-1.5 rounded-full" style="width:${m.costEfficiency * 100}%"></div></div><span class="text-[10px] text-gray-400">${m.costEfficiency.toFixed(2)}</span></td>
+      <td><div class="w-10 bg-gray-100 rounded-full h-1.5"><div class="bg-purple-500 h-1.5 rounded-full" style="width:${m.codeStrength * 100}%"></div></div><span class="text-[10px] text-gray-400">${m.codeStrength.toFixed(2)}</span></td>
+      <td class="text-xs font-mono">${caps || '-'}</td>
+      <td>
+        <div class="flex gap-1">
+          <button class="btn-sm" onclick="editModel('${m.id}')">Edit</button>
+          <button class="btn-sm danger" onclick="deleteRegistryModel('${m.id}')">Del</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function showModelForm(model) {
+  const form = document.getElementById('model-form');
+  const title = document.getElementById('model-form-title');
+  const idInput = document.getElementById('mf-modelId');
+
+  if (model) {
+    title.textContent = 'Edit Model';
+    document.getElementById('mf-id').value = model.id;
+    idInput.value = model.modelId;
+    idInput.disabled = true;
+    document.getElementById('mf-displayName').value = model.displayName;
+    document.getElementById('mf-provider').value = model.provider;
+    document.getElementById('mf-status').value = model.status;
+    document.getElementById('mf-tier').value = model.tier;
+    document.getElementById('mf-quality').value = model.quality;
+    document.getElementById('mf-speed').value = model.speed;
+    document.getElementById('mf-costEfficiency').value = model.costEfficiency;
+    document.getElementById('mf-codeStrength').value = model.codeStrength;
+    document.getElementById('mf-maxContextTokens').value = model.maxContextTokens;
+    document.getElementById('mf-avgTtftMs').value = model.avgTtftMs;
+    document.getElementById('mf-priceInput').value = model.priceInput;
+    document.getElementById('mf-priceOutput').value = model.priceOutput;
+    document.getElementById('mf-supportsVision').checked = model.supportsVision;
+    document.getElementById('mf-supportsFunctionCall').checked = model.supportsFunctionCall;
+    document.getElementById('mf-supportsLongContext').checked = model.supportsLongContext;
+    document.getElementById('mf-chineseOptimized').checked = model.chineseOptimized;
+    document.getElementById('mf-isFlockNode').checked = model.isFlockNode;
+  } else {
+    title.textContent = 'Add Model';
+    document.getElementById('mf-id').value = '';
+    idInput.value = '';
+    idInput.disabled = false;
+    document.getElementById('mf-displayName').value = '';
+    document.getElementById('mf-provider').value = '';
+    document.getElementById('mf-status').value = 'active';
+    document.getElementById('mf-tier').value = 'fast';
+    document.getElementById('mf-quality').value = '0.70';
+    document.getElementById('mf-speed').value = '0.70';
+    document.getElementById('mf-costEfficiency').value = '0.70';
+    document.getElementById('mf-codeStrength').value = '0.70';
+    document.getElementById('mf-maxContextTokens').value = '128000';
+    document.getElementById('mf-avgTtftMs').value = '500';
+    document.getElementById('mf-priceInput').value = '1.00';
+    document.getElementById('mf-priceOutput').value = '3.00';
+    document.getElementById('mf-supportsVision').checked = false;
+    document.getElementById('mf-supportsFunctionCall').checked = true;
+    document.getElementById('mf-supportsLongContext').checked = false;
+    document.getElementById('mf-chineseOptimized').checked = false;
+    document.getElementById('mf-isFlockNode').checked = false;
+  }
+  form.classList.remove('hidden');
+}
+
+function hideModelForm() {
+  document.getElementById('model-form').classList.add('hidden');
+  document.getElementById('mf-modelId').disabled = false;
+}
+
+function editModel(id) {
+  const model = _registryModels.find(m => m.id === id);
+  if (model) showModelForm(model);
+}
+
+async function saveModel() {
+  const id = document.getElementById('mf-id').value;
+  const data = {
+    modelId: document.getElementById('mf-modelId').value,
+    displayName: document.getElementById('mf-displayName').value,
+    provider: document.getElementById('mf-provider').value,
+    status: document.getElementById('mf-status').value,
+    tier: document.getElementById('mf-tier').value,
+    quality: parseFloat(document.getElementById('mf-quality').value),
+    speed: parseFloat(document.getElementById('mf-speed').value),
+    costEfficiency: parseFloat(document.getElementById('mf-costEfficiency').value),
+    codeStrength: parseFloat(document.getElementById('mf-codeStrength').value),
+    maxContextTokens: parseInt(document.getElementById('mf-maxContextTokens').value),
+    avgTtftMs: parseInt(document.getElementById('mf-avgTtftMs').value),
+    priceInput: parseFloat(document.getElementById('mf-priceInput').value),
+    priceOutput: parseFloat(document.getElementById('mf-priceOutput').value),
+    supportsVision: document.getElementById('mf-supportsVision').checked,
+    supportsFunctionCall: document.getElementById('mf-supportsFunctionCall').checked,
+    supportsLongContext: document.getElementById('mf-supportsLongContext').checked,
+    chineseOptimized: document.getElementById('mf-chineseOptimized').checked,
+    isFlockNode: document.getElementById('mf-isFlockNode').checked,
+  };
+
+  if (!data.modelId || !data.displayName || !data.provider) {
+    alert('Model ID, Display Name, and Provider are required');
+    return;
+  }
+
+  // Score range validation
+  for (const field of ['quality', 'speed', 'costEfficiency', 'codeStrength']) {
+    const v = data[field];
+    if (isNaN(v) || v < 0 || v > 1) { alert(`${field} must be between 0.00 and 1.00`); return; }
+  }
+  // Integer fields
+  if (!Number.isInteger(data.maxContextTokens) || data.maxContextTokens < 1) {
+    alert('Max Context Tokens must be a positive integer'); return;
+  }
+  if (!Number.isInteger(data.avgTtftMs) || data.avgTtftMs < 0) {
+    alert('Avg TTFT must be a non-negative integer'); return;
+  }
+  // Price fields
+  if (isNaN(data.priceInput) || data.priceInput < 0) { alert('Price Input must be >= 0'); return; }
+  if (isNaN(data.priceOutput) || data.priceOutput < 0) { alert('Price Output must be >= 0'); return; }
+
+  try {
+    if (id) {
+      await apiMutate('PATCH', `/admin/models/registry/${id}`, data);
+    } else {
+      await apiMutate('POST', '/admin/models/registry', data);
+    }
+    hideModelForm();
+    await loadDashboard();
+  } catch (err) { alert('Failed to save model: ' + err.message); }
+}
+
+async function deleteRegistryModel(id) {
+  if (!confirm('Delete this model from the registry?')) return;
+  try {
+    await apiMutate('DELETE', `/admin/models/registry/${id}`);
+    await loadDashboard();
+  } catch (err) { alert('Failed to delete model'); }
+}
+
+async function reloadRegistryCache() {
+  try {
+    await apiMutate('POST', '/admin/models/registry/reload');
+    alert('Registry cache reloaded');
+  } catch (err) { alert('Failed to reload cache'); }
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────
+
+function renderUsageChart(trend) {
+  const ctx = document.getElementById('chart-usage').getContext('2d');
+  if (charts.usage) charts.usage.destroy();
+
+  charts.usage = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: trend.map(t => t.date.slice(5)),
+      datasets: [
+        {
+          label: 'Requests',
+          data: trend.map(t => t.requests),
+          borderColor: '#007AFF',
+          backgroundColor: 'rgba(0, 122, 255, 0.08)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+        {
+          label: 'Active Users',
+          data: trend.map(t => t.activeUsers),
+          borderColor: '#34C759',
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+          yAxisID: 'y1',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 11 } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 10 } },
+        y: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 10 } }, beginAtZero: true },
+        y1: { position: 'right', grid: { display: false }, ticks: { font: { size: 10 } }, beginAtZero: true },
+      },
+    },
+  });
+}
+
+function renderRevenueChart(trend) {
+  const ctx = document.getElementById('chart-revenue').getContext('2d');
+  if (charts.revenue) charts.revenue.destroy();
+
+  charts.revenue = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: trend.map(t => t.date.slice(5)),
+      datasets: [{
+        label: 'Revenue',
+        data: trend.map(t => t.depositCents / 100),
+        backgroundColor: 'rgba(52, 199, 89, 0.6)',
+        borderColor: '#34C759',
+        borderWidth: 1,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 10 } },
+        y: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 10 }, callback: v => '$' + v } , beginAtZero: true },
+      },
+    },
+  });
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+
+  ['users', 'transactions', 'models', 'registry', 'providers', 'keys', 'access', 'referrals'].forEach(t => {
+    document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+(async function init() {
+  if (token) {
+    try {
+      await api('/admin/stats');
+      showDashboard();
+    } catch {
+      // Token invalid, show login
+    }
+  }
+})();
+</script>
+</body>
+</html>
