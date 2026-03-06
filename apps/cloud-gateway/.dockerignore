@@ -12,6 +12,7 @@ nginx.conf
 nginx-init.conf
 monitoring/
 scripts/
+migrations/
 openapi.yaml
 README.md
 *.md
