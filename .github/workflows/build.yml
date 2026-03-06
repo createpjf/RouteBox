@@ -18,6 +18,8 @@ jobs:
   build-macos:
     needs: [ci]
     runs-on: macos-14
+    permissions:
+      contents: write
     strategy:
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
