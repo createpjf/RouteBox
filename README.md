@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/routebox_icon.png" alt="RouteBox" width="160" />
+  <img src="apps/desktop/src-tauri/icons/icon.png" alt="RouteBox" width="160" />
 </p>
 
 <h1 align="center">RouteBox</h1>
