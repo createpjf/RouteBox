@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="docs/images/routebox_header.png" alt="RouteBox" width="600" />
+  <img src="docs/images/routebox_icon.png" alt="RouteBox" width="160" />
 </p>
+
+<h1 align="center">RouteBox</h1>
 
 <p align="center">
   <em>One proxy. Every model. Your rules.</em><br/>
