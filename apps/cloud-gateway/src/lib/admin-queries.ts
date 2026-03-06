@@ -372,6 +372,111 @@ export async function adjustUserBalance(
   return result;
 }
 
+// ── User detail (single user) ─────────────────────────────────────────────
+
+export async function getAdminUser(userId: string) {
+  const [row] = await sql`
+    SELECT
+      u.id, u.email, u.display_name, u.plan, u.created_at, u.updated_at,
+      COALESCE(c.balance_cents, 0) AS balance_cents,
+      COALESCE(c.total_deposited_cents, 0) AS total_deposited_cents,
+      COALESCE(c.total_used_cents, 0) AS total_used_cents,
+      (SELECT COUNT(*)::int FROM requests WHERE user_id = u.id) AS request_count,
+      (SELECT COUNT(*)::int FROM transactions WHERE user_id = u.id) AS transaction_count
+    FROM users u
+    LEFT JOIN credits c ON c.user_id = u.id
+    WHERE u.id = ${userId}
+  `;
+  if (!row) return null;
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    plan: row.plan,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    balanceCents: row.balance_cents,
+    totalDepositedCents: row.total_deposited_cents,
+    totalUsedCents: row.total_used_cents,
+    requestCount: row.request_count,
+    transactionCount: row.transaction_count,
+  };
+}
+
+export async function getUserTransactions(userId: string, limit = 50, offset = 0) {
+  const rows = await sql`
+    SELECT
+      id, type, amount_cents, balance_after_cents, description, payment_ref, model, created_at,
+      COUNT(*) OVER() AS total_count
+    FROM transactions
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+  const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
+  return {
+    transactions: rows.map((r) => ({
+      id: r.id,
+      type: r.type,
+      amountCents: r.amount_cents,
+      balanceAfterCents: r.balance_after_cents,
+      description: r.description,
+      paymentRef: r.payment_ref,
+      model: r.model,
+      createdAt: r.created_at,
+    })),
+    total,
+  };
+}
+
+export async function getUserRequests(userId: string, limit = 50, offset = 0) {
+  const rows = await sql`
+    SELECT
+      id, model, provider, input_tokens, output_tokens, cost_cents, latency_ms, status, created_at,
+      COUNT(*) OVER() AS total_count
+    FROM requests
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+  const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
+  return {
+    requests: rows.map((r) => ({
+      id: r.id,
+      model: r.model,
+      provider: r.provider,
+      inputTokens: r.input_tokens,
+      outputTokens: r.output_tokens,
+      costCents: r.cost_cents,
+      latencyMs: r.latency_ms,
+      status: r.status,
+      createdAt: r.created_at,
+    })),
+    total,
+  };
+}
+
+export async function getUserModelBreakdown(userId: string, days = 30) {
+  const rows = await sql`
+    SELECT
+      model,
+      COUNT(*)::int AS requests,
+      COALESCE(SUM(cost_cents), 0)::int AS cost_cents,
+      COALESCE(SUM(input_tokens + output_tokens), 0)::bigint AS total_tokens
+    FROM requests
+    WHERE user_id = ${userId}
+      AND created_at >= CURRENT_DATE - make_interval(days => ${days})
+    GROUP BY model
+    ORDER BY requests DESC
+  `;
+  return rows.map((r) => ({
+    model: r.model,
+    requests: r.requests,
+    costCents: r.cost_cents,
+    totalTokens: Number(r.total_tokens),
+  }));
+}
+
 // ── Recent referral claims ───────────────────────────────────────────────
 
 export async function getAdminRecentReferralClaims(limit = 50) {

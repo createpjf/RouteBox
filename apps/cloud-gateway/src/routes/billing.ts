@@ -4,7 +4,7 @@
 
 import { Hono } from "hono";
 import {
-  CREDIT_PACKAGES,
+  loadCreditPackages,
   SUBSCRIPTION_PLANS,
   createCheckoutSession,
   createSubscriptionCheckout,
@@ -23,15 +23,18 @@ const app = new Hono<CloudEnv>();
 
 // ── GET /packages — public list of credit packages ──────────────────────────
 
-app.get("/packages", (c) => {
+app.get("/packages", async (c) => {
+  const packages = await loadCreditPackages();
   return c.json({
-    packages: CREDIT_PACKAGES.map((p) => ({
-      id: p.id,
-      amount: p.amount,
-      credits: p.credits,
-      label: p.label,
-      bonus: p.bonus,
-    })),
+    packages: packages
+      .filter((p) => p.isActive !== false)
+      .map((p) => ({
+        id: p.id,
+        amount: p.amount,
+        credits: p.credits,
+        label: p.label,
+        bonus: p.bonus,
+      })),
   });
 });
 
@@ -172,7 +175,8 @@ app.post("/webhook", async (c) => {
       if (userId && creditsCents) {
         const amount = parseInt(creditsCents, 10);
         if (amount > 0) {
-          const pkg = CREDIT_PACKAGES.find((p) => p.id === packageId);
+          const allPackages = await loadCreditPackages();
+          const pkg = allPackages.find((p) => p.id === packageId);
           const desc = pkg ? `Credit purchase: ${pkg.label}` : "Credit purchase";
           await addCredits(userId, amount, order.id, desc);
           log.info("credits_added", { userId, amountCents: amount, packageId });

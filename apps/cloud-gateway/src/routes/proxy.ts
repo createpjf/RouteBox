@@ -16,6 +16,7 @@ import { scoreAndRank, type ScoredCandidate } from "../lib/scoring-engine";
 import { getCircuitBreaker } from "../lib/circuit-breaker";
 import { deductCredits, recordCloudRequest } from "../lib/credits";
 import { getMarkupForPlan } from "../lib/polar";
+import { getRegistryEntry } from "../lib/model-registry";
 import { log } from "../lib/logger";
 import { incCounter, observeHistogram, incGauge, decGauge } from "../lib/metrics";
 import { creditsCheck } from "../middleware/credits-check";
@@ -476,6 +477,21 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   // (provider matching uses full name, but OpenRouter API expects unprefixed)
   if (requestedModel.startsWith("openrouter/")) {
     body.model = requestedModel.slice("openrouter/".length);
+  }
+
+  // ── Model-level plan check ───────────────────────────────────────────────
+  const modelEntry = await getRegistryEntry(requestedModel);
+  if (modelEntry) {
+    const allowed = modelEntry.allowedPlans ?? ["all"];
+    if (!allowed.includes("all") && !allowed.includes(userPlan)) {
+      return c.json({
+        error: {
+          message: `Model ${requestedModel} requires a higher plan`,
+          type: "plan_restriction",
+          code: "model_plan_restriction",
+        },
+      }, 403);
+    }
   }
 
   // ── Scoring Engine → Provider Chain ─────────────────────────────────────

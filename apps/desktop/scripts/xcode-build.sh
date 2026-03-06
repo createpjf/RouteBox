@@ -3,6 +3,27 @@
 # Called by Xcode's PBXLegacyTarget with ACTION passed as argument.
 set -euo pipefail
 
+# ── Extend PATH for Xcode's minimal environment ──
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"   # Homebrew (pnpm, node, bun)
+export PATH="$HOME/.bun/bin:$PATH"                          # Bun
+export PATH="$HOME/.cargo/bin:$PATH"                        # Cargo / rustup
+
+# NVM（如果用了 nvm 管理 Node）
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+    export NVM_DIR="$HOME/.nvm"
+    # shellcheck source=/dev/null
+    source "$NVM_DIR/nvm.sh" --no-use
+fi
+
+# ── Verify required tools ──
+for tool in node pnpm bun cargo; do
+    if ! command -v "$tool" &>/dev/null; then
+        echo "ERROR: '$tool' not found in PATH" >&2
+        echo "PATH=$PATH" >&2
+        exit 1
+    fi
+done
+
 # ── Resolve project root (two levels up from apps/desktop/scripts/) ──
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DESKTOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

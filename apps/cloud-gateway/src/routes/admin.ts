@@ -19,7 +19,12 @@ import {
   getAdminRecentReferralClaims,
   updateUserPlan,
   adjustUserBalance,
+  getAdminUser,
+  getUserTransactions,
+  getUserRequests,
+  getUserModelBreakdown,
 } from "../lib/admin-queries";
+import { sql } from "../lib/db-cloud";
 import type { CloudEnv } from "../types";
 
 const app = new Hono<CloudEnv>();
@@ -312,6 +317,208 @@ app.delete("/models/registry/:id", async (c) => {
 app.post("/models/registry/reload", async (c) => {
   const { reloadRegistry } = await import("../lib/model-registry");
   reloadRegistry();
+  return c.json({ success: true });
+});
+
+// ── User Detail ─────────────────────────────────────────────────────────
+
+app.get("/users/:id", async (c) => {
+  const user = await getAdminUser(c.req.param("id"));
+  if (!user) return c.json({ error: { message: "User not found", type: "not_found" } }, 404);
+  return c.json(user);
+});
+
+app.get("/users/:id/transactions", async (c) => {
+  const id = c.req.param("id");
+  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const offset = Number(c.req.query("offset") ?? 0);
+  const result = await getUserTransactions(id, limit, offset);
+  return c.json({ ...result, limit, offset });
+});
+
+app.get("/users/:id/requests", async (c) => {
+  const id = c.req.param("id");
+  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const offset = Number(c.req.query("offset") ?? 0);
+  const result = await getUserRequests(id, limit, offset);
+  return c.json({ ...result, limit, offset });
+});
+
+app.get("/users/:id/models", async (c) => {
+  const id = c.req.param("id");
+  const days = Math.min(Number(c.req.query("days") ?? 30), 90);
+  const models = await getUserModelBreakdown(id, days);
+  return c.json({ models, days });
+});
+
+// ── Credit Packages CRUD ─────────────────────────────────────────────────
+
+app.get("/packages", async (c) => {
+  const rows = await sql`SELECT * FROM credit_packages ORDER BY sort_order, id`;
+  return c.json({
+    packages: rows.map((r) => ({
+      id: r.id,
+      polarProductId: r.polar_product_id,
+      amountCents: r.amount_cents,
+      creditsCents: r.credits_cents,
+      label: r.label,
+      bonus: r.bonus,
+      isActive: r.is_active,
+      sortOrder: r.sort_order,
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+app.post("/packages", async (c) => {
+  const { reloadCreditPackages } = await import("../lib/polar");
+  const body = await c.req.json<{
+    id: string;
+    polarProductId: string;
+    amountCents: number;
+    creditsCents: number;
+    label: string;
+    bonus?: string;
+    sortOrder?: number;
+  }>();
+
+  if (!body.id || !body.label || !body.amountCents || !body.creditsCents) {
+    return c.json({ error: { message: "id, label, amountCents, creditsCents are required", type: "validation_error" } }, 400);
+  }
+
+  try {
+    const [row] = await sql`
+      INSERT INTO credit_packages (id, polar_product_id, amount_cents, credits_cents, label, bonus, sort_order)
+      VALUES (
+        ${body.id},
+        ${body.polarProductId ?? ""},
+        ${body.amountCents},
+        ${body.creditsCents},
+        ${body.label},
+        ${body.bonus ?? null},
+        ${body.sortOrder ?? 0}
+      )
+      RETURNING *
+    `;
+    reloadCreditPackages();
+    return c.json(row, 201);
+  } catch (err: any) {
+    if (err.message?.includes("duplicate key") || err.message?.includes("unique")) {
+      return c.json({ error: { message: "A package with this ID already exists", type: "conflict" } }, 409);
+    }
+    throw err;
+  }
+});
+
+app.patch("/packages/:id", async (c) => {
+  const { reloadCreditPackages } = await import("../lib/polar");
+  const id = c.req.param("id");
+  const body = await c.req.json<{
+    polarProductId?: string;
+    label?: string;
+    bonus?: string | null;
+    isActive?: boolean;
+    sortOrder?: number;
+  }>();
+
+  const setObj: Record<string, unknown> = {};
+  if (body.polarProductId !== undefined) setObj.polar_product_id = body.polarProductId;
+  if (body.label !== undefined) setObj.label = body.label;
+  if ("bonus" in body) setObj.bonus = body.bonus;
+  if (body.isActive !== undefined) setObj.is_active = body.isActive;
+  if (body.sortOrder !== undefined) setObj.sort_order = body.sortOrder;
+
+  if (Object.keys(setObj).length === 0) {
+    return c.json({ error: { message: "No fields to update", type: "validation_error" } }, 400);
+  }
+
+  const [row] = await sql`
+    UPDATE credit_packages SET ${sql(setObj)} WHERE id = ${id} RETURNING *
+  `;
+  if (!row) return c.json({ error: { message: "Package not found", type: "not_found" } }, 404);
+  reloadCreditPackages();
+  return c.json(row);
+});
+
+app.delete("/packages/:id", async (c) => {
+  const { reloadCreditPackages } = await import("../lib/polar");
+  const id = c.req.param("id");
+  await sql`UPDATE credit_packages SET is_active = false WHERE id = ${id}`;
+  reloadCreditPackages();
+  return c.json({ success: true });
+});
+
+// ── Announcements CRUD ───────────────────────────────────────────────────
+
+app.get("/announcements", async (c) => {
+  const rows = await sql`SELECT * FROM announcements ORDER BY created_at DESC`;
+  return c.json({ announcements: rows });
+});
+
+app.post("/announcements", async (c) => {
+  const body = await c.req.json<{
+    title: string;
+    message: string;
+    type?: string;
+    startsAt?: string;
+    endsAt?: string;
+  }>();
+
+  if (!body.title || !body.message) {
+    return c.json({ error: { message: "title and message are required", type: "validation_error" } }, 400);
+  }
+  const validTypes = ["info", "warning", "error"];
+  if (body.type && !validTypes.includes(body.type)) {
+    return c.json({ error: { message: "type must be info, warning, or error", type: "validation_error" } }, 400);
+  }
+
+  const [row] = await sql`
+    INSERT INTO announcements (title, message, type, starts_at, ends_at)
+    VALUES (
+      ${body.title},
+      ${body.message},
+      ${body.type ?? "info"},
+      ${body.startsAt ? new Date(body.startsAt) : sql`now()`},
+      ${body.endsAt ? new Date(body.endsAt) : null}
+    )
+    RETURNING *
+  `;
+  return c.json(row, 201);
+});
+
+app.patch("/announcements/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{
+    title?: string;
+    message?: string;
+    type?: string;
+    isActive?: boolean;
+    startsAt?: string;
+    endsAt?: string | null;
+  }>();
+
+  const setObj: Record<string, unknown> = {};
+  if (body.title !== undefined) setObj.title = body.title;
+  if (body.message !== undefined) setObj.message = body.message;
+  if (body.type !== undefined) setObj.type = body.type;
+  if (body.isActive !== undefined) setObj.is_active = body.isActive;
+  if (body.startsAt !== undefined) setObj.starts_at = new Date(body.startsAt);
+  if ("endsAt" in body) setObj.ends_at = body.endsAt ? new Date(body.endsAt) : null;
+
+  if (Object.keys(setObj).length === 0) {
+    return c.json({ error: { message: "No fields to update", type: "validation_error" } }, 400);
+  }
+
+  const [row] = await sql`
+    UPDATE announcements SET ${sql(setObj)} WHERE id = ${id} RETURNING *
+  `;
+  if (!row) return c.json({ error: { message: "Announcement not found", type: "not_found" } }, 404);
+  return c.json(row);
+});
+
+app.delete("/announcements/:id", async (c) => {
+  const result = await sql`DELETE FROM announcements WHERE id = ${c.req.param("id")}`;
+  if (result.count === 0) return c.json({ error: { message: "Announcement not found", type: "not_found" } }, 404);
   return c.json({ success: true });
 });
 

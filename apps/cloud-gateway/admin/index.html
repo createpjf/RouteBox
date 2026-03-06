@@ -4,52 +4,264 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RouteBox Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; }
-    .card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .stat-value { font-size: 28px; font-weight: 700; color: #1d1d1f; }
-    .stat-label { font-size: 12px; color: #86868b; font-weight: 500; }
-    .stat-sub { font-size: 11px; color: #aeaeb2; }
+    :root {
+      --bg: #080810;
+      --surface: rgba(255,255,255,0.05);
+      --surface-hover: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.08);
+      --border-strong: rgba(255,255,255,0.15);
+      --text: #E2E8F0;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+      --purple: #8B5CF6;
+      --cyan: #06B6D4;
+      --green: #10B981;
+      --red: #F87171;
+      --amber: #FBBF24;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Aurora animated blobs */
+    .aurora-bg {
+      position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+    }
+    .aurora-bg::before {
+      content: '';
+      position: absolute;
+      width: 700px; height: 700px;
+      background: radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%);
+      top: -200px; left: -150px;
+      animation: auroraFloat1 14s ease-in-out infinite alternate;
+    }
+    .aurora-bg::after {
+      content: '';
+      position: absolute;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(6,182,212,0.15) 0%, transparent 70%);
+      bottom: -150px; right: -100px;
+      animation: auroraFloat2 18s ease-in-out infinite alternate;
+    }
+    .aurora-blob3 {
+      position: absolute;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%);
+      top: 45%; left: 35%;
+      transform: translate(-50%,-50%);
+      animation: auroraFloat3 12s ease-in-out infinite alternate;
+    }
+
+    @keyframes auroraFloat1 {
+      0%   { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(60px, 40px) scale(1.15); }
+    }
+    @keyframes auroraFloat2 {
+      0%   { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(-50px, -30px) scale(1.1); }
+    }
+    @keyframes auroraFloat3 {
+      0%   { transform: translate(-50%, -50%) scale(1); }
+      100% { transform: translate(-42%, -55%) scale(1.2); }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    /* Stats */
+    .stat-value { font-size: 28px; font-weight: 700; color: var(--text); }
+    .stat-label { font-size: 11px; color: var(--text-dim); font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; }
+    .stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+    /* Badges */
     .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
-    .badge-free { background: #f0f0f0; color: #86868b; }
-    .badge-pro { background: #e8f5e9; color: #2e7d32; }
-    .badge-bonus { background: #e3f2fd; color: #1565c0; }
-    .tab { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; color: #86868b; }
-    .tab.active { background: #fff; color: #1d1d1f; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .badge-free { background: rgba(148,163,184,0.15); color: #94A3B8; }
+    .badge-pro { background: rgba(16,185,129,0.15); color: #10B981; }
+    .badge-bonus { background: rgba(6,182,212,0.15); color: #06B6D4; }
+    .badge-admin_adjustment { background: rgba(251,191,36,0.15); color: #FBBF24; }
+    .badge-danger { background: rgba(248,113,113,0.15); color: #F87171; }
+    .badge-warning { background: rgba(251,191,36,0.15); color: #FBBF24; }
+    .badge-info { background: rgba(6,182,212,0.15); color: #06B6D4; }
+
+    /* Tabs */
+    .tab {
+      padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
+      cursor: pointer; color: var(--text-muted); transition: all 0.2s;
+      border: 1px solid transparent;
+    }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+    .tab.active {
+      background: linear-gradient(135deg, rgba(139,92,246,0.25), rgba(6,182,212,0.2));
+      color: var(--text);
+      border-color: rgba(139,92,246,0.35);
+    }
+
+    /* Tables */
     table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; font-size: 11px; font-weight: 600; color: #86868b; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
-    td { font-size: 13px; color: #1d1d1f; padding: 10px 12px; border-bottom: 1px solid #f5f5f7; }
-    tr:hover td { background: #fafafa; }
+    th {
+      text-align: left; font-size: 10px; font-weight: 700;
+      color: var(--text-dim); padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    td { font-size: 13px; color: var(--text); padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+
+    /* Login / Dashboard visibility */
     #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
     #dashboard { display: none; }
     .chart-container { position: relative; height: 200px; }
-    .toggle { position: relative; width: 36px; height: 20px; border-radius: 10px; background: #ddd; cursor: pointer; transition: background 0.2s; }
-    .toggle.on { background: #34C759; }
-    .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left 0.2s; }
+
+    /* Toggle */
+    .toggle {
+      position: relative; width: 36px; height: 20px; border-radius: 10px;
+      background: rgba(255,255,255,0.12); cursor: pointer; transition: background 0.3s;
+      flex-shrink: 0;
+    }
+    .toggle.on { background: linear-gradient(135deg, var(--purple), var(--cyan)); }
+    .toggle::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 16px; height: 16px; border-radius: 50%; background: #fff;
+      transition: left 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
     .toggle.on::after { left: 18px; }
-    .btn-sm { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #e0e0e0; background: #fff; }
-    .btn-sm:hover { background: #f5f5f7; }
-    .btn-sm.danger { color: #d32f2f; border-color: #ffcdd2; }
-    .btn-sm.danger:hover { background: #ffebee; }
-    .btn-sm.primary { background: #007AFF; color: #fff; border-color: #007AFF; }
-    .btn-sm.primary:hover { background: #0066d6; }
-    .input-sm { padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; outline: none; }
-    .input-sm:focus { border-color: #007AFF; box-shadow: 0 0 0 2px rgba(0,122,255,0.1); }
+
+    /* Buttons */
+    .btn-sm {
+      padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 500;
+      cursor: pointer; border: 1px solid var(--border-strong);
+      background: rgba(255,255,255,0.07); color: var(--text-muted);
+      transition: all 0.15s; font-family: 'Fira Sans', sans-serif;
+    }
+    .btn-sm:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+    .btn-sm.danger { color: #F87171; border-color: rgba(248,113,113,0.3); }
+    .btn-sm.danger:hover { background: rgba(248,113,113,0.1); }
+    .btn-sm.primary {
+      background: linear-gradient(135deg, var(--purple), var(--cyan));
+      color: #fff; border-color: transparent;
+    }
+    .btn-sm.primary:hover { opacity: 0.88; filter: brightness(1.1); }
+
+    /* Inputs */
+    .input-sm {
+      padding: 6px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font-family: 'Fira Sans', sans-serif;
+    }
+    .input-sm::placeholder { color: var(--text-dim); }
+    .input-sm:focus { border-color: var(--purple); box-shadow: 0 0 0 2px rgba(139,92,246,0.2); }
     select.input-sm { appearance: auto; }
-    #loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.7); z-index: 50; display: flex; align-items: center; justify-content: center; }
+    select.input-sm option { background: #1a1a2e; color: var(--text); }
+    textarea.input-sm { font-family: 'Fira Sans', sans-serif; resize: vertical; }
+
+    /* Loading overlay */
+    #loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(8,8,16,0.75);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 50; display: flex; align-items: center; justify-content: center;
+    }
     #loading-overlay.hidden { display: none; }
-    .page-controls { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid #f0f0f0; }
-    .page-info { font-size: 11px; color: #aeaeb2; }
-    .badge-admin_adjustment { background: #fff3e0; color: #e65100; }
+
+    /* Pagination */
+    .page-controls {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; border-top: 1px solid var(--border);
+    }
+    .page-info { font-size: 11px; color: var(--text-dim); }
+
+    /* Font mono */
+    .font-mono { font-family: 'Fira Code', monospace !important; }
+
+    /* Tailwind overrides for dark theme */
+    .text-gray-900, .text-gray-800 { color: var(--text) !important; }
+    .text-gray-700 { color: #CBD5E1 !important; }
+    .text-gray-600, .text-gray-500 { color: var(--text-muted) !important; }
+    .text-gray-400 { color: var(--text-dim) !important; }
+    .text-green-600 { color: #10B981 !important; }
+    .text-gray-600 { color: var(--text-muted) !important; }
+    .text-blue-500 { color: #A78BFA !important; }
+    .text-blue-700 { color: #8B5CF6 !important; }
+    .text-amber-600 { color: #FBBF24 !important; }
+    .text-purple-500 { color: #A78BFA !important; }
+    .text-red-500, .text-red-400 { color: #F87171 !important; }
+
+    .bg-gray-100 { background: rgba(255,255,255,0.06) !important; }
+    .bg-gray-50 { background: rgba(255,255,255,0.04) !important; }
+    .bg-white { background: rgba(255,255,255,0.06) !important; }
+    .bg-white\/80 { background: rgba(8,8,16,0.7) !important; backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important; }
+    .bg-gray-900 { background: linear-gradient(135deg, #8B5CF6, #06B6D4) !important; }
+    .hover\:bg-gray-800:hover { filter: brightness(0.9) !important; }
+
+    .border-gray-100 { border-color: rgba(255,255,255,0.08) !important; }
+    .border-gray-200 { border-color: rgba(255,255,255,0.12) !important; }
+
+    /* Progress bar track */
+    .bg-gray-100.rounded-full.h-1\.5 { background: rgba(255,255,255,0.12) !important; }
+
+    /* Form section backgrounds */
+    .p-4.bg-gray-50.rounded-lg, .p-3.bg-gray-50.rounded-lg {
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    /* Sub-tab bg in user detail */
+    .flex.gap-1.px-4.pt-3.bg-gray-50 { background: rgba(255,255,255,0.03) !important; }
+
+    /* Focus ring override */
+    .focus\:ring-blue-500:focus { --tw-ring-color: rgba(139,92,246,0.5) !important; }
+    .focus\:ring-2:focus { box-shadow: 0 0 0 2px rgba(139,92,246,0.3) !important; }
+
+    /* Spinner */
+    .aurora-spinner {
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: var(--purple);
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
   </style>
 </head>
 <body>
+  <!-- Aurora background -->
+  <div class="aurora-bg"><div class="aurora-blob3"></div></div>
+
   <!-- Loading Overlay -->
   <div id="loading-overlay" class="hidden">
     <div class="text-center">
-      <div class="text-sm text-gray-500">Loading...</div>
+      <div class="aurora-spinner mx-auto mb-3"></div>
+      <div class="text-sm" style="color:var(--text-muted)">Loading...</div>
     </div>
   </div>
 
@@ -57,23 +269,24 @@
   <div id="login-screen">
     <div class="card p-8" style="width: 380px;">
       <div class="text-center mb-6">
-        <h1 class="text-xl font-bold text-gray-900">RouteBox Admin</h1>
-        <p class="text-sm text-gray-500 mt-1">Sign in with your admin account</p>
+        <!-- Aurora logo mark -->
+        <div style="width:48px;height:48px;margin:0 auto 12px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#06B6D4);display:flex;align-items:center;justify-content:center;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <h1 class="text-xl font-bold" style="color:var(--text)">RouteBox Admin</h1>
+        <p class="text-sm mt-1" style="color:var(--text-muted)">Sign in with your admin account</p>
       </div>
       <form id="login-form" class="space-y-4">
         <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">Email</label>
-          <input type="email" id="login-email" required
-            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <label class="block text-xs font-medium mb-1" style="color:var(--text-muted)">Email</label>
+          <input type="email" id="login-email" required class="input-sm w-full" placeholder="admin@example.com" />
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">Password</label>
-          <input type="password" id="login-password" required
-            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <label class="block text-xs font-medium mb-1" style="color:var(--text-muted)">Password</label>
+          <input type="password" id="login-password" required class="input-sm w-full" placeholder="••••••••" />
         </div>
-        <div id="login-error" class="text-xs text-red-500 hidden"></div>
-        <button type="submit"
-          class="w-full py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
+        <div id="login-error" class="text-xs hidden" style="color:#F87171"></div>
+        <button type="submit" class="w-full py-2 rounded-lg text-sm font-medium text-white transition" style="background:linear-gradient(135deg,#8B5CF6,#06B6D4)">
           Sign In
         </button>
       </form>
@@ -83,15 +296,18 @@
   <!-- Dashboard -->
   <div id="dashboard">
     <!-- Header -->
-    <div class="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100">
+    <div class="sticky top-0 z-10" style="background:rgba(8,8,16,0.7);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,0.07);">
       <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <h1 class="text-base font-bold text-gray-900">RouteBox Admin</h1>
-          <span id="admin-email" class="text-xs text-gray-400"></span>
+          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#06B6D4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <h1 class="text-base font-bold" style="color:var(--text)">RouteBox Admin</h1>
+          <span id="admin-email" class="text-xs" style="color:var(--text-dim)"></span>
         </div>
         <div class="flex items-center gap-3">
-          <button onclick="loadDashboard()" class="text-xs text-blue-500 hover:text-blue-700">&#8635; Refresh</button>
-          <button onclick="logout()" class="text-xs text-gray-400 hover:text-gray-600">Logout</button>
+          <button onclick="loadDashboard()" class="text-xs transition" style="color:var(--purple)">&#8635; Refresh</button>
+          <button onclick="logout()" class="text-xs transition" style="color:var(--text-dim)">Logout</button>
         </div>
       </div>
     </div>
@@ -119,7 +335,7 @@
       </div>
 
       <!-- Tabs -->
-      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
+      <div class="flex items-center gap-1 rounded-xl p-1 w-fit flex-wrap" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);">
         <div class="tab active" data-tab="users" onclick="switchTab('users')">Users</div>
         <div class="tab" data-tab="transactions" onclick="switchTab('transactions')">Transactions</div>
         <div class="tab" data-tab="models" onclick="switchTab('models')">Model Usage</div>
@@ -127,12 +343,14 @@
         <div class="tab" data-tab="providers" onclick="switchTab('providers')">Providers</div>
         <div class="tab" data-tab="keys" onclick="switchTab('keys')">API Keys</div>
         <div class="tab" data-tab="access" onclick="switchTab('access')">Access</div>
+        <div class="tab" data-tab="packages" onclick="switchTab('packages')">Packages</div>
+        <div class="tab" data-tab="announcements" onclick="switchTab('announcements')">Announcements</div>
         <div class="tab" data-tab="referrals" onclick="switchTab('referrals')">Referrals</div>
       </div>
 
       <!-- Tab Content -->
       <div id="tab-users" class="card overflow-hidden">
-        <div class="p-3 border-b border-gray-100 flex items-center gap-3">
+        <div class="p-3 flex items-center gap-3" style="border-bottom:1px solid var(--border)">
           <input id="user-search" type="text" placeholder="Search by email..." class="input-sm w-64"
             oninput="debouncedSearchUsers(this.value)" />
         </div>
@@ -141,6 +359,37 @@
             <th>Email</th><th>Plan</th><th>Balance</th><th>Deposited</th><th>Used</th><th>Requests</th><th>Joined</th><th>Actions</th>
           </tr></thead>
           <tbody id="users-tbody"></tbody>
+          <!-- User Detail Modal -->
+          <div id="user-detail-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center" style="background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding-top:40px;cursor:default;" onclick="if(event.target===this)closeUserDetail()">
+            <div class="card" style="width:760px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
+              <div class="p-4 flex items-center justify-between" style="border-bottom:1px solid var(--border)">
+                <div class="font-semibold" id="ud-title" style="color:var(--text)">User Detail</div>
+                <button onclick="closeUserDetail()" class="text-lg transition" style="color:var(--text-dim)" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">&#x2715;</button>
+              </div>
+              <!-- User info card -->
+              <div class="p-4 grid grid-cols-4 gap-3" id="ud-info" style="border-bottom:1px solid var(--border)"></div>
+              <!-- Sub-tabs -->
+              <div class="flex gap-1 px-4 pt-3" style="background:rgba(255,255,255,0.02)">
+                <div class="tab active" data-udtab="txns" onclick="switchUdTab('txns')" style="font-size:12px;">Transactions</div>
+                <div class="tab" data-udtab="reqs" onclick="switchUdTab('reqs')" style="font-size:12px;">Requests</div>
+                <div class="tab" data-udtab="mods" onclick="switchUdTab('mods')" style="font-size:12px;">Models</div>
+              </div>
+              <div style="overflow-y:auto;flex:1;">
+                <div id="ud-tab-txns">
+                  <table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance After</th><th>Description</th></tr></thead>
+                  <tbody id="ud-txns-tbody"></tbody></table>
+                </div>
+                <div id="ud-tab-reqs" class="hidden">
+                  <table><thead><tr><th>Date</th><th>Model</th><th>Provider</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr></thead>
+                  <tbody id="ud-reqs-tbody"></tbody></table>
+                </div>
+                <div id="ud-tab-mods" class="hidden">
+                  <table><thead><tr><th>Model</th><th>Requests</th><th>Cost</th><th>Tokens</th></tr></thead>
+                  <tbody id="ud-mods-tbody"></tbody></table>
+                </div>
+              </div>
+            </div>
+          </div>
         </table>
         <div id="users-pagination" class="page-controls hidden">
           <span class="page-info" id="users-page-info"></span>
@@ -188,20 +437,20 @@
           </div>
 
           <!-- Add/Edit Model Form -->
-          <div id="model-form" class="hidden mb-4 p-4 bg-gray-50 rounded-lg space-y-4">
-            <div class="text-sm font-semibold text-gray-700" id="model-form-title">Add Model</div>
+          <div id="model-form" class="hidden mb-4 p-4 rounded-xl space-y-4" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
+            <div class="text-sm font-semibold" id="model-form-title" style="color:var(--text)">Add Model</div>
             <input type="hidden" id="mf-id" />
             <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Model ID *</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Model ID *</label>
                 <input id="mf-modelId" type="text" placeholder="e.g. gpt-4o" class="input-sm w-full" />
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Display Name *</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Display Name *</label>
                 <input id="mf-displayName" type="text" placeholder="e.g. GPT-4o" class="input-sm w-full" />
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Provider *</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Provider *</label>
                 <select id="mf-provider" class="input-sm w-full">
                   <option value="">Select...</option>
                   <option>OpenAI</option><option>Anthropic</option><option>Google</option>
@@ -209,7 +458,7 @@
                 </select>
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Status</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Status</label>
                 <select id="mf-status" class="input-sm w-full">
                   <option value="active">Active</option>
                   <option value="beta">Beta</option>
@@ -217,7 +466,7 @@
                 </select>
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Tier</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Tier</label>
                 <select id="mf-tier" class="input-sm w-full">
                   <option value="flagship">Flagship</option>
                   <option value="fast">Fast</option>
@@ -225,62 +474,75 @@
               </div>
             </div>
 
-            <div class="text-xs font-semibold text-gray-500 mt-2">Scores (0.00 – 1.00)</div>
+            <div class="text-xs font-semibold mt-2" style="color:var(--text-muted)">Scores (0.00 – 1.00)</div>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Quality</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Quality</label>
                 <input id="mf-quality" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Speed</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Speed</label>
                 <input id="mf-speed" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Cost Efficiency</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Cost Efficiency</label>
                 <input id="mf-costEfficiency" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Code Strength</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Code Strength</label>
                 <input id="mf-codeStrength" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
               </div>
             </div>
 
-            <div class="text-xs font-semibold text-gray-500 mt-2">Operational</div>
+            <div class="text-xs font-semibold mt-2" style="color:var(--text-muted)">Operational</div>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Max Context Tokens</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Max Context Tokens</label>
                 <input id="mf-maxContextTokens" type="number" value="128000" class="input-sm w-full" />
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Avg TTFT (ms)</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Avg TTFT (ms)</label>
                 <input id="mf-avgTtftMs" type="number" value="500" class="input-sm w-full" />
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Price Input ($/1M)</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Price Input ($/1M)</label>
                 <input id="mf-priceInput" type="number" step="0.01" value="1.00" class="input-sm w-full" />
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Price Output ($/1M)</label>
+                <label class="block text-xs mb-1" style="color:var(--text-dim)">Price Output ($/1M)</label>
                 <input id="mf-priceOutput" type="number" step="0.01" value="3.00" class="input-sm w-full" />
               </div>
             </div>
 
-            <div class="text-xs font-semibold text-gray-500 mt-2">Capabilities</div>
+            <div class="text-xs font-semibold mt-2" style="color:var(--text-muted)">Capabilities</div>
             <div class="flex flex-wrap gap-4">
-              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
                 <input type="checkbox" id="mf-supportsVision" /> Vision
               </label>
-              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
                 <input type="checkbox" id="mf-supportsFunctionCall" checked /> Function Call
               </label>
-              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
                 <input type="checkbox" id="mf-supportsLongContext" /> Long Context
               </label>
-              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
                 <input type="checkbox" id="mf-chineseOptimized" /> Chinese Optimized
               </label>
-              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
                 <input type="checkbox" id="mf-isFlockNode" /> FLock Node
+              </label>
+            </div>
+
+            <div class="text-xs font-semibold mt-2" style="color:var(--text-muted)">Plan Access</div>
+            <div class="flex flex-wrap gap-4">
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
+                <input type="checkbox" id="mf-plan-all" onchange="onPlanAllChange(this)" checked /> All (no restriction)
+              </label>
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
+                <input type="checkbox" id="mf-plan-free" onchange="onPlanFreeProChange()" /> Free
+              </label>
+              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
+                <input type="checkbox" id="mf-plan-pro" onchange="onPlanFreeProChange()" /> Pro
               </label>
             </div>
 
@@ -295,7 +557,7 @@
             <thead><tr>
               <th>Model ID</th><th>Provider</th><th>Tier</th><th>Status</th>
               <th>Q</th><th>S</th><th>C</th><th>Code</th>
-              <th>Caps</th><th></th>
+              <th>Plans</th><th>Caps</th><th></th>
             </tr></thead>
             <tbody id="registry-tbody"></tbody>
           </table>
@@ -318,7 +580,7 @@
             <div class="stat-label">Provider API Keys</div>
             <button class="btn-sm primary" onclick="showAddKeyForm()">+ Add Key</button>
           </div>
-          <div id="add-key-form" class="hidden mb-4 p-3 bg-gray-50 rounded-lg space-y-3">
+          <div id="add-key-form" class="hidden mb-4 p-3 rounded-xl space-y-3" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
               <select id="ak-provider" class="input-sm">
                 <option value="">Provider...</option>
@@ -346,12 +608,89 @@
       <!-- Access Tab -->
       <div id="tab-access" class="hidden">
         <div class="card p-4">
-          <div class="stat-label mb-4">Provider Access Control</div>
+          <div class="stat-label mb-4" style="color:var(--text-muted)">Provider Access Control</div>
           <table>
             <thead><tr>
               <th>Provider</th><th>Enabled</th><th>Allowed Plans</th><th></th>
             </tr></thead>
             <tbody id="access-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Packages Tab -->
+      <div id="tab-packages" class="hidden space-y-4">
+        <div class="card p-4">
+          <div class="flex items-center justify-between mb-4">
+            <div class="stat-label">Credit Packages</div>
+            <button class="btn-sm primary" onclick="showPkgForm()">+ Add Package</button>
+          </div>
+          <div id="pkg-form" class="hidden mb-4 p-4 rounded-xl space-y-3" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
+            <div class="text-sm font-semibold" id="pkg-form-title" style="color:var(--text)">Add Package</div>
+            <input type="hidden" id="pf-id" />
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Package ID *</label>
+                <input id="pf-pkgId" type="text" placeholder="e.g. credits_5" class="input-sm w-full" /></div>
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Polar Product ID</label>
+                <input id="pf-polarProductId" type="text" placeholder="Polar UUID" class="input-sm w-full" /></div>
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Label *</label>
+                <input id="pf-label" type="text" placeholder="e.g. $5" class="input-sm w-full" /></div>
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Amount (cents) *</label>
+                <input id="pf-amount" type="number" placeholder="500" class="input-sm w-full" /></div>
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Credits (cents) *</label>
+                <input id="pf-credits" type="number" placeholder="500" class="input-sm w-full" /></div>
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Bonus Text</label>
+                <input id="pf-bonus" type="text" placeholder="+10%" class="input-sm w-full" /></div>
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Sort Order</label>
+                <input id="pf-sortOrder" type="number" value="0" class="input-sm w-full" /></div>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn-sm primary" onclick="savePkg()">Save</button>
+              <button class="btn-sm" onclick="hidePkgForm()">Cancel</button>
+            </div>
+          </div>
+          <table>
+            <thead><tr>
+              <th>ID</th><th>Label</th><th>Amount</th><th>Credits</th><th>Bonus</th><th>Active</th><th>Polar Product ID</th><th></th>
+            </tr></thead>
+            <tbody id="packages-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Announcements Tab -->
+      <div id="tab-announcements" class="hidden space-y-4">
+        <div class="card p-4">
+          <div class="flex items-center justify-between mb-4">
+            <div class="stat-label">Announcements</div>
+            <button class="btn-sm primary" onclick="showAnnForm()">+ New Announcement</button>
+          </div>
+          <div id="ann-form" class="hidden mb-4 p-4 rounded-xl space-y-3" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
+            <div class="text-sm font-semibold" style="color:var(--text)">New Announcement</div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Title *</label>
+                <input id="af-title" type="text" placeholder="Announcement title" class="input-sm w-full" /></div>
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Type</label>
+                <select id="af-type" class="input-sm w-full">
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="error">Error</option>
+                </select></div>
+              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Ends At (optional)</label>
+                <input id="af-endsAt" type="datetime-local" class="input-sm w-full" /></div>
+            </div>
+            <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Message *</label>
+              <textarea id="af-message" rows="3" placeholder="Announcement message..." class="input-sm w-full" style="resize:vertical;"></textarea></div>
+            <div class="flex gap-2">
+              <button class="btn-sm primary" onclick="saveAnn()">Publish</button>
+              <button class="btn-sm" onclick="hideAnnForm()">Cancel</button>
+            </div>
+          </div>
+          <table>
+            <thead><tr>
+              <th>Title</th><th>Type</th><th>Message</th><th>Active</th><th>Ends At</th><th>Created</th><th></th>
+            </tr></thead>
+            <tbody id="announcements-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -365,7 +704,7 @@
           <div class="card p-4"><div class="stat-label">Reward Value</div><div class="stat-value" id="ref-value">-</div></div>
         </div>
         <div class="card overflow-hidden">
-          <div class="p-3 border-b border-gray-100"><span class="stat-label">Top Referrers</span></div>
+          <div class="p-3" style="border-bottom:1px solid var(--border)"><span class="stat-label" style="color:var(--text-muted)">Top Referrers</span></div>
           <table>
             <thead><tr>
               <th>Email</th><th>Code</th><th>Uses</th><th>Rewards</th><th>Earned</th>
@@ -374,7 +713,7 @@
           </table>
         </div>
         <div class="card overflow-hidden">
-          <div class="p-3 border-b border-gray-100"><span class="stat-label">Recent Claims</span></div>
+          <div class="p-3" style="border-bottom:1px solid var(--border)"><span class="stat-label" style="color:var(--text-muted)">Recent Claims</span></div>
           <table>
             <thead><tr>
               <th>Date</th><th>Referred</th><th>Referrer</th><th>Code</th><th>Referred Rewarded</th><th>Referrer Rewarded</th>
@@ -391,6 +730,13 @@ const API_BASE = location.origin;
 let token = localStorage.getItem('rb_admin_token');
 let charts = {};
 
+// Chart.js global dark theme defaults
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.color = '#64748B';
+  Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+  Chart.defaults.backgroundColor = 'rgba(139,92,246,0.1)';
+}
+
 // ── Pagination state ─────────────────────────────────────────────────────
 
 const pageState = {
@@ -400,6 +746,7 @@ const pageState = {
 
 // ── Registry model cache (for XSS-safe edit) ────────────────────────────
 let _registryModels = [];
+let _currentUserId = null;
 
 // ── Loading ──────────────────────────────────────────────────────────────
 
@@ -483,7 +830,7 @@ async function loadDashboard() {
   try {
     const s = pageState.users;
     const t = pageState.txn;
-    const [stats, usersRes, txnRes, models, providers, usageTrend, revTrend, keys, access, refStats, topRef, refClaims, registry] = await Promise.all([
+    const [stats, usersRes, txnRes, models, providers, usageTrend, revTrend, keys, access, refStats, topRef, refClaims, registry, packagesRes, announcementsRes] = await Promise.all([
       api('/admin/stats'),
       api(`/admin/users?limit=${s.limit}&offset=${s.offset}&search=${encodeURIComponent(s.search)}`),
       api(`/admin/transactions?limit=${t.limit}&offset=${t.offset}`),
@@ -497,6 +844,8 @@ async function loadDashboard() {
       api('/admin/referrals/top'),
       api('/admin/referrals/claims'),
       api('/admin/models/registry'),
+      api('/admin/packages'),
+      api('/admin/announcements'),
     ]);
 
     s.total = usersRes.total;
@@ -517,6 +866,8 @@ async function loadDashboard() {
     renderTopReferrers(topRef.referrers);
     renderReferralClaims(refClaims.claims);
     renderRegistry(registry.models);
+    renderPackages(packagesRes.packages);
+    renderAnnouncements(announcementsRes.announcements);
   } catch (err) {
     if (err.message !== 'Unauthorized') console.error('Dashboard load error:', err);
   } finally {
@@ -595,8 +946,11 @@ function renderUsers(users) {
     <td>${fmtCents(u.totalDepositedCents)}</td>
     <td>${fmtCents(u.totalUsedCents)}</td>
     <td>${u.requestCount}</td>
-    <td class="text-gray-400 text-xs">${fmtDate(u.createdAt)}</td>
-    <td><button class="btn-sm" onclick="promptAdjustBalance('${u.id}', '${esc(u.email)}')">Adjust</button></td>
+    <td class="text-xs" style="color:var(--text-dim)">${fmtDate(u.createdAt)}</td>
+    <td class="flex gap-1">
+      <button class="btn-sm" onclick="promptAdjustBalance('${u.id}', '${esc(u.email)}')">Adjust</button>
+      <button class="btn-sm primary" onclick="openUserDetail('${u.id}', '${esc(u.email)}')">Detail</button>
+    </td>
   </tr>`).join('');
 }
 
@@ -655,17 +1009,17 @@ function renderTransactions(txns) {
   const tbody = document.getElementById('transactions-tbody');
   tbody.innerHTML = txns.map(t => {
     const isPositive = t.type === 'deposit' || t.type === 'bonus' || (t.type === 'admin_adjustment' && t.amountCents > 0);
-    const amtColor = isPositive ? 'text-green-600' : 'text-gray-600';
+    const amtColor = isPositive ? '#10B981' : 'var(--text-muted)';
     const sign = isPositive ? '+' : '';
     const badgeMap = { deposit: 'badge-pro', bonus: 'badge-bonus', admin_adjustment: 'badge-admin_adjustment' };
     const badgeClass = badgeMap[t.type] || 'badge-free';
     return `<tr>
-      <td class="text-xs text-gray-400">${fmtDateTime(t.createdAt)}</td>
+      <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(t.createdAt)}</td>
       <td>${esc(t.userEmail)}</td>
       <td><span class="badge ${badgeClass}">${t.type}</span></td>
-      <td class="${amtColor} font-medium">${sign}${fmtCents(Math.abs(t.amountCents))}</td>
+      <td class="font-medium" style="color:${amtColor}">${sign}${fmtCents(Math.abs(t.amountCents))}</td>
       <td>${fmtCents(t.balanceAfterCents)}</td>
-      <td class="text-xs text-gray-500 max-w-[200px] truncate">${esc(t.description || '-')}</td>
+      <td class="text-xs max-w-[200px] truncate" style="color:var(--text-muted)">${esc(t.description || '-')}</td>
     </tr>`;
   }).join('');
 }
@@ -698,10 +1052,10 @@ function renderModels(models) {
     <td>${fmtCents(m.costCents)}</td>
     <td>${fmtNum(m.inputTokens)}</td>
     <td>${fmtNum(m.outputTokens)}</td>
-    <td>${m.avgLatencyMs}ms</td>
+    <td style="color:var(--text-muted)">${m.avgLatencyMs}ms</td>
   </tr>`).join('');
   if (models.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-4">No usage data yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-dim)">No usage data yet</td></tr>';
   }
 }
 
@@ -716,7 +1070,7 @@ function renderProviders(providers) {
     <td>${fmtNum(p.totalTokens)}</td>
   </tr>`).join('');
   if (providers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-4">No usage data yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4" style="color:var(--text-dim)">No usage data yet</td></tr>';
   }
 }
 
@@ -725,18 +1079,18 @@ function renderProviders(providers) {
 function renderKeys(keys) {
   const tbody = document.getElementById('keys-tbody');
   if (!keys || keys.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400 py-4">No DB-managed keys (using env vars only)</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4" style="color:var(--text-dim)">No DB-managed keys (using env vars only)</td></tr>';
     return;
   }
   tbody.innerHTML = keys.map(k => `<tr>
     <td class="font-medium">${esc(k.providerName)}</td>
     <td>${esc(k.label || '-')}</td>
-    <td class="font-mono text-xs text-gray-500">${esc(k.maskedKey)}</td>
-    <td class="text-xs text-gray-500">${esc(k.baseUrl || 'default')}</td>
+    <td class="font-mono text-xs" style="color:var(--text-muted)">${esc(k.maskedKey)}</td>
+    <td class="text-xs" style="color:var(--text-muted)">${esc(k.baseUrl || 'default')}</td>
     <td>
       <div class="toggle ${k.isActive ? 'on' : ''}" onclick="toggleKey('${k.id}', ${!k.isActive})"></div>
     </td>
-    <td class="text-xs text-gray-400">${fmtDate(k.createdAt)}</td>
+    <td class="text-xs" style="color:var(--text-dim)">${fmtDate(k.createdAt)}</td>
     <td><button class="btn-sm danger" onclick="deleteKey('${k.id}')">Delete</button></td>
   </tr>`).join('');
 }
@@ -781,7 +1135,7 @@ async function deleteKey(id) {
 function renderAccess(providers) {
   const tbody = document.getElementById('access-tbody');
   if (!providers || providers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-4">No access rules configured</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4" style="color:var(--text-dim)">No access rules configured</td></tr>';
     return;
   }
   tbody.innerHTML = providers.map(p => {
@@ -798,7 +1152,7 @@ function renderAccess(providers) {
           <option value="free,pro" ${plans === 'free,pro' ? 'selected' : ''}>Free + Pro</option>
         </select>
       </td>
-      <td class="text-xs text-gray-400">${p.isEnabled ? 'Active' : 'Disabled'}</td>
+      <td class="text-xs" style="color:${p.isEnabled ? '#10B981' : 'var(--text-dim)'}">${p.isEnabled ? 'Active' : 'Disabled'}</td>
     </tr>`;
   }).join('');
 }
@@ -835,12 +1189,12 @@ function renderReferralStats(s) {
 function renderTopReferrers(referrers) {
   const tbody = document.getElementById('referrers-tbody');
   if (!referrers || referrers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-4">No referrals yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4" style="color:var(--text-dim)">No referrals yet</td></tr>';
     return;
   }
   tbody.innerHTML = referrers.map(r => `<tr>
     <td>${esc(r.email)}</td>
-    <td class="font-mono text-xs">${esc(r.code)}</td>
+    <td class="font-mono text-xs" style="color:var(--cyan)">${esc(r.code)}</td>
     <td>${r.uses}</td>
     <td>${r.rewardsEarned}</td>
     <td>${fmtCents(r.totalEarnedCents)}</td>
@@ -850,14 +1204,14 @@ function renderTopReferrers(referrers) {
 function renderReferralClaims(claims) {
   const tbody = document.getElementById('claims-tbody');
   if (!claims || claims.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-4">No claims yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-dim)">No claims yet</td></tr>';
     return;
   }
   tbody.innerHTML = claims.map(c => `<tr>
-    <td class="text-xs text-gray-400">${fmtDateTime(c.createdAt)}</td>
+    <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(c.createdAt)}</td>
     <td>${esc(c.referredEmail)}</td>
     <td>${esc(c.referrerEmail)}</td>
-    <td class="font-mono text-xs">${esc(c.code)}</td>
+    <td class="font-mono text-xs" style="color:var(--cyan)">${esc(c.code)}</td>
     <td>${c.referredRewarded ? '\u2705' : '\u23f3'}</td>
     <td>${c.referrerRewarded ? '\u2705' : '\u23f3'}</td>
   </tr>`).join('');
@@ -869,28 +1223,33 @@ function renderRegistry(models) {
   _registryModels = models || [];
   const tbody = document.getElementById('registry-tbody');
   if (!models || models.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-gray-400 py-4">No models in registry</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4" style="color:var(--text-dim)">No models in registry</td></tr>';
     return;
   }
   tbody.innerHTML = models.map(m => {
     const statusBadge = m.status === 'active' ? 'badge-pro' : m.status === 'beta' ? 'badge-bonus' : 'badge-free';
-    const tierLabel = m.tier === 'flagship' ? '<span class="text-amber-600 font-medium text-xs">Flagship</span>' : '<span class="text-gray-400 text-xs">Fast</span>';
+    const tierLabel = m.tier === 'flagship' ? '<span class="text-xs font-medium" style="color:#FBBF24">Flagship</span>' : '<span class="text-xs" style="color:var(--text-dim)">Fast</span>';
     const caps = [
       m.supportsVision ? '<span title="Vision">V</span>' : '',
       m.supportsFunctionCall ? '<span title="Function Call">F</span>' : '',
       m.supportsLongContext ? '<span title="Long Context">L</span>' : '',
       m.chineseOptimized ? '<span title="Chinese">ZH</span>' : '',
-      m.isFlockNode ? '<span title="FLock" class="text-purple-500">FL</span>' : '',
+      m.isFlockNode ? '<span title="FLock" style="color:#A78BFA">FL</span>' : '',
     ].filter(Boolean).join(' ');
+    const plans = m.allowedPlans ?? ['all'];
+    const planBadges = plans.includes('all')
+      ? '<span class="badge badge-free text-[10px]">all</span>'
+      : plans.map(p => `<span class="badge ${p === 'pro' ? 'badge-pro' : 'badge-free'} text-[10px]">${p}</span>`).join(' ');
     return `<tr>
-      <td class="font-medium text-xs">${esc(m.modelId)}<div class="text-gray-400 text-[10px]">${esc(m.displayName)}</div></td>
+      <td class="font-medium text-xs">${esc(m.modelId)}<div class="text-[10px]" style="color:var(--text-dim)">${esc(m.displayName)}</div></td>
       <td class="text-xs">${esc(m.provider)}</td>
       <td>${tierLabel}</td>
       <td><span class="badge ${statusBadge}">${m.status}</span></td>
-      <td><div class="w-10 bg-gray-100 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width:${m.quality * 100}%"></div></div><span class="text-[10px] text-gray-400">${m.quality.toFixed(2)}</span></td>
-      <td><div class="w-10 bg-gray-100 rounded-full h-1.5"><div class="bg-green-500 h-1.5 rounded-full" style="width:${m.speed * 100}%"></div></div><span class="text-[10px] text-gray-400">${m.speed.toFixed(2)}</span></td>
-      <td><div class="w-10 bg-gray-100 rounded-full h-1.5"><div class="bg-yellow-500 h-1.5 rounded-full" style="width:${m.costEfficiency * 100}%"></div></div><span class="text-[10px] text-gray-400">${m.costEfficiency.toFixed(2)}</span></td>
-      <td><div class="w-10 bg-gray-100 rounded-full h-1.5"><div class="bg-purple-500 h-1.5 rounded-full" style="width:${m.codeStrength * 100}%"></div></div><span class="text-[10px] text-gray-400">${m.codeStrength.toFixed(2)}</span></td>
+      <td><div class="w-10 rounded-full h-1.5" style="background:rgba(255,255,255,0.1)"><div class="h-1.5 rounded-full" style="width:${m.quality * 100}%;background:#8B5CF6"></div></div><span class="text-[10px]" style="color:var(--text-dim)">${m.quality.toFixed(2)}</span></td>
+      <td><div class="w-10 rounded-full h-1.5" style="background:rgba(255,255,255,0.1)"><div class="h-1.5 rounded-full" style="width:${m.speed * 100}%;background:#06B6D4"></div></div><span class="text-[10px]" style="color:var(--text-dim)">${m.speed.toFixed(2)}</span></td>
+      <td><div class="w-10 rounded-full h-1.5" style="background:rgba(255,255,255,0.1)"><div class="h-1.5 rounded-full" style="width:${m.costEfficiency * 100}%;background:#10B981"></div></div><span class="text-[10px]" style="color:var(--text-dim)">${m.costEfficiency.toFixed(2)}</span></td>
+      <td><div class="w-10 rounded-full h-1.5" style="background:rgba(255,255,255,0.1)"><div class="h-1.5 rounded-full" style="width:${m.codeStrength * 100}%;background:#A78BFA"></div></div><span class="text-[10px]" style="color:var(--text-dim)">${m.codeStrength.toFixed(2)}</span></td>
+      <td class="text-xs">${planBadges}</td>
       <td class="text-xs font-mono">${caps || '-'}</td>
       <td>
         <div class="flex gap-1">
@@ -929,6 +1288,10 @@ function showModelForm(model) {
     document.getElementById('mf-supportsLongContext').checked = model.supportsLongContext;
     document.getElementById('mf-chineseOptimized').checked = model.chineseOptimized;
     document.getElementById('mf-isFlockNode').checked = model.isFlockNode;
+    const plans = model.allowedPlans ?? ['all'];
+    document.getElementById('mf-plan-all').checked = plans.includes('all');
+    document.getElementById('mf-plan-free').checked = plans.includes('free');
+    document.getElementById('mf-plan-pro').checked = plans.includes('pro');
   } else {
     title.textContent = 'Add Model';
     document.getElementById('mf-id').value = '';
@@ -951,6 +1314,9 @@ function showModelForm(model) {
     document.getElementById('mf-supportsLongContext').checked = false;
     document.getElementById('mf-chineseOptimized').checked = false;
     document.getElementById('mf-isFlockNode').checked = false;
+    document.getElementById('mf-plan-all').checked = true;
+    document.getElementById('mf-plan-free').checked = false;
+    document.getElementById('mf-plan-pro').checked = false;
   }
   form.classList.remove('hidden');
 }
@@ -986,6 +1352,7 @@ async function saveModel() {
     supportsLongContext: document.getElementById('mf-supportsLongContext').checked,
     chineseOptimized: document.getElementById('mf-chineseOptimized').checked,
     isFlockNode: document.getElementById('mf-isFlockNode').checked,
+    allowedPlans: buildAllowedPlans(),
   };
 
   if (!data.modelId || !data.displayName || !data.provider) {
@@ -1049,19 +1416,19 @@ function renderUsageChart(trend) {
         {
           label: 'Requests',
           data: trend.map(t => t.requests),
-          borderColor: '#007AFF',
-          backgroundColor: 'rgba(0, 122, 255, 0.08)',
+          borderColor: '#8B5CF6',
+          backgroundColor: 'rgba(139, 92, 246, 0.12)',
           fill: true,
-          tension: 0.3,
+          tension: 0.4,
           pointRadius: 0,
           borderWidth: 2,
         },
         {
           label: 'Active Users',
           data: trend.map(t => t.activeUsers),
-          borderColor: '#34C759',
+          borderColor: '#06B6D4',
           backgroundColor: 'transparent',
-          tension: 0.3,
+          tension: 0.4,
           pointRadius: 0,
           borderWidth: 2,
           yAxisID: 'y1',
@@ -1071,11 +1438,11 @@ function renderUsageChart(trend) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 11 } } } },
+      plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 11 }, color: '#94A3B8' } } },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 10 } },
-        y: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 10 } }, beginAtZero: true },
-        y1: { position: 'right', grid: { display: false }, ticks: { font: { size: 10 } }, beginAtZero: true },
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748B', maxTicksLimit: 10 } },
+        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 10 }, color: '#64748B' }, beginAtZero: true },
+        y1: { position: 'right', grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748B' }, beginAtZero: true },
       },
     },
   });
@@ -1092,10 +1459,10 @@ function renderRevenueChart(trend) {
       datasets: [{
         label: 'Revenue',
         data: trend.map(t => t.depositCents / 100),
-        backgroundColor: 'rgba(52, 199, 89, 0.6)',
-        borderColor: '#34C759',
+        backgroundColor: 'rgba(16, 185, 129, 0.35)',
+        borderColor: '#10B981',
         borderWidth: 1,
-        borderRadius: 4,
+        borderRadius: 6,
       }],
     },
     options: {
@@ -1103,8 +1470,8 @@ function renderRevenueChart(trend) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 10 } },
-        y: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 10 }, callback: v => '$' + v } , beginAtZero: true },
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748B', maxTicksLimit: 10 } },
+        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 10 }, color: '#64748B', callback: v => '$' + v }, beginAtZero: true },
       },
     },
   });
@@ -1113,12 +1480,281 @@ function renderRevenueChart(trend) {
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab[data-tab]').forEach(el => el.classList.remove('active'));
   document.querySelector(`[data-tab="${name}"]`).classList.add('active');
 
-  ['users', 'transactions', 'models', 'registry', 'providers', 'keys', 'access', 'referrals'].forEach(t => {
+  ['users', 'transactions', 'models', 'registry', 'providers', 'keys', 'access', 'packages', 'announcements', 'referrals'].forEach(t => {
     document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
   });
+}
+
+// ── Plan Access helpers ───────────────────────────────────────────────────
+
+function onPlanAllChange(el) {
+  if (el.checked) {
+    document.getElementById('mf-plan-free').checked = false;
+    document.getElementById('mf-plan-pro').checked = false;
+  }
+}
+
+function onPlanFreeProChange() {
+  const hasFreeOrPro = document.getElementById('mf-plan-free').checked ||
+                       document.getElementById('mf-plan-pro').checked;
+  if (hasFreeOrPro) {
+    document.getElementById('mf-plan-all').checked = false;
+  } else {
+    document.getElementById('mf-plan-all').checked = true;
+  }
+}
+
+function buildAllowedPlans() {
+  if (document.getElementById('mf-plan-all').checked) return ['all'];
+  const plans = [];
+  if (document.getElementById('mf-plan-free').checked) plans.push('free');
+  if (document.getElementById('mf-plan-pro').checked) plans.push('pro');
+  return plans.length > 0 ? plans : ['all'];
+}
+
+// ── User Detail Modal ─────────────────────────────────────────────────────
+
+function switchUdTab(name) {
+  document.querySelectorAll('[data-udtab]').forEach(el => el.classList.remove('active'));
+  document.querySelector(`[data-udtab="${name}"]`).classList.add('active');
+  ['txns', 'reqs', 'mods'].forEach(t => {
+    document.getElementById(`ud-tab-${t}`).classList.toggle('hidden', t !== name);
+  });
+}
+
+async function openUserDetail(userId, email) {
+  _currentUserId = userId;
+  document.getElementById('ud-title').textContent = 'User: ' + email;
+  document.getElementById('user-detail-modal').classList.remove('hidden');
+  document.getElementById('ud-info').innerHTML = '<div class="text-xs" style="color:var(--text-dim)">Loading...</div>';
+  document.getElementById('ud-txns-tbody').innerHTML = '';
+  document.getElementById('ud-reqs-tbody').innerHTML = '';
+  document.getElementById('ud-mods-tbody').innerHTML = '';
+
+  try {
+    const [userRes, txnRes, reqRes, modRes] = await Promise.all([
+      api(`/admin/users/${userId}`),
+      api(`/admin/users/${userId}/transactions?limit=50`),
+      api(`/admin/users/${userId}/requests?limit=50`),
+      api(`/admin/users/${userId}/models?days=30`),
+    ]);
+
+    document.getElementById('ud-info').innerHTML = `
+      <div class="card p-3"><div class="stat-label">Balance</div><div class="font-semibold" style="color:var(--text)">${fmtCents(userRes.balanceCents)}</div></div>
+      <div class="card p-3"><div class="stat-label">Total Deposited</div><div class="font-semibold" style="color:var(--text)">${fmtCents(userRes.totalDepositedCents)}</div></div>
+      <div class="card p-3"><div class="stat-label">Total Used</div><div class="font-semibold" style="color:var(--text)">${fmtCents(userRes.totalUsedCents)}</div></div>
+      <div class="card p-3"><div class="stat-label">Requests</div><div class="font-semibold" style="color:var(--text)">${userRes.requestCount}</div></div>
+    `;
+
+    document.getElementById('ud-txns-tbody').innerHTML = txnRes.transactions.length === 0
+      ? '<tr><td colspan="5" class="text-center py-4" style="color:var(--text-dim)">No transactions</td></tr>'
+      : txnRes.transactions.map(t => {
+          const isPos = t.type === 'deposit' || t.type === 'bonus' || (t.type === 'admin_adjustment' && t.amountCents > 0);
+          return `<tr>
+            <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(t.createdAt)}</td>
+            <td><span class="badge badge-free">${t.type}</span></td>
+            <td class="font-medium" style="color:${isPos ? '#10B981' : 'var(--text-muted)'}">${isPos ? '+' : ''}${fmtCents(Math.abs(t.amountCents))}</td>
+            <td>${fmtCents(t.balanceAfterCents)}</td>
+            <td class="text-xs max-w-[200px] truncate" style="color:var(--text-muted)">${esc(t.description || '-')}</td>
+          </tr>`;
+        }).join('');
+
+    document.getElementById('ud-reqs-tbody').innerHTML = reqRes.requests.length === 0
+      ? '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-dim)">No requests</td></tr>'
+      : reqRes.requests.map(r => `<tr>
+          <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(r.createdAt)}</td>
+          <td class="text-xs font-medium">${esc(r.model || '-')}</td>
+          <td class="text-xs">${esc(r.provider || '-')}</td>
+          <td class="text-xs">${fmtNum((r.inputTokens || 0) + (r.outputTokens || 0))}</td>
+          <td>${fmtCents(r.costCents)}</td>
+          <td class="text-xs" style="color:var(--text-dim)">${r.latencyMs}ms</td>
+        </tr>`).join('');
+
+    document.getElementById('ud-mods-tbody').innerHTML = modRes.models.length === 0
+      ? '<tr><td colspan="4" class="text-center py-4" style="color:var(--text-dim)">No model usage</td></tr>'
+      : modRes.models.map(m => `<tr>
+          <td class="font-medium text-xs" style="color:var(--purple)">${esc(m.model)}</td>
+          <td>${m.requests}</td>
+          <td>${fmtCents(m.costCents)}</td>
+          <td>${fmtNum(m.totalTokens)}</td>
+        </tr>`).join('');
+
+  } catch (err) {
+    document.getElementById('ud-info').innerHTML = '<div class="text-xs" style="color:#F87171">Failed to load user details</div>';
+  }
+}
+
+function closeUserDetail() {
+  document.getElementById('user-detail-modal').classList.add('hidden');
+  _currentUserId = null;
+}
+
+// ── Render: Packages ─────────────────────────────────────────────────────
+
+function renderPackages(packages) {
+  const tbody = document.getElementById('packages-tbody');
+  if (!packages || packages.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4" style="color:var(--text-dim)">No packages configured</td></tr>';
+    return;
+  }
+  tbody.innerHTML = packages.map(p => `<tr>
+    <td class="font-mono text-xs">${esc(p.id)}</td>
+    <td class="font-medium">${esc(p.label)}</td>
+    <td>${fmtCents(p.amountCents)}</td>
+    <td>${fmtCents(p.creditsCents)}</td>
+    <td>${esc(p.bonus || '-')}</td>
+    <td>
+      <div class="toggle ${p.isActive ? 'on' : ''}" onclick="togglePkgActive('${esc(p.id)}', ${!p.isActive})"></div>
+    </td>
+    <td class="font-mono text-[10px] max-w-[160px] truncate" style="color:var(--text-dim)">${esc(p.polarProductId || 'not set')}</td>
+    <td><button class="btn-sm" onclick="editPkg('${esc(p.id)}')">Edit</button></td>
+  </tr>`).join('');
+}
+
+let _packages = [];
+
+function showPkgForm(pkg) {
+  _packages = _packages; // no-op to satisfy linter
+  const form = document.getElementById('pkg-form');
+  if (pkg) {
+    document.getElementById('pkg-form-title').textContent = 'Edit Package';
+    document.getElementById('pf-id').value = pkg.id;
+    document.getElementById('pf-pkgId').value = pkg.id;
+    document.getElementById('pf-pkgId').disabled = true;
+    document.getElementById('pf-polarProductId').value = pkg.polarProductId || '';
+    document.getElementById('pf-label').value = pkg.label;
+    document.getElementById('pf-amount').value = pkg.amountCents;
+    document.getElementById('pf-credits').value = pkg.creditsCents;
+    document.getElementById('pf-bonus').value = pkg.bonus || '';
+    document.getElementById('pf-sortOrder').value = pkg.sortOrder ?? 0;
+  } else {
+    document.getElementById('pkg-form-title').textContent = 'Add Package';
+    document.getElementById('pf-id').value = '';
+    document.getElementById('pf-pkgId').value = '';
+    document.getElementById('pf-pkgId').disabled = false;
+    document.getElementById('pf-polarProductId').value = '';
+    document.getElementById('pf-label').value = '';
+    document.getElementById('pf-amount').value = '';
+    document.getElementById('pf-credits').value = '';
+    document.getElementById('pf-bonus').value = '';
+    document.getElementById('pf-sortOrder').value = '0';
+  }
+  form.classList.remove('hidden');
+}
+
+function hidePkgForm() {
+  document.getElementById('pkg-form').classList.add('hidden');
+  document.getElementById('pf-pkgId').disabled = false;
+}
+
+async function savePkg() {
+  const existingId = document.getElementById('pf-id').value;
+  const id = document.getElementById('pf-pkgId').value;
+  const label = document.getElementById('pf-label').value;
+  const amount = parseInt(document.getElementById('pf-amount').value);
+  const credits = parseInt(document.getElementById('pf-credits').value);
+  const bonus = document.getElementById('pf-bonus').value || undefined;
+  const sortOrder = parseInt(document.getElementById('pf-sortOrder').value) || 0;
+  const polarProductId = document.getElementById('pf-polarProductId').value;
+
+  if (!label || !amount || !credits) { alert('Label, Amount, and Credits are required'); return; }
+
+  try {
+    if (existingId) {
+      await apiMutate('PATCH', `/admin/packages/${existingId}`, { polarProductId, label, bonus: bonus || null, sortOrder });
+    } else {
+      if (!id) { alert('Package ID is required'); return; }
+      await apiMutate('POST', '/admin/packages', { id, polarProductId, amountCents: amount, creditsCents: credits, label, bonus, sortOrder });
+    }
+    hidePkgForm();
+    await loadDashboard();
+  } catch (err) { alert('Failed to save package: ' + err.message); }
+}
+
+async function togglePkgActive(id, active) {
+  try {
+    await apiMutate('PATCH', `/admin/packages/${id}`, { isActive: active });
+    await loadDashboard();
+  } catch (err) { alert('Failed to update package'); }
+}
+
+function editPkg(id) {
+  const pkg = document.getElementById('packages-tbody')
+    .__pkgData?.find(p => p.id === id);
+  // Fallback: find from rendered data
+  showPkgForm({ id, polarProductId: '', label: '', amountCents: 0, creditsCents: 0 });
+  // Re-load by opening tab and refetching
+  api('/admin/packages').then(res => {
+    const found = res.packages.find(p => p.id === id);
+    if (found) showPkgForm(found);
+  });
+}
+
+// ── Render: Announcements ─────────────────────────────────────────────────
+
+function renderAnnouncements(announcements) {
+  const tbody = document.getElementById('announcements-tbody');
+  if (!announcements || announcements.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4" style="color:var(--text-dim)">No announcements</td></tr>';
+    return;
+  }
+  const typeColors = { info: 'badge-info', warning: 'badge-warning', error: 'badge-danger' };
+  tbody.innerHTML = announcements.map(a => `<tr>
+    <td class="font-medium">${esc(a.title)}</td>
+    <td><span class="badge ${typeColors[a.type] || 'badge-free'}">${a.type}</span></td>
+    <td class="text-xs max-w-[200px] truncate" style="color:var(--text-muted)">${esc(a.message)}</td>
+    <td>
+      <div class="toggle ${a.is_active ? 'on' : ''}" onclick="toggleAnn('${a.id}', ${!a.is_active})"></div>
+    </td>
+    <td class="text-xs" style="color:var(--text-dim)">${a.ends_at ? fmtDateTime(a.ends_at) : 'No expiry'}</td>
+    <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(a.created_at)}</td>
+    <td>
+      <button class="btn-sm danger" onclick="deleteAnn('${a.id}')">Delete</button>
+    </td>
+  </tr>`).join('');
+}
+
+function showAnnForm() { document.getElementById('ann-form').classList.remove('hidden'); }
+function hideAnnForm() {
+  document.getElementById('ann-form').classList.add('hidden');
+  document.getElementById('af-title').value = '';
+  document.getElementById('af-message').value = '';
+  document.getElementById('af-type').value = 'info';
+  document.getElementById('af-endsAt').value = '';
+}
+
+async function saveAnn() {
+  const title = document.getElementById('af-title').value;
+  const message = document.getElementById('af-message').value;
+  const type = document.getElementById('af-type').value;
+  const endsAtVal = document.getElementById('af-endsAt').value;
+  const endsAt = endsAtVal ? new Date(endsAtVal).toISOString() : undefined;
+
+  if (!title || !message) { alert('Title and Message are required'); return; }
+
+  try {
+    await apiMutate('POST', '/admin/announcements', { title, message, type, ...(endsAt ? { endsAt } : {}) });
+    hideAnnForm();
+    await loadDashboard();
+  } catch (err) { alert('Failed to create announcement: ' + err.message); }
+}
+
+async function toggleAnn(id, active) {
+  try {
+    await apiMutate('PATCH', `/admin/announcements/${id}`, { isActive: active });
+    await loadDashboard();
+  } catch (err) { alert('Failed to update announcement'); }
+}
+
+async function deleteAnn(id) {
+  if (!confirm('Delete this announcement?')) return;
+  try {
+    await apiMutate('DELETE', `/admin/announcements/${id}`);
+    await loadDashboard();
+  } catch (err) { alert('Failed to delete announcement'); }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { getUserById } from "../lib/users";
 import { getBalance, getTransactions } from "../lib/credits";
 import { getOrCreateReferralCode } from "../lib/referrals";
+import { sql } from "../lib/db-cloud";
 import type { CloudEnv } from "../types";
 
 const app = new Hono<CloudEnv>();
@@ -60,6 +61,33 @@ app.get("/referral", async (c) => {
   const userId = c.get("userId") as string;
   const referral = await getOrCreateReferralCode(userId);
   return c.json(referral);
+});
+
+// ── GET /announcement — current active announcement (if any) ─────────────────
+
+app.get("/announcement", async (c) => {
+  const [row] = await sql`
+    SELECT id, title, message, type, starts_at, ends_at
+    FROM announcements
+    WHERE is_active = true
+      AND starts_at <= now()
+      AND (ends_at IS NULL OR ends_at > now())
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+
+  if (!row) return c.json({ announcement: null });
+
+  return c.json({
+    announcement: {
+      id: row.id,
+      title: row.title,
+      message: row.message,
+      type: row.type,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+    },
+  });
 });
 
 export default app;

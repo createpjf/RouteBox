@@ -4,6 +4,7 @@
 
 import { Polar } from "@polar-sh/sdk";
 import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks";
+import { sql } from "./db-cloud";
 
 const POLAR_ACCESS_TOKEN = process.env.POLAR_ACCESS_TOKEN;
 const POLAR_WEBHOOK_SECRET = process.env.POLAR_WEBHOOK_SECRET;
@@ -33,25 +34,65 @@ export interface CreditPackage {
   credits: number;     // credits added in cents
   label: string;
   bonus?: string;
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
-export const CREDIT_PACKAGES: CreditPackage[] = [
-  {
-    id: "credits_5",
-    polarProductId: process.env.POLAR_PRODUCT_CREDIT_5 ?? "",
-    amount: 500,
-    credits: 500,
-    label: "$5",
-  },
-  {
-    id: "credits_20",
-    polarProductId: process.env.POLAR_PRODUCT_CREDIT_20 ?? "",
-    amount: 2000,
-    credits: 2200,
-    label: "$20",
-    bonus: "+10%",
-  },
-];
+// ---------------------------------------------------------------------------
+// DB-backed credit packages (replaces hardcoded CREDIT_PACKAGES)
+// ---------------------------------------------------------------------------
+
+let _packagesCache: CreditPackage[] | null = null;
+
+export async function loadCreditPackages(): Promise<CreditPackage[]> {
+  if (_packagesCache) return _packagesCache;
+
+  try {
+    const rows = await sql`
+      SELECT id, polar_product_id, amount_cents, credits_cents, label, bonus, is_active, sort_order
+      FROM credit_packages
+      ORDER BY sort_order, id
+    `;
+    _packagesCache = rows.map((r) => ({
+      id: r.id as string,
+      polarProductId: r.polar_product_id as string,
+      amount: r.amount_cents as number,
+      credits: r.credits_cents as number,
+      label: r.label as string,
+      bonus: r.bonus as string | undefined,
+      isActive: r.is_active as boolean,
+      sortOrder: r.sort_order as number,
+    }));
+  } catch {
+    // Fallback to env-var defaults if table not yet migrated
+    _packagesCache = [
+      {
+        id: "credits_5",
+        polarProductId: process.env.POLAR_PRODUCT_CREDIT_5 ?? "",
+        amount: 500,
+        credits: 500,
+        label: "$5",
+        isActive: true,
+        sortOrder: 0,
+      },
+      {
+        id: "credits_20",
+        polarProductId: process.env.POLAR_PRODUCT_CREDIT_20 ?? "",
+        amount: 2000,
+        credits: 2200,
+        label: "$20",
+        bonus: "+10%",
+        isActive: true,
+        sortOrder: 1,
+      },
+    ];
+  }
+  return _packagesCache;
+}
+
+export function reloadCreditPackages(): void {
+  _packagesCache = null;
+}
 
 // ---------------------------------------------------------------------------
 // Subscription plans — monthly subscriptions with reduced markup
@@ -99,7 +140,8 @@ export async function createCheckoutSession(
   _email: string,
   packageId: string,
 ) {
-  const pkg = CREDIT_PACKAGES.find((p) => p.id === packageId);
+  const packages = await loadCreditPackages();
+  const pkg = packages.find((p) => p.id === packageId && p.isActive !== false);
   if (!pkg) throw new Error(`Invalid package: ${packageId}`);
   if (!pkg.polarProductId) throw new Error(`Polar product ID not configured for ${packageId}`);
 

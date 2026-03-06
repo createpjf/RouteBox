@@ -303,6 +303,19 @@ export interface CloudReferralResponse {
   totalRewardCents: number;
 }
 
+export interface CloudAnnouncement {
+  id: string;
+  title: string;
+  message: string;
+  type: "info" | "warning" | "error";
+  startsAt: string;
+  endsAt: string | null;
+}
+
+export interface CloudAnnouncementResponse {
+  announcement: CloudAnnouncement | null;
+}
+
 export const api = {
   getProviders: () => request<ProvidersResponse>("/api/v1/providers"),
   getModels: () => request<ModelsResponse>("/api/v1/models"),
@@ -528,6 +541,10 @@ export const api = {
   // ── Cloud Referral ──────────────────────────────────────────────────────
   cloudGetReferral: () =>
     request<CloudReferralResponse>("/account/referral"),
+
+  // ── Cloud Announcement ──────────────────────────────────────────────────
+  cloudGetAnnouncement: () =>
+    request<CloudAnnouncementResponse>("/account/announcement"),
 };
 
 // V2 response types

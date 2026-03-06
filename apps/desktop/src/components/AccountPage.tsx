@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, LogOut, Zap, Copy, Gift, Crown, Wifi, Server } from "lucide-react";
+import { Loader2, LogOut, Zap, Copy, Gift, Crown, Wifi, Server, Settings, ArrowRight, Check } from "lucide-react";
 import clsx from "clsx";
 import {
   getGatewayMode,
@@ -14,7 +14,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
   return invoke<T>(cmd, args);
 }
 
-export function AccountPage() {
+export function AccountPage({ onGoToSettings }: { onGoToSettings?: () => void }) {
   const [mode] = useState(getGatewayMode);
   const isCloud = mode === "cloud";
 
@@ -180,9 +180,15 @@ export function AccountPage() {
               : "Running locally"}
           </p>
         </div>
-        <p className="text-[10px] text-[#86868B]">
-          Switch in <span className="font-medium">Settings</span>
-        </p>
+        {onGoToSettings && (
+          <button
+            onClick={onGoToSettings}
+            className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0"
+            title="Open Settings"
+          >
+            <Settings size={12} strokeWidth={1.75} className="text-[#86868B]" />
+          </button>
+        )}
       </div>
 
       {/* Cloud Account Section */}
@@ -256,11 +262,11 @@ export function AccountPage() {
                 </div>
               </div>
 
-              {/* Recharge packages */}
-              {cloudPackages.length > 0 && (
-                <div>
-                  <p className="text-[11px] text-[#86868B] font-medium mb-1.5">Add Credits</p>
-                  <div className="grid grid-cols-2 gap-1.5">
+              {/* Recharge packages — always shown; skeleton while loading */}
+              <div>
+                <p className="text-[11px] text-[#86868B] font-medium mb-1.5">Add Credits</p>
+                {cloudPackages.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
                     {cloudPackages.map((pkg) => (
                       <button
                         key={pkg.id}
@@ -269,13 +275,39 @@ export function AccountPage() {
                       >
                         <span className="text-[13px] font-medium text-[#1D1D1F]">{pkg.label}</span>
                         {pkg.bonus && (
-                          <span className="text-[9px] text-[#34C759] font-medium">{pkg.bonus}</span>
+                          <span className="text-[10px] text-[#34C759] font-semibold">{pkg.bonus}</span>
                         )}
                       </button>
                     ))}
                   </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="h-14 rounded-lg skeleton" />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* How Credits Work */}
+              <div className="mt-2.5 pt-2.5 border-t border-[rgba(0,0,0,0.05)]">
+                <p className="text-[10px] font-semibold text-[#86868B] mb-1.5">How Credits Work</p>
+                <p className="text-[10px] text-[#AEAEB2] leading-relaxed">
+                  Credits are deducted based on actual AI provider cost, plus a small markup.
+                </p>
+                <div className="flex gap-2 mt-1.5">
+                  <div className="flex-1 bg-[#F2F2F7] rounded-lg p-2 text-center">
+                    <p className="text-[9px] text-[#86868B]">Free</p>
+                    <p className="text-[12px] font-semibold text-[#1D1D1F]">25%</p>
+                    <p className="text-[8px] text-[#AEAEB2]">markup</p>
+                  </div>
+                  <div className="flex-1 bg-[#F2F2F7] rounded-lg p-2 text-center border border-[#FFD60A]/30">
+                    <p className="text-[9px] text-[#86868B]">Pro</p>
+                    <p className="text-[12px] font-semibold text-[#1D1D1F]">10%</p>
+                    <p className="text-[8px] text-[#AEAEB2]">markup</p>
+                  </div>
                 </div>
-              )}
+              </div>
 
               {/* Referral */}
               {cloudReferral && (
@@ -310,6 +342,20 @@ export function AccountPage() {
             </>
           ) : (
             <>
+              {/* Value propositions */}
+              <div className="mb-3 space-y-1.5">
+                {[
+                  "No API keys needed",
+                  "Pay as you go with credits",
+                  "Route across multiple AI models",
+                ].map((bullet) => (
+                  <div key={bullet} className="flex items-center gap-2">
+                    <Check size={11} strokeWidth={2.5} className="text-[#34C759] shrink-0" />
+                    <p className="text-[11px] text-[#86868B]">{bullet}</p>
+                  </div>
+                ))}
+              </div>
+
               {/* Login / Register form */}
               <div className="flex items-center gap-2 mb-3">
                 <Zap size={14} strokeWidth={1.75} className="text-[#00e5ff]" />
@@ -418,23 +464,28 @@ export function AccountPage() {
       {/* Local mode: show ProviderKeyManager */}
       {!isCloud && (
         <div>
-          <h3 className="text-[10px] font-semibold text-[#86868B] uppercase tracking-[0.08em] mb-1.5">
-            API Keys
+          <h3 className="text-[13px] font-semibold text-[#1D1D1F] mb-2">
+            Your API Keys
           </h3>
           <ProviderKeyManager />
         </div>
       )}
 
-      {/* Switch to Cloud prompt (local mode only) */}
+      {/* Try Cloud CTA (local mode only) */}
       {!isCloud && (
-        <div className="glass-card-static p-3">
-          <p className="text-[11px] text-[#86868B] mb-2 leading-relaxed">
-            Use AI without your own API keys. Pay per usage with credits.
-          </p>
-          <p className="text-[10px] text-[#86868B]">
-            Switch to Cloud mode in <span className="font-medium">Settings → Gateway Mode</span>.
-          </p>
-        </div>
+        <button
+          onClick={onGoToSettings}
+          className="glass-card-static p-3 flex items-center gap-3 w-full text-left hover:bg-bg-card/80 transition-colors"
+        >
+          <div className="w-8 h-8 rounded-lg bg-[#007AFF]/10 flex items-center justify-center shrink-0">
+            <Wifi size={14} strokeWidth={1.75} className="text-[#007AFF]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-semibold text-[#1D1D1F]">Try RouteBox Cloud</p>
+            <p className="text-[10px] text-[#86868B]">No API keys needed · Pay per use</p>
+          </div>
+          <ArrowRight size={14} strokeWidth={1.75} className="text-[#86868B] shrink-0" />
+        </button>
       )}
     </div>
   );

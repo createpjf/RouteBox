@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Loader2, TrendingUp, Cpu, DollarSign, Crown, BarChart3, AlertCircle } from "lucide-react";
+import { Loader2, Zap, Coins, DollarSign, Crown, BarChart3, AlertCircle } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import clsx from "clsx";
 import { api } from "@/lib/api";
@@ -90,7 +90,7 @@ export function UsagePage() {
   const display = data ?? EMPTY_DATA;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 pt-2 gap-3">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-4 pt-2 gap-3">
       {/* Period Selector */}
       <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#F2F2F7]">
         {PERIODS.map(({ id, label }) => (
@@ -100,7 +100,7 @@ export function UsagePage() {
             className={clsx(
               "flex-1 text-[11px] font-medium py-1.5 rounded-md transition-all",
               period === id
-                ? "bg-[#1D1D1F] text-white shadow-sm"
+                ? "bg-[#00e5ff] text-white shadow-sm"
                 : "text-[#86868B] hover:text-[#1D1D1F]"
             )}
           >
@@ -124,10 +124,10 @@ export function UsagePage() {
       ) : (
         <>
           {/* Summary Cards — 2×2 */}
-          <div className="grid grid-cols-2 gap-2">
-            <SummaryCard icon={TrendingUp} label="Requests" value={display.totals.requests.toLocaleString()} color="#00e5ff" />
+          <div className="grid grid-cols-2 gap-2.5">
+            <SummaryCard icon={Zap} label="Requests" value={display.totals.requests.toLocaleString()} color="#00e5ff" />
             <SummaryCard icon={DollarSign} label="Cost" value={formatCost(display.totals.cost)} color="#34C759" />
-            <SummaryCard icon={Cpu} label="Tokens" value={formatTokens(display.totals.tokens)} color="#FFD60A" />
+            <SummaryCard icon={Coins} label="Tokens" value={formatTokens(display.totals.tokens)} color="#FFD60A" />
             <SummaryCard
               icon={BarChart3}
               label="Models"
@@ -181,7 +181,7 @@ export function UsagePage() {
           {/* Top Models */}
           <div className="glass-card-static overflow-hidden">
             <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-              <TrendingUp size={13} strokeWidth={1.75} className="text-[#AEAEB2]" />
+              <Zap size={13} strokeWidth={1.75} className="text-[#AEAEB2]" />
               <span className="text-[11px] font-medium text-[#86868B] tracking-[0.03em]">
                 Top Models
               </span>
@@ -267,7 +267,7 @@ function SummaryCard({
   value,
   color,
 }: {
-  icon: typeof TrendingUp;
+  icon: typeof Zap;
   label: string;
   value: string;
   color: string;

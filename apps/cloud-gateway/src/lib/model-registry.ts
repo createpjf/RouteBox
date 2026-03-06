@@ -35,6 +35,8 @@ export interface ModelRegistryEntry {
 
   isFlockNode: boolean;
 
+  allowedPlans: string[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,6 +66,7 @@ function rowToEntry(r: Record<string, unknown>): ModelRegistryEntry {
     priceInput: r.price_input as number,
     priceOutput: r.price_output as number,
     isFlockNode: r.is_flock_node as boolean,
+    allowedPlans: (r.allowed_plans as string[]) ?? ["all"],
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   };
@@ -104,13 +107,14 @@ export async function createModel(data: {
   priceInput?: number;
   priceOutput?: number;
   isFlockNode?: boolean;
+  allowedPlans?: string[];
 }): Promise<ModelRegistryEntry> {
   const [row] = await sql`
     INSERT INTO model_registry (
       model_id, display_name, provider, status, tier,
       quality, speed, cost_efficiency, code_strength,
       supports_vision, supports_function_call, supports_long_context, chinese_optimized,
-      max_context_tokens, avg_ttft_ms, price_input, price_output, is_flock_node
+      max_context_tokens, avg_ttft_ms, price_input, price_output, is_flock_node, allowed_plans
     ) VALUES (
       ${data.modelId},
       ${data.displayName},
@@ -129,7 +133,8 @@ export async function createModel(data: {
       ${data.avgTtftMs ?? 500},
       ${data.priceInput ?? 1.0},
       ${data.priceOutput ?? 3.0},
-      ${data.isFlockNode ?? false}
+      ${data.isFlockNode ?? false},
+      ${data.allowedPlans ?? ["all"]}
     )
     RETURNING *
   `;
@@ -156,6 +161,7 @@ export async function updateModel(
     priceInput: number;
     priceOutput: number;
     isFlockNode: boolean;
+    allowedPlans: string[];
   }>,
 ): Promise<ModelRegistryEntry | null> {
   // Map camelCase keys to snake_case DB columns
@@ -177,6 +183,7 @@ export async function updateModel(
     priceInput: "price_input",
     priceOutput: "price_output",
     isFlockNode: "is_flock_node",
+    allowedPlans: "allowed_plans",
   };
 
   // Build a single atomic UPDATE with all changed fields

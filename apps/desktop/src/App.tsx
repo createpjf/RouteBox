@@ -16,8 +16,10 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { ToastContainer } from "@/components/ToastContainer";
 import { useRealtimeStats } from "@/hooks/useRealtimeStats";
 import { useToast } from "@/hooks/useToast";
-import { getGatewayUrl, setGatewayUrl, setAuthToken, setCloudAuthToken, setGatewayMode, getGatewayMode, getPortFromUrl, ROUTEBOX_CLOUD_URL } from "@/lib/constants";
+import { getGatewayUrl, setGatewayUrl, setAuthToken, setCloudAuthToken, setGatewayMode, getGatewayMode, getCloudAuthToken, getPortFromUrl, ROUTEBOX_CLOUD_URL } from "@/lib/constants";
 import { checkGatewayHealth, waitForGateway, isLocalGatewayUrl } from "@/lib/gateway-health";
+import { api } from "@/lib/api";
+import type { CloudAnnouncement } from "@/lib/api";
 import type { RealtimeStats, RequestLogEntry } from "@/types/stats";
 
 type GatewayState = "idle" | "checking" | "starting" | "running" | "failed";
@@ -40,6 +42,8 @@ export function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [tokenLoaded, setTokenLoaded] = useState(false);
   const [token, setToken] = useState("");
+  const [cloudAnnouncement, setCloudAnnouncement] = useState<CloudAnnouncement | null>(null);
+  const [announcementDismissed, setAnnouncementDismissed] = useState(false);
   const { stats, connected, stale, history, requestLog, alert, dismissAlert } = useRealtimeStats(tokenLoaded);
   const { toasts, showToast, dismissToast } = useToast();
 
@@ -165,14 +169,35 @@ export function App() {
     }
   }, [connected, gatewayState]);
 
-  // Auto-show onboarding for first-run users (wait for stats to arrive)
+  // Fetch cloud announcement once token is loaded (cloud mode only)
   useEffect(() => {
-    if (!connected || !stats || onboardingDismissed || showSettings) return;
-    const hasProviders = stats.providers.length > 0;
-    if (!hasProviders) {
+    if (!tokenLoaded) return;
+    const mode = getGatewayMode();
+    if (mode !== "cloud" || !getCloudAuthToken()) return;
+
+    api.cloudGetAnnouncement().then((res) => {
+      if (res.announcement) {
+        setCloudAnnouncement(res.announcement);
+        setAnnouncementDismissed(false);
+      }
+    }).catch(() => {
+      // Best-effort — silent on failure
+    });
+  }, [tokenLoaded]);
+
+  // Auto-show onboarding for first-run users (only needs tokenLoaded, not connected)
+  useEffect(() => {
+    if (!tokenLoaded || onboardingDismissed || showSettings) return;
+    const mode = getGatewayMode();
+    if (mode === "cloud") {
+      // Cloud mode: skip onboarding if already logged in
+      if (getCloudAuthToken()) return;
       setShowOnboarding(true);
+    } else {
+      const hasProviders = (stats?.providers.length ?? 0) > 0;
+      if (!hasProviders) setShowOnboarding(true);
     }
-  }, [connected, stats, onboardingDismissed, showSettings]);
+  }, [tokenLoaded, stats, onboardingDismissed, showSettings]);
 
   // Auto-check for updates on startup (once, 5s delay)
   const updateCheckedRef = useRef(false);
@@ -232,6 +257,13 @@ export function App() {
             onDismiss={dismissAlert}
           />
         )}
+        {!alert && cloudAnnouncement && !announcementDismissed && (
+          <AlertBanner
+            title={cloudAnnouncement.title}
+            message={cloudAnnouncement.message}
+            onDismiss={() => setAnnouncementDismissed(true)}
+          />
+        )}
         <div key={activeTab} className="flex flex-1 min-h-0 animate-page-in">
           {activeTab === "dashboard" && (
             <DashboardPage stats={currentStats} history={history} />
@@ -246,7 +278,7 @@ export function App() {
             />
           )}
           {activeTab === "usage" && <UsagePage />}
-          {activeTab === "account" && <AccountPage />}
+          {activeTab === "account" && <AccountPage onGoToSettings={() => setShowSettings(true)} />}
         </div>
 
         {/* Request detail overlay */}
@@ -265,7 +297,7 @@ export function App() {
 
         {showOnboarding && (
           <Onboarding
-            connected={connected}
+            gatewayMode={getGatewayMode()}
             hasProviders={hasProviders}
             authToken={token}
             onDismiss={handleDismissOnboarding}

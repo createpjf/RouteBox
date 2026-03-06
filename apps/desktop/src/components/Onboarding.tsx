@@ -1,36 +1,28 @@
 import { useState, useEffect, useCallback } from "react";
-import { Check, Copy, Loader2, Zap } from "lucide-react";
+import { Check, Copy, Zap, Cloud } from "lucide-react";
 import { ProviderKeyManager } from "./ProviderKeyManager";
 import { getGatewayUrl } from "@/lib/constants";
 
 interface OnboardingProps {
-  connected: boolean;
+  gatewayMode: "local" | "cloud";
   hasProviders: boolean;
   authToken: string;
   onDismiss: () => void;
 }
 
-type Step = 1 | 2 | 3;
+type LocalStep = 1 | 2;
 
-export function Onboarding({ connected, hasProviders, authToken, onDismiss }: OnboardingProps) {
-  const [step, setStep] = useState<Step>(connected ? 2 : 1);
+export function Onboarding({ gatewayMode, hasProviders, authToken, onDismiss }: OnboardingProps) {
+  const [step, setStep] = useState<LocalStep>(1);
   const [copiedField, setCopiedField] = useState<"url" | "token" | "curl" | null>(null);
 
-  // Auto-advance from step 1 when connected
+  // Auto-advance step 1 → 2 when providers configured (local only)
   useEffect(() => {
-    if (step === 1 && connected) {
-      const timer = setTimeout(() => setStep(2), 800);
+    if (gatewayMode === "local" && step === 1 && hasProviders) {
+      const timer = setTimeout(() => setStep(2), 600);
       return () => clearTimeout(timer);
     }
-  }, [step, connected]);
-
-  // Auto-advance from step 2 when providers configured
-  useEffect(() => {
-    if (step === 2 && hasProviders) {
-      const timer = setTimeout(() => setStep(3), 600);
-      return () => clearTimeout(timer);
-    }
-  }, [step, hasProviders]);
+  }, [gatewayMode, step, hasProviders]);
 
   const handleCopy = useCallback((text: string, field: "url" | "token" | "curl") => {
     navigator.clipboard.writeText(text).then(() => {
@@ -41,12 +33,24 @@ export function Onboarding({ connected, hasProviders, authToken, onDismiss }: On
 
   const gatewayUrl = getGatewayUrl();
 
+  // Cloud mode: single confirmation page
+  if (gatewayMode === "cloud") {
+    return (
+      <div className="absolute inset-0 z-50 flex flex-col bg-bg-panel">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 py-6">
+          <CloudConfirmation onDismiss={onDismiss} />
+        </div>
+      </div>
+    );
+  }
+
+  // Local mode: 2-step flow
   return (
     <div className="absolute inset-0 z-50 flex flex-col bg-bg-panel">
       <div className="flex-1 flex flex-col px-8 py-6 overflow-y-auto">
-        {/* Progress dots */}
+        {/* Progress dots — 2 for local */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          {[1, 2, 3].map((s) => (
+          {[1, 2].map((s) => (
             <div
               key={s}
               className={`w-2 h-2 rounded-full transition-all duration-300 ${
@@ -62,9 +66,8 @@ export function Onboarding({ connected, hasProviders, authToken, onDismiss }: On
 
         {/* Step content */}
         <div className="flex-1 flex flex-col items-center justify-center animate-page-in" key={step}>
-          {step === 1 && <StepConnection connected={connected} />}
-          {step === 2 && <StepProviders />}
-          {step === 3 && (
+          {step === 1 && <StepProviders />}
+          {step === 2 && (
             <StepReady
               gatewayUrl={gatewayUrl}
               authToken={authToken}
@@ -79,31 +82,45 @@ export function Onboarding({ connected, hasProviders, authToken, onDismiss }: On
   );
 }
 
-function StepConnection({ connected }: { connected: boolean }) {
+function CloudConfirmation({ onDismiss }: { onDismiss: () => void }) {
   return (
-    <div className="flex flex-col items-center text-center gap-4">
-      <div className="w-14 h-14 rounded-2xl bg-bg-card border border-border flex items-center justify-center shadow-sm">
-        {connected ? (
-          <Check size={24} strokeWidth={2} className="text-accent-green" />
-        ) : (
-          <Loader2 size={24} strokeWidth={1.75} className="text-text-tertiary animate-spin" />
-        )}
+    <div className="flex flex-col items-center text-center gap-5 w-full max-w-xs">
+      <div className="w-14 h-14 rounded-2xl bg-[#007AFF]/10 border border-[#007AFF]/20 flex items-center justify-center">
+        <Cloud size={28} strokeWidth={1.75} className="text-[#007AFF]" />
       </div>
+
       <div>
         <h2 className="text-[18px] font-semibold text-text-primary mb-1">
-          {connected ? "Connected!" : "Connecting to Gateway"}
+          RouteBox Cloud
         </h2>
         <p className="text-[13px] text-text-secondary leading-relaxed">
-          {connected
-            ? "Your gateway is up and running"
-            : "Waiting for the RouteBox gateway to respond..."}
+          Sign in to your RouteBox Cloud account to start routing requests — no API keys needed.
         </p>
       </div>
-      {!connected && (
-        <p className="text-[11px] text-text-tertiary mt-2">
-          Make sure the gateway is running on localhost:3001
-        </p>
-      )}
+
+      <div className="w-full glass-card-static p-3 text-left space-y-2">
+        {[
+          "No API keys required",
+          "Pay as you go with credits",
+          "Route across multiple AI models",
+        ].map((bullet) => (
+          <div key={bullet} className="flex items-center gap-2">
+            <Check size={12} strokeWidth={2.5} className="text-accent-green shrink-0" />
+            <p className="text-[12px] text-text-secondary">{bullet}</p>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[12px] text-text-tertiary leading-relaxed">
+        Open <span className="font-medium text-text-secondary">Settings → Gateway Mode</span> to sign in to your cloud account.
+      </p>
+
+      <button
+        onClick={onDismiss}
+        className="btn-primary w-full !h-10 !text-[14px]"
+      >
+        Got It
+      </button>
     </div>
   );
 }
