@@ -1,9 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
-import { Check, Loader2, Trash2, ChevronRight, X, Play, Square, Download, RefreshCw, Globe } from "lucide-react";
+import { Check, Loader2, Trash2, ChevronRight, X, Play, Square, Download, RefreshCw, Globe, Server, Wifi } from "lucide-react";
 import clsx from "clsx";
-import { getGatewayUrl, setAuthToken, getPortFromUrl, isLocalGatewayUrl } from "@/lib/constants";
+import {
+  getGatewayUrl,
+  setGatewayUrl as setGatewayUrlGlobal,
+  setAuthToken,
+  setCloudAuthToken,
+  getPortFromUrl,
+  isLocalGatewayUrl,
+  getGatewayMode,
+  setGatewayMode,
+  ROUTEBOX_CLOUD_URL,
+  type GatewayMode,
+} from "@/lib/constants";
 import { checkGatewayHealth } from "@/lib/gateway-health";
 import { api } from "@/lib/api";
+import { ProviderKeyManager } from "./ProviderKeyManager";
 
 async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
@@ -20,7 +32,7 @@ interface SettingsProps {
 }
 
 export function Settings({ onClose }: SettingsProps) {
-  const [gatewayUrl] = useState(getGatewayUrl);
+  const [activeMode, setActiveMode] = useState<GatewayMode>(getGatewayMode);
   const [token, setToken] = useState("");
   const [hasToken, setHasToken] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,8 +54,16 @@ export function Settings({ onClose }: SettingsProps) {
   const [searchHasKey, setSearchHasKey] = useState(false);
   const [searchSaving, setSearchSaving] = useState(false);
   const [searchSaved, setSearchSaved] = useState(false);
-
-  const isCloud = gatewayUrl.includes("api.routebox.dev");
+  // Cloud account state
+  const [cloudMode, setCloudMode] = useState<"login" | "register">("login");
+  const [cloudEmail, setCloudEmail] = useState("");
+  const [cloudPassword, setCloudPassword] = useState("");
+  const [cloudName, setCloudName] = useState("");
+  const [cloudReferralCode, setCloudReferralCode] = useState("");
+  const [cloudUser, setCloudUser] = useState<{ email: string; balanceCents: number; plan: string } | null>(null);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const [hasCloudToken, setHasCloudToken] = useState(false);
 
   useEffect(() => {
     tauriInvoke<string>("get_token")
@@ -51,6 +71,15 @@ export function Settings({ onClose }: SettingsProps) {
         if (t) {
           setToken(t);
           setHasToken(true);
+        }
+      })
+      .catch(() => {});
+
+    tauriInvoke<string>("get_cloud_token")
+      .then((t) => {
+        if (t) {
+          setCloudAuthToken(t);
+          setHasCloudToken(true);
         }
       })
       .catch(() => {});
@@ -80,6 +109,43 @@ export function Settings({ onClose }: SettingsProps) {
       .then(({ getVersion }) => getVersion())
       .then(setAppVersion)
       .catch(() => {});
+  }, []);
+
+  // Load cloud user when in cloud mode and has token
+  useEffect(() => {
+    if (activeMode !== "cloud" || !hasCloudToken) return;
+    api.cloudGetMe()
+      .then((res) => setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan }))
+      .catch(() => {});
+  }, [activeMode, hasCloudToken]);
+
+  const handleSwitchMode = useCallback(async (mode: GatewayMode) => {
+    setActiveMode(mode);
+    setGatewayMode(mode);
+    const newUrl = mode === "cloud" ? ROUTEBOX_CLOUD_URL : "http://localhost:3001";
+    setGatewayUrlGlobal(newUrl);
+    try {
+      const store = await loadStore();
+      await store.set("gatewayMode", mode);
+      await store.set("gatewayUrl", newUrl);
+    } catch {}
+
+    if (mode === "local") {
+      // Spawn local gateway if not running
+      const healthy = await checkGatewayHealth(newUrl).catch(() => false);
+      if (!healthy) {
+        try {
+          await tauriInvoke("spawn_gateway", { port: getPortFromUrl(newUrl) });
+          const t = await tauriInvoke<string>("get_token");
+          if (t) { setAuthToken(t); setToken(t); setHasToken(true); }
+          setGwRunning(true);
+        } catch (err) {
+          setGwError(err instanceof Error ? err.message : String(err));
+        }
+      } else {
+        setGwRunning(true);
+      }
+    }
   }, []);
 
   const handleSaveToken = useCallback(async () => {
@@ -231,6 +297,60 @@ export function Settings({ onClose }: SettingsProps) {
     }
   }, []);
 
+  const handleCloudLogin = useCallback(async () => {
+    if (!cloudEmail.trim() || !cloudPassword.trim()) return;
+    setCloudLoading(true);
+    setCloudError(null);
+    try {
+      const res = await api.cloudLogin(cloudEmail.trim(), cloudPassword);
+      await tauriInvoke("store_cloud_token", { token: res.token });
+      setCloudAuthToken(res.token);
+      setHasCloudToken(true);
+      setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan });
+      setCloudEmail("");
+      setCloudPassword("");
+    } catch (err) {
+      setCloudError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setCloudLoading(false);
+    }
+  }, [cloudEmail, cloudPassword]);
+
+  const handleCloudRegister = useCallback(async () => {
+    if (!cloudEmail.trim() || !cloudPassword.trim()) return;
+    setCloudLoading(true);
+    setCloudError(null);
+    try {
+      const res = await api.cloudRegister(
+        cloudEmail.trim(),
+        cloudPassword,
+        cloudName.trim() || undefined,
+        cloudReferralCode.trim() || undefined,
+      );
+      await tauriInvoke("store_cloud_token", { token: res.token });
+      setCloudAuthToken(res.token);
+      setHasCloudToken(true);
+      setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan });
+      setCloudEmail("");
+      setCloudPassword("");
+      setCloudName("");
+      setCloudReferralCode("");
+    } catch (err) {
+      setCloudError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setCloudLoading(false);
+    }
+  }, [cloudEmail, cloudPassword, cloudName, cloudReferralCode]);
+
+  const handleCloudLogout = useCallback(async () => {
+    setCloudUser(null);
+    setHasCloudToken(false);
+    try {
+      await tauriInvoke("delete_cloud_token");
+    } catch {}
+    setCloudAuthToken("");
+  }, []);
+
   return (
     <div className="absolute inset-0 z-40 flex flex-col">
       {/* Backdrop */}
@@ -254,6 +374,289 @@ export function Settings({ onClose }: SettingsProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+
+          {/* Gateway Mode Switcher */}
+          <div>
+            <h3 className="section-header">Gateway Mode</h3>
+            <div className="flex gap-1.5 p-1 bg-bg-input rounded-xl">
+              <button
+                onClick={() => handleSwitchMode("local")}
+                className={clsx(
+                  "flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-medium transition-colors",
+                  activeMode === "local"
+                    ? "bg-white shadow-sm text-text-primary"
+                    : "text-text-secondary hover:text-text-primary"
+                )}
+              >
+                <Server size={13} strokeWidth={1.75} />
+                Local Gateway
+              </button>
+              <button
+                onClick={() => handleSwitchMode("cloud")}
+                className={clsx(
+                  "flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-medium transition-colors",
+                  activeMode === "cloud"
+                    ? "bg-white shadow-sm text-text-primary"
+                    : "text-text-secondary hover:text-text-primary"
+                )}
+              >
+                <Wifi size={13} strokeWidth={1.75} />
+                Cloud Gateway
+              </button>
+            </div>
+          </div>
+
+          {/* LOCAL MODE PANEL */}
+          {activeMode === "local" && (
+            <>
+              {/* Gateway */}
+              <div>
+                <h3 className="section-header">Gateway</h3>
+                <div className="glass-card-static p-3 space-y-2.5">
+                  {/* Auto-start toggle */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] text-text-primary">Auto-start on launch</span>
+                    <button
+                      onClick={() => handleToggleAutoStart(!autoStartGateway)}
+                      className={clsx(
+                        "relative w-10 h-[22px] rounded-full transition-colors",
+                        autoStartGateway ? "bg-accent-green" : "bg-[#D1D1D6]"
+                      )}
+                    >
+                      <div
+                        className={clsx(
+                          "absolute top-[2px] w-[18px] h-[18px] bg-white rounded-full shadow-sm transition-transform",
+                          autoStartGateway ? "translate-x-[20px]" : "translate-x-[2px]"
+                        )}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Status + manual controls */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div className={clsx(
+                        "h-2 w-2 rounded-full",
+                        gwRunning ? "bg-accent-green" : gwError ? "bg-accent-red" : "bg-[#C7C7CC]"
+                      )} />
+                      <span className="text-[11px] text-text-secondary">
+                        {gwLoading ? "Connecting…" : gwRunning ? "Running" : "Stopped"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {!gwRunning ? (
+                        <button
+                          onClick={handleStartGateway}
+                          disabled={gwLoading}
+                          className="flex items-center gap-1 text-[11px] text-accent-green hover:bg-accent-green/10 h-7 px-2 rounded-lg transition-colors disabled:opacity-40"
+                        >
+                          {gwLoading ? (
+                            <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />
+                          ) : (
+                            <Play size={12} strokeWidth={2} />
+                          )}
+                          Start
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleStopGateway}
+                          disabled={gwLoading}
+                          className="flex items-center gap-1 text-[11px] text-accent-red hover:bg-accent-red/10 h-7 px-2 rounded-lg transition-colors disabled:opacity-40"
+                        >
+                          {gwLoading ? (
+                            <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />
+                          ) : (
+                            <Square size={12} strokeWidth={2} />
+                          )}
+                          Stop
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {gwError && (
+                    <p className="text-[10px] text-accent-red">{gwError}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Local Providers & API Keys */}
+              <div>
+                <h3 className="section-header">Providers & API Keys</h3>
+                <ProviderKeyManager />
+              </div>
+
+              {/* Authentication */}
+              <div>
+                <h3 className="section-header">Authentication</h3>
+                <div className="glass-card-static p-3">
+                  {!hasToken && (
+                    <p className="text-[11px] text-text-secondary mb-2.5 leading-relaxed">
+                      Your gateway auto-generates an auth token on first run. Find it in
+                      the gateway logs or <span className="font-mono text-text-tertiary">.env</span> file,
+                      then paste it below to connect.
+                    </p>
+                  )}
+                  <label className="block text-[11px] text-text-tertiary font-medium mb-1.5">Gateway Auth Token</label>
+                  <input
+                    type="password"
+                    value={token}
+                    onChange={(e) => {
+                      setToken(e.target.value);
+                      setSaved(false);
+                    }}
+                    placeholder={hasToken ? "Token saved in Keychain" : "Paste your gateway auth token"}
+                    className="input"
+                  />
+                  {error && (
+                    <p className="mt-1.5 text-[11px] text-accent-red">{error}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-2.5">
+                    <button
+                      onClick={handleSaveToken}
+                      disabled={saving || !token.trim()}
+                      className={clsx(
+                        "flex items-center gap-1.5 text-[11px] font-medium transition-colors h-8 px-2.5 rounded-lg",
+                        saving || !token.trim()
+                          ? "text-text-tertiary cursor-not-allowed"
+                          : saved
+                            ? "text-accent-green bg-accent-green/10"
+                            : "text-accent-cyan hover:bg-accent-cyan/10"
+                      )}
+                    >
+                      {saving ? (
+                        <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />
+                      ) : saved ? (
+                        <Check size={12} strokeWidth={2} />
+                      ) : null}
+                      {saved ? "Saved to Keychain" : "Save to Keychain"}
+                    </button>
+                    {hasToken && (
+                      <button
+                        onClick={handleDeleteToken}
+                        className="flex items-center gap-1 text-[11px] text-accent-red/60 hover:text-accent-red h-8 px-2 rounded-lg hover:bg-accent-red/10 transition-colors"
+                      >
+                        <Trash2 size={12} strokeWidth={1.75} />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* CLOUD MODE PANEL */}
+          {activeMode === "cloud" && (
+            <div>
+              <h3 className="section-header">Cloud Account</h3>
+              <div className="glass-card-static p-3">
+                {cloudUser ? (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="text-[13px] text-text-primary font-medium">{cloudUser.email}</p>
+                        <p className="text-[10px] text-text-tertiary capitalize">{cloudUser.plan} plan · ${(cloudUser.balanceCents / 100).toFixed(2)} credits</p>
+                      </div>
+                      <button
+                        onClick={handleCloudLogout}
+                        className="flex items-center gap-1 text-[11px] text-text-tertiary hover:text-accent-red h-7 px-2 rounded-lg hover:bg-accent-red/10 transition-colors"
+                      >
+                        <X size={12} strokeWidth={1.75} />
+                        Logout
+                      </button>
+                    </div>
+                    {cloudError && <p className="text-[10px] text-accent-red">{cloudError}</p>}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex gap-1.5 mb-3">
+                      <button
+                        onClick={() => { setCloudMode("login"); setCloudError(null); }}
+                        className={clsx(
+                          "flex-1 h-7 rounded-lg text-[11px] font-medium transition-colors",
+                          cloudMode === "login" ? "bg-accent-cyan/10 text-accent-cyan" : "text-text-secondary hover:text-text-primary"
+                        )}
+                      >Sign In</button>
+                      <button
+                        onClick={() => { setCloudMode("register"); setCloudError(null); }}
+                        className={clsx(
+                          "flex-1 h-7 rounded-lg text-[11px] font-medium transition-colors",
+                          cloudMode === "register" ? "bg-accent-cyan/10 text-accent-cyan" : "text-text-secondary hover:text-text-primary"
+                        )}
+                      >Create Account</button>
+                    </div>
+
+                    {cloudMode === "register" && (
+                      <div className="mb-2">
+                        <label className="block text-[11px] text-text-tertiary font-medium mb-1">Name</label>
+                        <input
+                          type="text"
+                          value={cloudName}
+                          onChange={(e) => setCloudName(e.target.value)}
+                          placeholder="Your name (optional)"
+                          className="input"
+                        />
+                      </div>
+                    )}
+
+                    <div className="mb-2">
+                      <label className="block text-[11px] text-text-tertiary font-medium mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={cloudEmail}
+                        onChange={(e) => { setCloudEmail(e.target.value); setCloudError(null); }}
+                        placeholder="you@example.com"
+                        className="input"
+                        onKeyDown={(e) => e.key === "Enter" && (cloudMode === "login" ? handleCloudLogin() : handleCloudRegister())}
+                      />
+                    </div>
+
+                    <div className="mb-2.5">
+                      <label className="block text-[11px] text-text-tertiary font-medium mb-1">Password</label>
+                      <input
+                        type="password"
+                        value={cloudPassword}
+                        onChange={(e) => { setCloudPassword(e.target.value); setCloudError(null); }}
+                        placeholder="••••••••"
+                        className="input"
+                        onKeyDown={(e) => e.key === "Enter" && (cloudMode === "login" ? handleCloudLogin() : handleCloudRegister())}
+                      />
+                    </div>
+
+                    {cloudMode === "register" && (
+                      <div className="mb-2.5">
+                        <label className="block text-[11px] text-text-tertiary font-medium mb-1">Referral Code</label>
+                        <input
+                          type="text"
+                          value={cloudReferralCode}
+                          onChange={(e) => setCloudReferralCode(e.target.value)}
+                          placeholder="Referral code (optional)"
+                          className="input"
+                        />
+                      </div>
+                    )}
+
+                    {cloudError && <p className="mb-2 text-[10px] text-accent-red">{cloudError}</p>}
+
+                    <button
+                      onClick={cloudMode === "login" ? handleCloudLogin : handleCloudRegister}
+                      disabled={cloudLoading || !cloudEmail.trim() || !cloudPassword.trim()}
+                      className={clsx(
+                        "w-full h-8 rounded-lg text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5",
+                        cloudLoading || !cloudEmail.trim() || !cloudPassword.trim()
+                          ? "bg-bg-input text-text-tertiary cursor-not-allowed"
+                          : "bg-accent-cyan text-white hover:bg-accent-cyan/90"
+                      )}
+                    >
+                      {cloudLoading && <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />}
+                      {cloudMode === "login" ? "Sign In" : "Create Account"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Budget */}
           <div>
             <h3 className="section-header">Budget</h3>
@@ -356,138 +759,6 @@ export function Settings({ onClose }: SettingsProps) {
             </div>
           </div>
 
-          {/* Gateway */}
-          <div>
-            <h3 className="section-header">Gateway</h3>
-            <div className="glass-card-static p-3 space-y-2.5">
-              {/* Auto-start toggle */}
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] text-text-primary">Auto-start on launch</span>
-                <button
-                  onClick={() => handleToggleAutoStart(!autoStartGateway)}
-                  className={clsx(
-                    "relative w-10 h-[22px] rounded-full transition-colors",
-                    autoStartGateway ? "bg-accent-green" : "bg-[#D1D1D6]"
-                  )}
-                >
-                  <div
-                    className={clsx(
-                      "absolute top-[2px] w-[18px] h-[18px] bg-white rounded-full shadow-sm transition-transform",
-                      autoStartGateway ? "translate-x-[20px]" : "translate-x-[2px]"
-                    )}
-                  />
-                </button>
-              </div>
-
-              {/* Status + manual controls */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <div className={clsx(
-                    "h-2 w-2 rounded-full",
-                    gwRunning ? "bg-accent-green" : gwError ? "bg-accent-red" : "bg-[#C7C7CC]"
-                  )} />
-                  <span className="text-[11px] text-text-secondary">
-                    {gwLoading ? "Connecting…" : gwRunning ? (isLocalGatewayUrl() ? "Running" : "Connected") : "Stopped"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {!gwRunning ? (
-                    <button
-                      onClick={handleStartGateway}
-                      disabled={gwLoading}
-                      className="flex items-center gap-1 text-[11px] text-accent-green hover:bg-accent-green/10 h-7 px-2 rounded-lg transition-colors disabled:opacity-40"
-                    >
-                      {gwLoading ? (
-                        <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />
-                      ) : isLocalGatewayUrl() ? (
-                        <Play size={12} strokeWidth={2} />
-                      ) : (
-                        <Globe size={12} strokeWidth={2} />
-                      )}
-                      {isLocalGatewayUrl() ? "Start" : "Connect"}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleStopGateway}
-                      disabled={gwLoading}
-                      className="flex items-center gap-1 text-[11px] text-accent-red hover:bg-accent-red/10 h-7 px-2 rounded-lg transition-colors disabled:opacity-40"
-                    >
-                      {gwLoading ? (
-                        <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />
-                      ) : (
-                        <Square size={12} strokeWidth={2} />
-                      )}
-                      {isLocalGatewayUrl() ? "Stop" : "Disconnect"}
-                    </button>
-                  )}
-                </div>
-              </div>
-              {gwError && (
-                <p className="text-[10px] text-accent-red">{gwError}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Authentication (self-hosted gateway only) */}
-          {!isCloud && (
-          <div>
-            <h3 className="section-header">Authentication</h3>
-            <div className="glass-card-static p-3">
-              {!hasToken && (
-                <p className="text-[11px] text-text-secondary mb-2.5 leading-relaxed">
-                  Your gateway auto-generates an auth token on first run. Find it in
-                  the gateway logs or <span className="font-mono text-text-tertiary">.env</span> file,
-                  then paste it below to connect.
-                </p>
-              )}
-              <label className="block text-[11px] text-text-tertiary font-medium mb-1.5">Gateway Auth Token</label>
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => {
-                  setToken(e.target.value);
-                  setSaved(false);
-                }}
-                placeholder={hasToken ? "Token saved in Keychain" : "Paste your gateway auth token"}
-                className="input"
-              />
-              {error && (
-                <p className="mt-1.5 text-[11px] text-accent-red">{error}</p>
-              )}
-              <div className="flex items-center gap-2 mt-2.5">
-                <button
-                  onClick={handleSaveToken}
-                  disabled={saving || !token.trim()}
-                  className={clsx(
-                    "flex items-center gap-1.5 text-[11px] font-medium transition-colors h-8 px-2.5 rounded-lg",
-                    saving || !token.trim()
-                      ? "text-text-tertiary cursor-not-allowed"
-                      : saved
-                        ? "text-accent-green bg-accent-green/10"
-                        : "text-accent-cyan hover:bg-accent-cyan/10"
-                  )}
-                >
-                  {saving ? (
-                    <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />
-                  ) : saved ? (
-                    <Check size={12} strokeWidth={2} />
-                  ) : null}
-                  {saved ? "Saved to Keychain" : "Save to Keychain"}
-                </button>
-                {hasToken && (
-                  <button
-                    onClick={handleDeleteToken}
-                    className="flex items-center gap-1 text-[11px] text-accent-red/60 hover:text-accent-red h-8 px-2 rounded-lg hover:bg-accent-red/10 transition-colors"
-                  >
-                    <Trash2 size={12} strokeWidth={1.75} />
-                    Remove
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-          )}
-
           {/* About */}
           <div>
             <h3 className="section-header">About</h3>
@@ -535,7 +806,6 @@ export function Settings({ onClose }: SettingsProps) {
                   <p className="text-[10px] text-accent-red">{updateError}</p>
                 </div>
               )}
-
             </div>
           </div>
 

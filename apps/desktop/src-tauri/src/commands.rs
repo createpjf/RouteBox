@@ -27,6 +27,21 @@ pub async fn delete_token() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn store_cloud_token(token: String) -> Result<(), String> {
+    keychain::store_cloud_token(&token)
+}
+
+#[tauri::command]
+pub async fn get_cloud_token() -> Result<Option<String>, String> {
+    keychain::get_cloud_token()
+}
+
+#[tauri::command]
+pub async fn delete_cloud_token() -> Result<(), String> {
+    keychain::delete_cloud_token()
+}
+
+#[tauri::command]
 pub async fn copy_to_clipboard(text: String) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(&text).map_err(|e| e.to_string())

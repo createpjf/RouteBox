@@ -2,13 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import { Loader2, LogOut, Zap, Copy, Gift, Crown, Wifi, Server } from "lucide-react";
 import clsx from "clsx";
 import {
-  getGatewayUrl,
-  setGatewayUrl as setGatewayUrlGlobal,
-  setAuthToken,
-  ROUTEBOX_CLOUD_URL,
-  isRouteboxCloud,
+  getGatewayMode,
+  setCloudAuthToken,
+  getCloudAuthToken,
 } from "@/lib/constants";
-import { checkGatewayHealth } from "@/lib/gateway-health";
 import { api, type CloudCreditPackage } from "@/lib/api";
 import { ProviderKeyManager } from "./ProviderKeyManager";
 
@@ -17,20 +14,10 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
   return invoke<T>(cmd, args);
 }
 
-async function loadStore() {
-  const { load } = await import("@tauri-apps/plugin-store");
-  return load("settings.json", { defaults: {}, autoSave: true });
-}
-
 export function AccountPage() {
-  const [gatewayUrl, setGatewayUrl] = useState(getGatewayUrl);
-  const [urlError, setUrlError] = useState<string | null>(null);
-  const [hasToken, setHasToken] = useState(false);
-  const [cloudMode, setCloudMode] = useState<"login" | "register">("login");
-  const [cloudEmail, setCloudEmail] = useState("");
-  const [cloudPassword, setCloudPassword] = useState("");
-  const [cloudName, setCloudName] = useState("");
-  const [cloudReferralCode, setCloudReferralCode] = useState("");
+  const [mode] = useState(getGatewayMode);
+  const isCloud = mode === "cloud";
+
   const [cloudUser, setCloudUser] = useState<{
     email: string;
     balanceCents: number;
@@ -44,49 +31,36 @@ export function AccountPage() {
     uses: number;
     totalRewardCents: number;
   } | null>(null);
+  const [cloudMode, setCloudMode] = useState<"login" | "register">("login");
+  const [cloudEmail, setCloudEmail] = useState("");
+  const [cloudPassword, setCloudPassword] = useState("");
+  const [cloudName, setCloudName] = useState("");
+  const [cloudReferralCode, setCloudReferralCode] = useState("");
+  const [hasCloudToken, setHasCloudToken] = useState(!!getCloudAuthToken());
 
-  const isCloud = isRouteboxCloud();
-
-  // Load initial state
-  useEffect(() => {
-    tauriInvoke<string>("get_token")
-      .then((t) => {
-        if (t) setHasToken(true);
-      })
-      .catch(() => {});
-
-    loadStore()
-      .then(async (store) => {
-        const url = await store.get<string>("gatewayUrl");
-        if (url) setGatewayUrl(url);
-      })
-      .catch(() => {});
-  }, []);
-
-  // Cloud session detection
+  // Load cloud state
   useEffect(() => {
     if (!isCloud) return;
-    api
-      .cloudGetPackages()
+    api.cloudGetPackages()
       .then((res) => setCloudPackages(res.packages))
       .catch(() => {});
-    if (hasToken) {
-      api
-        .cloudGetMe()
-        .then((res) => {
-          setCloudUser({
-            email: res.user.email,
-            balanceCents: res.user.balanceCents,
-            plan: res.user.plan,
-          });
-        })
+
+    if (hasCloudToken) {
+      api.cloudGetMe()
+        .then((res) => setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan }))
         .catch(() => {});
-      api
-        .cloudGetReferral()
+      api.cloudGetReferral()
         .then((res) => setCloudReferral(res))
         .catch(() => {});
     }
-  }, [isCloud, hasToken]);
+  }, [isCloud, hasCloudToken]);
+
+  // Check for stored cloud token on mount
+  useEffect(() => {
+    tauriInvoke<string>("get_cloud_token")
+      .then((t) => { if (t) { setCloudAuthToken(t); setHasCloudToken(true); } })
+      .catch(() => {});
+  }, []);
 
   const handleCloudLogin = useCallback(async () => {
     if (!cloudEmail.trim() || !cloudPassword.trim()) return;
@@ -94,14 +68,10 @@ export function AccountPage() {
     setCloudError(null);
     try {
       const res = await api.cloudLogin(cloudEmail.trim(), cloudPassword);
-      await tauriInvoke("store_token", { token: res.token });
-      setAuthToken(res.token);
-      setHasToken(true);
-      setCloudUser({
-        email: res.user.email,
-        balanceCents: res.user.balanceCents,
-        plan: res.user.plan,
-      });
+      await tauriInvoke("store_cloud_token", { token: res.token });
+      setCloudAuthToken(res.token);
+      setHasCloudToken(true);
+      setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan });
       setCloudEmail("");
       setCloudPassword("");
     } catch (err) {
@@ -122,14 +92,10 @@ export function AccountPage() {
         cloudName.trim() || undefined,
         cloudReferralCode.trim() || undefined,
       );
-      await tauriInvoke("store_token", { token: res.token });
-      setAuthToken(res.token);
-      setHasToken(true);
-      setCloudUser({
-        email: res.user.email,
-        balanceCents: res.user.balanceCents,
-        plan: res.user.plan,
-      });
+      await tauriInvoke("store_cloud_token", { token: res.token });
+      setCloudAuthToken(res.token);
+      setHasCloudToken(true);
+      setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan });
       setCloudEmail("");
       setCloudPassword("");
       setCloudName("");
@@ -145,11 +111,11 @@ export function AccountPage() {
     setCloudUser(null);
     setCloudPackages([]);
     setCloudReferral(null);
+    setHasCloudToken(false);
     try {
-      await tauriInvoke("delete_token");
+      await tauriInvoke("delete_cloud_token");
     } catch {}
-    setAuthToken("");
-    setHasToken(false);
+    setCloudAuthToken("");
   }, []);
 
   const handleRecharge = useCallback(async (packageId: string) => {
@@ -179,18 +145,6 @@ export function AccountPage() {
     } catch {}
   }, [cloudReferral]);
 
-  const handleCloudConnect = useCallback(async () => {
-    setGatewayUrl(ROUTEBOX_CLOUD_URL);
-    setGatewayUrlGlobal(ROUTEBOX_CLOUD_URL);
-    try {
-      const store = await loadStore();
-      await store.set("gatewayUrl", ROUTEBOX_CLOUD_URL);
-    } catch {}
-    try {
-      await checkGatewayHealth(ROUTEBOX_CLOUD_URL);
-    } catch {}
-  }, []);
-
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 pt-2 gap-3">
       {/* Mode Indicator */}
@@ -213,11 +167,7 @@ export function AccountPage() {
           <p
             className={clsx(
               "text-[12px] font-semibold",
-              isCloud
-                ? cloudUser
-                  ? "text-[#007AFF]"
-                  : "text-[#FF9500]"
-                : "text-[#34C759]",
+              isCloud ? (cloudUser ? "text-[#007AFF]" : "text-[#FF9500]") : "text-[#34C759]",
             )}
           >
             {isCloud ? "RouteBox Cloud" : "Local Gateway"}
@@ -227,9 +177,12 @@ export function AccountPage() {
               ? cloudUser
                 ? `${cloudUser.email} · ${cloudUser.plan.charAt(0).toUpperCase() + cloudUser.plan.slice(1)}`
                 : "Not signed in"
-              : gatewayUrl}
+              : "Running locally"}
           </p>
         </div>
+        <p className="text-[10px] text-[#86868B]">
+          Switch in <span className="font-medium">Settings</span>
+        </p>
       </div>
 
       {/* Cloud Account Section */}
@@ -383,16 +336,10 @@ export function AccountPage() {
                 <input
                   type="email"
                   value={cloudEmail}
-                  onChange={(e) => {
-                    setCloudEmail(e.target.value);
-                    setCloudError(null);
-                  }}
+                  onChange={(e) => { setCloudEmail(e.target.value); setCloudError(null); }}
                   placeholder="you@example.com"
                   className="input"
-                  onKeyDown={(e) =>
-                    e.key === "Enter" &&
-                    (cloudMode === "login" ? handleCloudLogin() : handleCloudRegister())
-                  }
+                  onKeyDown={(e) => e.key === "Enter" && (cloudMode === "login" ? handleCloudLogin() : handleCloudRegister())}
                 />
               </div>
 
@@ -401,16 +348,10 @@ export function AccountPage() {
                 <input
                   type="password"
                   value={cloudPassword}
-                  onChange={(e) => {
-                    setCloudPassword(e.target.value);
-                    setCloudError(null);
-                  }}
+                  onChange={(e) => { setCloudPassword(e.target.value); setCloudError(null); }}
                   placeholder="••••••••"
                   className="input"
-                  onKeyDown={(e) =>
-                    e.key === "Enter" &&
-                    (cloudMode === "login" ? handleCloudLogin() : handleCloudRegister())
-                  }
+                  onKeyDown={(e) => e.key === "Enter" && (cloudMode === "login" ? handleCloudLogin() : handleCloudRegister())}
                 />
               </div>
 
@@ -451,10 +392,7 @@ export function AccountPage() {
                   <>
                     No account?{" "}
                     <button
-                      onClick={() => {
-                        setCloudMode("register");
-                        setCloudError(null);
-                      }}
+                      onClick={() => { setCloudMode("register"); setCloudError(null); }}
                       className="text-[#00e5ff] hover:underline"
                     >
                       Sign up
@@ -464,10 +402,7 @@ export function AccountPage() {
                   <>
                     Already have an account?{" "}
                     <button
-                      onClick={() => {
-                        setCloudMode("login");
-                        setCloudError(null);
-                      }}
+                      onClick={() => { setCloudMode("login"); setCloudError(null); }}
                       className="text-[#00e5ff] hover:underline"
                     >
                       Sign in
@@ -480,66 +415,27 @@ export function AccountPage() {
         </div>
       )}
 
-      {/* Switch to Cloud (local mode only) */}
+      {/* Local mode: show ProviderKeyManager */}
+      {!isCloud && (
+        <div>
+          <h3 className="text-[10px] font-semibold text-[#86868B] uppercase tracking-[0.08em] mb-1.5">
+            API Keys
+          </h3>
+          <ProviderKeyManager />
+        </div>
+      )}
+
+      {/* Switch to Cloud prompt (local mode only) */}
       {!isCloud && (
         <div className="glass-card-static p-3">
           <p className="text-[11px] text-[#86868B] mb-2 leading-relaxed">
             Use AI without your own API keys. Pay per usage with credits.
           </p>
-          <button
-            onClick={handleCloudConnect}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-medium border border-[#00e5ff]/30 text-[#00e5ff] hover:bg-[#00e5ff]/10 transition-colors"
-          >
-            <Zap size={12} strokeWidth={1.75} />
-            Connect to RouteBox Cloud
-          </button>
+          <p className="text-[10px] text-[#86868B]">
+            Switch to Cloud mode in <span className="font-medium">Settings → Gateway Mode</span>.
+          </p>
         </div>
       )}
-
-      {/* API Keys */}
-      <div>
-        <h3 className="text-[10px] font-semibold text-[#86868B] uppercase tracking-[0.08em] mb-1.5">
-          API Keys
-        </h3>
-        <ProviderKeyManager />
-      </div>
-
-      {/* Gateway URL */}
-      <div>
-        <h3 className="text-[10px] font-semibold text-[#86868B] uppercase tracking-[0.08em] mb-1.5">
-          Connection
-        </h3>
-        <div className="glass-card-static p-3">
-          <label className="block text-[11px] text-[#86868B] font-medium mb-1.5">
-            Gateway URL
-          </label>
-          <input
-            type="text"
-            value={gatewayUrl}
-            onChange={(e) => setGatewayUrl(e.target.value)}
-            onBlur={() => {
-              const raw = gatewayUrl.trim().replace(/\/+$/, "") || "http://localhost:3001";
-              try {
-                const parsed = new URL(raw);
-                if (!["http:", "https:"].includes(parsed.protocol)) {
-                  setUrlError("URL must start with http:// or https://");
-                  return;
-                }
-                setUrlError(null);
-                setGatewayUrl(raw);
-                setGatewayUrlGlobal(raw);
-                loadStore()
-                  .then((store) => store.set("gatewayUrl", raw))
-                  .catch(() => {});
-              } catch {
-                setUrlError("Invalid URL format");
-              }
-            }}
-            className={clsx("input input-mono", urlError && "!border-accent-red")}
-          />
-          {urlError && <p className="mt-1 text-[11px] text-accent-red">{urlError}</p>}
-        </div>
-      </div>
     </div>
   );
 }

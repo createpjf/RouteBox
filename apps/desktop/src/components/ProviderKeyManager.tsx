@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Key, Trash2, Check, Loader2, AlertCircle, Shield, RefreshCw, Monitor } from "lucide-react";
+import { Key, Trash2, Check, Loader2, AlertCircle, Shield, RefreshCw, Monitor, Plus, X } from "lucide-react";
 import clsx from "clsx";
 import { api, type ProviderRegistryEntry, type LocalProviderInfo } from "@/lib/api";
 
@@ -21,6 +21,12 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   const [localUrlInput, setLocalUrlInput] = useState("");
   const [localApiKeyInput, setLocalApiKeyInput] = useState("");
   const [refreshingLocal, setRefreshingLocal] = useState<string | null>(null);
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customBaseUrl, setCustomBaseUrl] = useState("");
+  const [customApiKey, setCustomApiKey] = useState("");
+  const [customSaving, setCustomSaving] = useState(false);
+  const [customError, setCustomError] = useState<string | null>(null);
 
   const fetchRegistry = useCallback(async () => {
     try {
@@ -80,6 +86,30 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
     } catch {}
     setRefreshingLocal(null);
   }, []);
+
+  const handleAddCustomProvider = useCallback(async () => {
+    if (!customName.trim() || !customBaseUrl.trim()) return;
+    setCustomSaving(true);
+    setCustomError(null);
+    try {
+      const apiKeyArg = customApiKey.trim() || undefined;
+      const updated = await api.setLocalProviderUrl(customName.trim(), customBaseUrl.trim(), apiKeyArg);
+      setLocalProviders((prev) => {
+        const exists = prev.find((lp) => lp.name === customName.trim());
+        if (exists) return prev.map((lp) => lp.name === customName.trim() ? { ...lp, ...updated } : lp);
+        return [...prev, updated];
+      });
+      setCustomName("");
+      setCustomBaseUrl("");
+      setCustomApiKey("");
+      setShowAddCustom(false);
+      onProvidersChanged?.();
+    } catch (err) {
+      setCustomError(err instanceof Error ? err.message : "Failed to add provider");
+    } finally {
+      setCustomSaving(false);
+    }
+  }, [customName, customBaseUrl, customApiKey, onProvidersChanged]);
 
   const handleSaveLocalUrl = useCallback(async (name: string) => {
     if (!localUrlInput.trim()) return;
@@ -252,6 +282,75 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
         })}
       </div>
     )}
+
+    {/* Add Custom Provider */}
+    <div className="glass-card-static overflow-hidden">
+      {showAddCustom ? (
+        <div className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">Add Custom Provider</span>
+            <button
+              onClick={() => { setShowAddCustom(false); setCustomError(null); setCustomName(""); setCustomBaseUrl(""); setCustomApiKey(""); }}
+              className="flex items-center justify-center w-5 h-5 rounded-md hover:bg-bg-input transition-colors"
+            >
+              <X size={11} strokeWidth={1.75} className="text-text-tertiary" />
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            <input
+              type="text"
+              value={customName}
+              onChange={(e) => { setCustomName(e.target.value); setCustomError(null); }}
+              placeholder="Provider name (e.g. MyOllama)"
+              className="input input-mono !h-8 !text-[11px]"
+              autoFocus
+            />
+            <input
+              type="text"
+              value={customBaseUrl}
+              onChange={(e) => { setCustomBaseUrl(e.target.value); setCustomError(null); }}
+              placeholder="Base URL (e.g. http://192.168.1.100:11434/v1)"
+              className="input input-mono !h-8 !text-[11px]"
+            />
+            <input
+              type="password"
+              value={customApiKey}
+              onChange={(e) => setCustomApiKey(e.target.value)}
+              placeholder="API Key (optional)"
+              className="input input-mono !h-8 !text-[11px]"
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddCustomProvider(); }}
+            />
+          </div>
+          {customError && (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <AlertCircle size={12} strokeWidth={1.75} className="text-accent-red shrink-0" />
+              <span className="text-[11px] text-accent-red">{customError}</span>
+            </div>
+          )}
+          <button
+            onClick={handleAddCustomProvider}
+            disabled={customSaving || !customName.trim() || !customBaseUrl.trim()}
+            className={clsx(
+              "mt-2 w-full flex items-center justify-center gap-1 text-[11px] font-medium h-8 rounded-lg transition-colors",
+              customSaving || !customName.trim() || !customBaseUrl.trim()
+                ? "text-text-tertiary bg-bg-input cursor-not-allowed"
+                : "btn-primary"
+            )}
+          >
+            {customSaving ? <Loader2 size={12} strokeWidth={1.75} className="animate-spin" /> : <Plus size={12} strokeWidth={2} />}
+            Add Provider
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowAddCustom(true)}
+          className="flex items-center gap-2 w-full h-9 px-3 text-[12px] text-text-secondary hover:text-text-primary hover:bg-bg-row-hover transition-colors"
+        >
+          <Plus size={13} strokeWidth={1.75} />
+          Add Custom Provider
+        </button>
+      )}
+    </div>
 
     {/* Cloud providers */}
     <div className="glass-card-static overflow-hidden">

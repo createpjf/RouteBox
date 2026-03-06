@@ -16,7 +16,7 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { ToastContainer } from "@/components/ToastContainer";
 import { useRealtimeStats } from "@/hooks/useRealtimeStats";
 import { useToast } from "@/hooks/useToast";
-import { getGatewayUrl, setGatewayUrl, setAuthToken, getPortFromUrl } from "@/lib/constants";
+import { getGatewayUrl, setGatewayUrl, setAuthToken, setCloudAuthToken, setGatewayMode, getGatewayMode, getPortFromUrl, ROUTEBOX_CLOUD_URL } from "@/lib/constants";
 import { checkGatewayHealth, waitForGateway, isLocalGatewayUrl } from "@/lib/gateway-health";
 import type { RealtimeStats, RequestLogEntry } from "@/types/stats";
 
@@ -45,27 +45,48 @@ export function App() {
 
   // Load persisted settings before any API calls
   useEffect(() => {
-    import("@tauri-apps/plugin-store")
-      .then(({ load }) => load("settings.json", { defaults: {} }))
-      .then(async (store) => {
+    async function loadSettings() {
+      try {
+        const { load } = await import("@tauri-apps/plugin-store");
+        const store = await load("settings.json", { defaults: {} });
+
+        const mode = await store.get<string>("gatewayMode");
+        const savedMode = mode === "cloud" ? "cloud" : "local";
+        setGatewayMode(savedMode);
+
         const url = await store.get<string>("gatewayUrl");
-        if (url) setGatewayUrl(url);
+        if (url) {
+          setGatewayUrl(url);
+        } else {
+          // Apply default URL based on mode
+          setGatewayUrl(savedMode === "cloud" ? ROUTEBOX_CLOUD_URL : "http://localhost:3001");
+        }
 
         const dismissed = await store.get<boolean>("onboardingDismissed");
         setOnboardingDismissed(!!dismissed);
-      })
-      .catch(() => {
-        // Not in Tauri — check if we should show onboarding anyway
-        setOnboardingDismissed(false);
-      })
-      .finally(() => {
-        setSettingsLoaded(true);
-      });
 
-    import("@tauri-apps/api/core")
-      .then(({ invoke }) => invoke<string>("get_token"))
-      .then((t) => { if (t) { setAuthToken(t); setToken(t); } })
-      .catch(() => {});
+        // Load the appropriate token based on mode
+        const { invoke } = await import("@tauri-apps/api/core");
+        if (savedMode === "cloud") {
+          try {
+            const t = await invoke<string>("get_cloud_token");
+            if (t) { setCloudAuthToken(t); setToken(t); }
+          } catch {}
+        } else {
+          try {
+            const t = await invoke<string>("get_token");
+            if (t) { setAuthToken(t); setToken(t); }
+          } catch {}
+        }
+      } catch {
+        // Not in Tauri
+        setOnboardingDismissed(false);
+      } finally {
+        setSettingsLoaded(true);
+      }
+    }
+
+    loadSettings();
   }, []);
 
   // Gateway auto-start — waits for settings to be loaded first
@@ -89,7 +110,8 @@ export function App() {
         }
 
         const url = getGatewayUrl();
-        const isLocal = isLocalGatewayUrl(url);
+        const currentMode = getGatewayMode();
+        const isLocal = currentMode === "local" && isLocalGatewayUrl(url);
         setGatewayState("checking");
 
         // Already running / reachable?

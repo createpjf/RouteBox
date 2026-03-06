@@ -1,6 +1,11 @@
+export type GatewayMode = "local" | "cloud";
+
+let gatewayMode: GatewayMode = "local";
 let gatewayUrl = "http://localhost:3001";
 // Empty by default; gateway auto-generates tokens. Tauri loads the real token from keychain.
 let authToken = "";
+// Cloud JWT, stored separately from local gateway token
+let cloudAuthToken = "";
 
 export function getGatewayUrl() {
   return gatewayUrl;
@@ -17,12 +22,28 @@ export function setGatewayUrl(url: string) {
   gatewayUrl = url.replace(/\/+$/, "");
 }
 
+export function getGatewayMode(): GatewayMode {
+  return gatewayMode;
+}
+
+export function setGatewayMode(mode: GatewayMode): void {
+  gatewayMode = mode;
+}
+
 export function getAuthToken() {
-  return authToken;
+  return gatewayMode === "cloud" ? cloudAuthToken : authToken;
 }
 
 export function setAuthToken(token: string) {
   authToken = token;
+}
+
+export function getCloudAuthToken(): string {
+  return cloudAuthToken;
+}
+
+export function setCloudAuthToken(token: string): void {
+  cloudAuthToken = token;
 }
 
 export function getPortFromUrl(url: string): number {
