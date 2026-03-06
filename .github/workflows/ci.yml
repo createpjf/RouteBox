@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:  # Allow build.yml to reuse this workflow
 
 concurrency:
   group: ci-${{ github.ref }}

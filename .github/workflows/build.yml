@@ -11,37 +11,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-gateway:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: cd apps/gateway && bun install
-      - run: cd apps/gateway && bun test
-
-  test-desktop:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - uses: pnpm/action-setup@v4
-        with: { version: 10 }
-      - run: pnpm install
-      - run: cd apps/desktop && npx tsc --noEmit
-      - run: cd apps/desktop && npx vitest run
-
-  test-cloud-gateway:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: cd apps/cloud-gateway && bun install
-      - run: cd apps/cloud-gateway && bun test
-      - run: cd apps/cloud-gateway && bunx tsc --noEmit
+  # Reuse CI workflow for all tests + Docker smoke tests
+  ci:
+    uses: ./.github/workflows/ci.yml
 
   build-macos:
-    needs: [test-gateway, test-desktop, test-cloud-gateway]
+    needs: [ci]
     runs-on: macos-14
     strategy:
       matrix:
@@ -97,7 +72,7 @@ jobs:
           prerelease: false
 
   docker-gateway:
-    needs: [test-gateway]
+    needs: [ci]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -132,7 +107,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   docker-cloud-gateway:
-    needs: [test-cloud-gateway]
+    needs: [ci]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
