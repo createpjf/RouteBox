@@ -116,7 +116,7 @@ export function App() {
 
         const url = getGatewayUrl();
         const currentMode = getGatewayMode();
-        const isLocal = currentMode === "local" && isLocalGatewayUrl();
+        const isLocal = currentMode === "local" && isLocalGatewayUrl(url);
         setGatewayState("checking");
 
         // Already running / reachable?
