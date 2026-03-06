@@ -1,991 +1,1039 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RouteBox Admin</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <style>
-    :root {
-      --bg: #080810;
-      --surface: rgba(255,255,255,0.05);
-      --surface-hover: rgba(255,255,255,0.08);
-      --border: rgba(255,255,255,0.08);
-      --border-strong: rgba(255,255,255,0.15);
-      --text: #E2E8F0;
-      --text-muted: #94A3B8;
-      --text-dim: #64748B;
-      --purple: #8B5CF6;
-      --cyan: #06B6D4;
-      --green: #10B981;
-      --red: #F87171;
-      --amber: #FBBF24;
-    }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>RouteBox Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #E8EDF5;
+  --surface: #EEF2F7;
+  --surface-inset: #E0E5EE;
+  --text: #2D3748;
+  --text-muted: #718096;
+  --text-dim: #A0AEC0;
+  --border: rgba(163,177,198,0.4);
+  --shadow-raised: 6px 6px 16px rgba(163,177,198,0.6), -6px -6px 16px rgba(255,255,255,0.85);
+  --shadow-inset: inset 4px 4px 10px rgba(163,177,198,0.5), inset -4px -4px 10px rgba(255,255,255,0.7);
+  --shadow-sm: 3px 3px 8px rgba(163,177,198,0.5), -3px -3px 8px rgba(255,255,255,0.75);
+  --purple: #6C63FF;
+  --cyan: #38BDF8;
+  --green: #34D399;
+  --red: #F87171;
+  --amber: #FBBF24;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'Inter', sans-serif; font-size: 14px; background: var(--bg); color: var(--text); }
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(163,177,198,0.5); border-radius: 4px; }
 
-    * { box-sizing: border-box; }
+/* Layout */
+.app { display: flex; height: 100vh; overflow: hidden; }
+.hidden { display: none !important; }
 
-    body {
-      font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
+/* Sidebar */
+.sidebar {
+  width: 240px; min-width: 240px; height: 100vh; overflow-y: auto;
+  background: var(--surface); box-shadow: var(--shadow-raised);
+  display: flex; flex-direction: column; z-index: 10;
+}
+.sidebar-logo {
+  padding: 20px 16px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-logo-inner {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); border-radius: 12px;
+  box-shadow: var(--shadow-sm); padding: 10px 12px;
+}
+.logo-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, #6C63FF, #38BDF8);
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 14px; flex-shrink: 0;
+}
+.logo-text { font-weight: 700; font-size: 13px; color: var(--text); line-height: 1.2; }
+.logo-sub { font-size: 10px; color: var(--text-dim); }
+.sidebar-email {
+  padding: 10px 16px 12px;
+  font-size: 11px; color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  word-break: break-all;
+}
+.nav-group { padding: 12px 10px 4px; }
+.nav-group-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  color: var(--text-dim); padding: 0 8px; margin-bottom: 4px; text-transform: uppercase;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 10px; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: var(--text-muted);
+  transition: all 0.15s; border-left: 3px solid transparent;
+  margin-bottom: 2px;
+}
+.nav-item:hover { color: var(--purple); background: rgba(108,99,255,0.07); }
+.nav-item.active {
+  color: var(--purple);
+  background: linear-gradient(135deg, #6C63FF22, #6C63FF11);
+  border-left: 3px solid var(--purple);
+  box-shadow: var(--shadow-inset);
+}
+.nav-icon { font-size: 15px; width: 18px; text-align: center; flex-shrink: 0; }
+.sidebar-bottom {
+  margin-top: auto; padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 8px;
+}
+.sidebar-bottom button { flex: 1; }
 
-    /* Aurora animated blobs */
-    .aurora-bg {
-      position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
-    }
-    .aurora-bg::before {
-      content: '';
-      position: absolute;
-      width: 700px; height: 700px;
-      background: radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%);
-      top: -200px; left: -150px;
-      animation: auroraFloat1 14s ease-in-out infinite alternate;
-    }
-    .aurora-bg::after {
-      content: '';
-      position: absolute;
-      width: 600px; height: 600px;
-      background: radial-gradient(circle, rgba(6,182,212,0.15) 0%, transparent 70%);
-      bottom: -150px; right: -100px;
-      animation: auroraFloat2 18s ease-in-out infinite alternate;
-    }
-    .aurora-blob3 {
-      position: absolute;
-      width: 500px; height: 500px;
-      background: radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%);
-      top: 45%; left: 35%;
-      transform: translate(-50%,-50%);
-      animation: auroraFloat3 12s ease-in-out infinite alternate;
-    }
+/* Main content */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar {
+  padding: 16px 24px; background: var(--surface);
+  box-shadow: var(--shadow-sm); z-index: 5;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.topbar-title { font-size: 18px; font-weight: 700; color: var(--text); }
+.content { flex: 1; overflow-y: auto; padding: 24px; }
 
-    @keyframes auroraFloat1 {
-      0%   { transform: translate(0, 0) scale(1); }
-      100% { transform: translate(60px, 40px) scale(1.15); }
-    }
-    @keyframes auroraFloat2 {
-      0%   { transform: translate(0, 0) scale(1); }
-      100% { transform: translate(-50px, -30px) scale(1.1); }
-    }
-    @keyframes auroraFloat3 {
-      0%   { transform: translate(-50%, -50%) scale(1); }
-      100% { transform: translate(-42%, -55%) scale(1.2); }
-    }
+/* Cards */
+.card {
+  background: var(--surface); border-radius: 16px;
+  box-shadow: var(--shadow-raised); padding: 20px;
+}
+.card-sm { padding: 14px 16px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-4 { margin-bottom: 16px; }
 
-    /* Cards */
-    .card {
-      background: var(--surface);
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-    }
+/* Grid */
+.grid { display: grid; }
+.grid-2 { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.grid-3 { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-4 { grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.grid-stat { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+@media(max-width:900px) {
+  .grid-4 { grid-template-columns: repeat(2,1fr); }
+  .grid-3 { grid-template-columns: 1fr; }
+}
 
-    /* Stats */
-    .stat-value { font-size: 28px; font-weight: 700; color: var(--text); }
-    .stat-label { font-size: 11px; color: var(--text-dim); font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; }
-    .stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+/* Flex helpers */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: 4px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
 
-    /* Badges */
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
-    .badge-free { background: rgba(148,163,184,0.15); color: #94A3B8; }
-    .badge-pro { background: rgba(16,185,129,0.15); color: #10B981; }
-    .badge-bonus { background: rgba(6,182,212,0.15); color: #06B6D4; }
-    .badge-admin_adjustment { background: rgba(251,191,36,0.15); color: #FBBF24; }
-    .badge-danger { background: rgba(248,113,113,0.15); color: #F87171; }
-    .badge-warning { background: rgba(251,191,36,0.15); color: #FBBF24; }
-    .badge-info { background: rgba(6,182,212,0.15); color: #06B6D4; }
+/* Buttons */
+.btn-sm {
+  padding: 6px 12px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  background: var(--surface-inset); color: var(--text-muted);
+  box-shadow: var(--shadow-sm); transition: all 0.15s;
+}
+.btn-sm:hover { color: var(--text); }
+.btn-sm.primary {
+  background: linear-gradient(135deg, #6C63FF, #8B83FF);
+  color: white; box-shadow: var(--shadow-sm);
+}
+.btn-sm.primary:hover { opacity: 0.9; }
+.btn-sm.danger {
+  background: linear-gradient(135deg, #F87171, #fc9c9c);
+  color: white;
+}
+.btn-sm.danger:hover { opacity: 0.9; }
+.btn-sm.success {
+  background: linear-gradient(135deg, #34D399, #6ee7b7);
+  color: white;
+}
+.btn-lg {
+  padding: 10px 24px; border-radius: 10px; border: none; cursor: pointer;
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  background: linear-gradient(135deg, #6C63FF, #8B83FF);
+  color: white; box-shadow: var(--shadow-sm); transition: all 0.15s;
+}
+.btn-lg:hover { opacity: 0.9; }
 
-    /* Tabs */
-    .tab {
-      padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
-      cursor: pointer; color: var(--text-muted); transition: all 0.2s;
-      border: 1px solid transparent;
-    }
-    .tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
-    .tab.active {
-      background: linear-gradient(135deg, rgba(139,92,246,0.25), rgba(6,182,212,0.2));
-      color: var(--text);
-      border-color: rgba(139,92,246,0.35);
-    }
+/* Inputs */
+.input-sm {
+  background: var(--surface-inset); box-shadow: var(--shadow-inset);
+  border: none; border-radius: 12px;
+  padding: 8px 12px; font-size: 13px; font-family: inherit;
+  color: var(--text); width: 100%; outline: none;
+  transition: box-shadow 0.15s;
+}
+.input-sm:focus { box-shadow: var(--shadow-inset), 0 0 0 2px rgba(108,99,255,0.2); }
+select.input-sm option { background: white; color: #2D3748; }
+textarea.input-sm { resize: vertical; min-height: 80px; }
+label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px; }
+.form-group { margin-bottom: 14px; }
 
-    /* Tables */
-    table { width: 100%; border-collapse: collapse; }
-    th {
-      text-align: left; font-size: 10px; font-weight: 700;
-      color: var(--text-dim); padding: 8px 12px;
-      border-bottom: 1px solid var(--border);
-      letter-spacing: 0.08em; text-transform: uppercase;
-    }
-    td { font-size: 13px; color: var(--text); padding: 10px 12px; border-bottom: 1px solid var(--border); }
-    tr:hover td { background: rgba(255,255,255,0.03); }
+/* Toggle */
+.toggle {
+  width: 40px; height: 22px; border-radius: 11px; cursor: pointer;
+  background: rgba(163,177,198,0.4); box-shadow: var(--shadow-inset);
+  position: relative; flex-shrink: 0; transition: background 0.2s;
+}
+.toggle::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: white; box-shadow: 1px 1px 4px rgba(0,0,0,0.15);
+  transition: left 0.2s;
+}
+.toggle.on { background: linear-gradient(135deg, var(--purple), var(--cyan)); }
+.toggle.on::after { left: 21px; }
 
-    /* Login / Dashboard visibility */
-    #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-    #dashboard { display: none; }
-    .chart-container { position: relative; height: 200px; }
+/* Badges */
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-pro { background: rgba(52,211,153,0.15); color: #059669; }
+.badge-free { background: rgba(160,174,192,0.15); color: #718096; }
+.badge-bonus { background: rgba(56,189,248,0.15); color: #0284c7; }
+.badge-admin_adjustment { background: rgba(251,191,36,0.15); color: #b45309; }
+.badge-danger { background: rgba(248,113,113,0.15); color: #dc2626; }
+.badge-warning { background: rgba(251,191,36,0.15); color: #b45309; }
+.badge-info { background: rgba(56,189,248,0.15); color: #0284c7; }
 
-    /* Toggle */
-    .toggle {
-      position: relative; width: 36px; height: 20px; border-radius: 10px;
-      background: rgba(255,255,255,0.12); cursor: pointer; transition: background 0.3s;
-      flex-shrink: 0;
-    }
-    .toggle.on { background: linear-gradient(135deg, var(--purple), var(--cyan)); }
-    .toggle::after {
-      content: ''; position: absolute; top: 2px; left: 2px;
-      width: 16px; height: 16px; border-radius: 50%; background: #fff;
-      transition: left 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-    }
-    .toggle.on::after { left: 18px; }
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 600;
+  color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 10px 12px; font-size: 13px; color: var(--text);
+  border-bottom: 1px solid var(--border); vertical-align: middle;
+}
+tr:hover td { background: rgba(108,99,255,0.04); }
+.table-wrap { overflow-x: auto; border-radius: 12px; }
 
-    /* Buttons */
-    .btn-sm {
-      padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 500;
-      cursor: pointer; border: 1px solid var(--border-strong);
-      background: rgba(255,255,255,0.07); color: var(--text-muted);
-      transition: all 0.15s; font-family: 'Fira Sans', sans-serif;
-    }
-    .btn-sm:hover { background: rgba(255,255,255,0.12); color: var(--text); }
-    .btn-sm.danger { color: #F87171; border-color: rgba(248,113,113,0.3); }
-    .btn-sm.danger:hover { background: rgba(248,113,113,0.1); }
-    .btn-sm.primary {
-      background: linear-gradient(135deg, var(--purple), var(--cyan));
-      color: #fff; border-color: transparent;
-    }
-    .btn-sm.primary:hover { opacity: 0.88; filter: brightness(1.1); }
+/* Typography helpers */
+.font-mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+.text-xs { font-size: 12px; }
+.font-medium { font-weight: 500; }
+.font-bold { font-weight: 700; }
+.text-muted { color: var(--text-muted); }
+.text-dim { color: var(--text-dim); }
+.text-purple { color: var(--purple); }
+.text-green { color: var(--green); }
+.text-red { color: var(--red); }
+.text-amber { color: var(--amber); }
 
-    /* Inputs */
-    .input-sm {
-      padding: 6px 10px;
-      border: 1px solid var(--border-strong);
-      border-radius: 8px;
-      font-size: 13px;
-      outline: none;
-      background: rgba(255,255,255,0.05);
-      color: var(--text);
-      transition: border-color 0.2s, box-shadow 0.2s;
-      font-family: 'Fira Sans', sans-serif;
-    }
-    .input-sm::placeholder { color: var(--text-dim); }
-    .input-sm:focus { border-color: var(--purple); box-shadow: 0 0 0 2px rgba(139,92,246,0.2); }
-    select.input-sm { appearance: auto; }
-    select.input-sm option { background: #1a1a2e; color: var(--text); }
-    textarea.input-sm { font-family: 'Fira Sans', sans-serif; resize: vertical; }
+/* Stat card */
+.stat-card { display: flex; flex-direction: column; gap: 6px; }
+.stat-label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+.stat-value { font-size: 32px; font-weight: 700; color: var(--purple); line-height: 1; }
+.stat-sub { font-size: 12px; color: var(--text-muted); }
 
-    /* Loading overlay */
-    #loading-overlay {
-      position: fixed; inset: 0;
-      background: rgba(8,8,16,0.75);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      z-index: 50; display: flex; align-items: center; justify-content: center;
-    }
-    #loading-overlay.hidden { display: none; }
+/* Section header */
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-title { font-size: 16px; font-weight: 700; color: var(--text); }
 
-    /* Pagination */
-    .page-controls {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 12px; border-top: 1px solid var(--border);
-    }
-    .page-info { font-size: 11px; color: var(--text-dim); }
+/* Pagination */
+.pagination { display: flex; align-items: center; gap: 8px; padding-top: 12px; }
+.pagination span { font-size: 12px; color: var(--text-dim); }
 
-    /* Font mono */
-    .font-mono { font-family: 'Fira Code', monospace !important; }
+/* Search */
+.search-row { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+.search-row .input-sm { max-width: 280px; }
 
-    /* Tailwind overrides for dark theme */
-    .text-gray-900, .text-gray-800 { color: var(--text) !important; }
-    .text-gray-700 { color: #CBD5E1 !important; }
-    .text-gray-600, .text-gray-500 { color: var(--text-muted) !important; }
-    .text-gray-400 { color: var(--text-dim) !important; }
-    .text-green-600 { color: #10B981 !important; }
-    .text-gray-600 { color: var(--text-muted) !important; }
-    .text-blue-500 { color: #A78BFA !important; }
-    .text-blue-700 { color: #8B5CF6 !important; }
-    .text-amber-600 { color: #FBBF24 !important; }
-    .text-purple-500 { color: #A78BFA !important; }
-    .text-red-500, .text-red-400 { color: #F87171 !important; }
+/* Loading overlay */
+.loading-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(232,237,245,0.85);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+}
+.spinner {
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 3px solid rgba(163,177,198,0.3);
+  border-top-color: var(--purple);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
-    .bg-gray-100 { background: rgba(255,255,255,0.06) !important; }
-    .bg-gray-50 { background: rgba(255,255,255,0.04) !important; }
-    .bg-white { background: rgba(255,255,255,0.06) !important; }
-    .bg-white\/80 { background: rgba(8,8,16,0.7) !important; backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important; }
-    .bg-gray-900 { background: linear-gradient(135deg, #8B5CF6, #06B6D4) !important; }
-    .hover\:bg-gray-800:hover { filter: brightness(0.9) !important; }
+/* Login */
+#login-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+}
+.login-card {
+  background: var(--surface); border-radius: 20px;
+  box-shadow: var(--shadow-raised); padding: 40px; width: 360px;
+}
+.login-logo {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  margin-bottom: 28px;
+}
+.login-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  background: linear-gradient(135deg, #6C63FF, #38BDF8);
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 22px;
+  box-shadow: var(--shadow-sm);
+}
+.login-title { font-size: 20px; font-weight: 700; color: var(--text); }
+.login-sub { font-size: 13px; color: var(--text-dim); }
 
-    .border-gray-100 { border-color: rgba(255,255,255,0.08) !important; }
-    .border-gray-200 { border-color: rgba(255,255,255,0.12) !important; }
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.modal {
+  background: var(--surface); border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15); width: 700px; max-width: 95vw;
+  max-height: 90vh; overflow-y: auto;
+}
+.modal-sm { width: 440px; }
+.modal-lg { width: 800px; }
+.modal-header {
+  padding: 20px 24px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.modal-close {
+  width: 28px; height: 28px; border-radius: 8px; border: none;
+  background: var(--surface-inset); box-shadow: var(--shadow-sm);
+  cursor: pointer; font-size: 14px; color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-body { padding: 20px 24px; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
 
-    /* Progress bar track */
-    .bg-gray-100.rounded-full.h-1\.5 { background: rgba(255,255,255,0.12) !important; }
+/* Sub-tabs */
+.subtabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.subtab {
+  padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--text-dim);
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all 0.15s;
+}
+.subtab:hover { color: var(--purple); }
+.subtab.active { color: var(--purple); border-bottom-color: var(--purple); }
 
-    /* Form section backgrounds */
-    .p-4.bg-gray-50.rounded-lg, .p-3.bg-gray-50.rounded-lg {
-      background: rgba(255,255,255,0.04) !important;
-      border: 1px solid rgba(255,255,255,0.08);
-    }
+/* Chart container */
+.chart-wrap { position: relative; height: 200px; }
 
-    /* Sub-tab bg in user detail */
-    .flex.gap-1.px-4.pt-3.bg-gray-50 { background: rgba(255,255,255,0.03) !important; }
+/* Announcements */
+.announcement-card {
+  background: var(--surface); border-radius: 12px;
+  box-shadow: var(--shadow-sm); padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.ann-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ann-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.ann-msg { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.ann-meta { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
 
-    /* Focus ring override */
-    .focus\:ring-blue-500:focus { --tw-ring-color: rgba(139,92,246,0.5) !important; }
-    .focus\:ring-2:focus { box-shadow: 0 0 0 2px rgba(139,92,246,0.3) !important; }
+/* User detail grid */
+.ud-info-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; margin-bottom: 16px; }
+.ud-stat { background: var(--surface-inset); border-radius: 12px; box-shadow: var(--shadow-inset); padding: 12px 14px; }
+.ud-stat-label { font-size: 11px; color: var(--text-dim); font-weight: 500; }
+.ud-stat-value { font-size: 18px; font-weight: 700; color: var(--purple); margin-top: 2px; }
 
-    /* Spinner */
-    .aurora-spinner {
-      width: 32px; height: 32px; border-radius: 50%;
-      border: 3px solid rgba(255,255,255,0.1);
-      border-top-color: var(--purple);
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+/* Error text */
+.error-text { color: var(--red); font-size: 12px; margin-top: 6px; }
 
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+/* Divider */
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
 
-    /* Sidebar layout */
-    .sidebar {
-      width: 220px; min-width: 220px;
-      background: rgba(255,255,255,0.04);
-      border-right: 1px solid rgba(255,255,255,0.08);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      display: flex; flex-direction: column;
-      height: 100vh; position: sticky; top: 0;
-      overflow-y: auto;
-    }
-    .nav-group-label {
-      font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
-      text-transform: uppercase; color: var(--text-dim);
-      padding: 0 12px; margin: 16px 0 4px;
-    }
-    .nav-item {
-      display: flex; align-items: center; gap: 9px;
-      padding: 7px 12px; border-radius: 8px; margin: 1px 8px;
-      font-size: 13px; font-weight: 500; color: var(--text-muted);
-      cursor: pointer; transition: all 0.15s; border: 1px solid transparent;
-    }
-    .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.06); }
-    .nav-item.active {
-      background: linear-gradient(135deg, rgba(139,92,246,0.25), rgba(6,182,212,0.2));
-      color: var(--text); border-color: rgba(139,92,246,0.3);
-    }
-    .nav-item svg { flex-shrink: 0; opacity: 0.7; }
-    .nav-item.active svg { opacity: 1; }
-  </style>
+/* Tab panels */
+.tab-panel { }
+</style>
 </head>
 <body>
-  <!-- Aurora background -->
-  <div class="aurora-bg"><div class="aurora-blob3"></div></div>
 
-  <!-- Loading Overlay -->
-  <div id="loading-overlay" class="hidden">
-    <div class="text-center">
-      <div class="aurora-spinner mx-auto mb-3"></div>
-      <div class="text-sm" style="color:var(--text-muted)">Loading...</div>
-    </div>
-  </div>
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay hidden">
+  <div class="spinner"></div>
+</div>
 
-  <!-- Login Screen -->
-  <div id="login-screen">
-    <div class="card p-8" style="width: 380px;">
-      <div class="text-center mb-6">
-        <!-- Aurora logo mark -->
-        <div style="width:48px;height:48px;margin:0 auto 12px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#06B6D4);display:flex;align-items:center;justify-content:center;">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        </div>
-        <h1 class="text-xl font-bold" style="color:var(--text)">RouteBox Admin</h1>
-        <p class="text-sm mt-1" style="color:var(--text-muted)">Sign in with your admin account</p>
+<!-- Login Screen -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-icon">R</div>
+      <div style="text-align:center">
+        <div class="login-title">RouteBox Admin</div>
+        <div class="login-sub">Sign in to your admin panel</div>
       </div>
-      <form id="login-form" class="space-y-4">
-        <div>
-          <label class="block text-xs font-medium mb-1" style="color:var(--text-muted)">Email</label>
-          <input type="email" id="login-email" required class="input-sm w-full" placeholder="admin@example.com" />
-        </div>
-        <div>
-          <label class="block text-xs font-medium mb-1" style="color:var(--text-muted)">Password</label>
-          <input type="password" id="login-password" required class="input-sm w-full" placeholder="••••••••" />
-        </div>
-        <div id="login-error" class="text-xs hidden" style="color:#F87171"></div>
-        <button type="submit" class="w-full py-2 rounded-lg text-sm font-medium text-white transition" style="background:linear-gradient(135deg,#8B5CF6,#06B6D4)">
-          Sign In
-        </button>
-      </form>
     </div>
-  </div>
-
-  <!-- Dashboard -->
-  <div id="dashboard" style="display:none;flex-direction:row;height:100vh;overflow:hidden;">
-
-  <!-- SIDEBAR -->
-  <aside class="sidebar">
-    <!-- Logo + Title -->
-    <div style="padding:20px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.07);">
-      <div class="flex items-center gap-2" style="margin-bottom:6px;">
-        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#06B6D4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        </div>
-        <span class="text-sm font-bold" style="color:var(--text)">RouteBox Admin</span>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" class="input-sm" placeholder="admin@example.com" autocomplete="username" required/>
       </div>
-      <span id="admin-email" class="text-xs" style="color:var(--text-dim);display:block;padding-left:2px;"></span>
-    </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" class="input-sm" placeholder="••••••••" autocomplete="current-password" required/>
+      </div>
+      <div id="login-error" class="error-text hidden"></div>
+      <button type="submit" class="btn-lg" style="width:100%;margin-top:8px">Sign In</button>
+    </form>
+  </div>
+</div>
 
-    <!-- Nav -->
-    <nav style="flex:1;padding:8px 0;">
-      <!-- OVERVIEW -->
+<!-- App Shell -->
+<div id="app-shell" class="app hidden">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-inner">
+        <div class="logo-icon">R</div>
+        <div>
+          <div class="logo-text">RouteBox Admin</div>
+          <div class="logo-sub">Control Panel</div>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-email" id="sidebar-email"></div>
+
+    <div class="nav-group">
       <div class="nav-group-label">Overview</div>
-      <div class="nav-item tab active" data-tab="dashboard" onclick="switchTab('dashboard')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        Dashboard
+      <div class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+        <span class="nav-icon">📊</span> Dashboard
       </div>
+    </div>
 
-      <!-- USERS -->
+    <div class="nav-group">
       <div class="nav-group-label">Users</div>
-      <div class="nav-item tab" data-tab="users" onclick="switchTab('users')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Users
+      <div class="nav-item" data-tab="users" onclick="switchTab('users')">
+        <span class="nav-icon">👥</span> Users
       </div>
-      <div class="nav-item tab" data-tab="transactions" onclick="switchTab('transactions')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Transactions
+      <div class="nav-item" data-tab="transactions" onclick="switchTab('transactions')">
+        <span class="nav-icon">💳</span> Transactions
       </div>
+    </div>
 
-      <!-- MODELS -->
+    <div class="nav-group">
       <div class="nav-group-label">Models</div>
-      <div class="nav-item tab" data-tab="models" onclick="switchTab('models')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        Usage
+      <div class="nav-item" data-tab="models" onclick="switchTab('models')">
+        <span class="nav-icon">📈</span> Usage
       </div>
-      <div class="nav-item tab" data-tab="registry" onclick="switchTab('registry')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-        Registry
+      <div class="nav-item" data-tab="registry" onclick="switchTab('registry')">
+        <span class="nav-icon">🗂️</span> Registry
       </div>
+      <div class="nav-item" data-tab="providers-manage" onclick="switchTab('providers-manage')">
+        <span class="nav-icon">⚙️</span> Providers &amp; Models
+      </div>
+    </div>
 
-      <!-- INFRASTRUCTURE -->
+    <div class="nav-group">
       <div class="nav-group-label">Infrastructure</div>
-      <div class="nav-item tab" data-tab="providers" onclick="switchTab('providers')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-        Providers
+      <div class="nav-item" data-tab="providers" onclick="switchTab('providers')">
+        <span class="nav-icon">🔌</span> Providers
       </div>
-      <div class="nav-item tab" data-tab="keys" onclick="switchTab('keys')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-        Keys
+      <div class="nav-item" data-tab="keys" onclick="switchTab('keys')">
+        <span class="nav-icon">🔑</span> Keys
       </div>
-      <div class="nav-item tab" data-tab="access" onclick="switchTab('access')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Access
+      <div class="nav-item" data-tab="access" onclick="switchTab('access')">
+        <span class="nav-icon">🛡️</span> Access
       </div>
+    </div>
 
-      <!-- BILLING -->
+    <div class="nav-group">
       <div class="nav-group-label">Billing</div>
-      <div class="nav-item tab" data-tab="packages" onclick="switchTab('packages')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-        Packages
+      <div class="nav-item" data-tab="packages" onclick="switchTab('packages')">
+        <span class="nav-icon">📦</span> Packages
       </div>
-      <div class="nav-item tab" data-tab="referrals" onclick="switchTab('referrals')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Referrals
+      <div class="nav-item" data-tab="referrals" onclick="switchTab('referrals')">
+        <span class="nav-icon">🤝</span> Referrals
       </div>
+    </div>
 
-      <!-- SYSTEM -->
+    <div class="nav-group">
       <div class="nav-group-label">System</div>
-      <div class="nav-item tab" data-tab="announcements" onclick="switchTab('announcements')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>
-        Announcements
-      </div>
-    </nav>
-
-    <!-- Bottom actions -->
-    <div style="padding:12px 8px;border-top:1px solid rgba(255,255,255,0.07);display:flex;gap:8px;">
-      <button onclick="loadDashboard()" class="text-xs transition" style="flex:1;padding:7px 10px;border-radius:8px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.25);color:var(--purple);cursor:pointer;">&#8635; Refresh</button>
-      <button onclick="logout()" class="text-xs transition" style="flex:1;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim);cursor:pointer;">Logout</button>
-    </div>
-  </aside>
-
-  <!-- MAIN CONTENT -->
-  <main class="flex-1" style="overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:24px;">
-
-    <!-- Tab: Dashboard (stat cards + charts) -->
-    <div id="tab-dashboard">
-      <div style="margin-bottom:20px;">
-        <h2 class="text-lg font-bold" style="color:var(--text)">Dashboard</h2>
-        <p class="text-xs" style="color:var(--text-dim);margin-top:2px;">Overview of your RouteBox gateway</p>
-      </div>
-      <!-- Stat Cards -->
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="stat-cards">
-        <div class="card p-4"><div class="stat-label">Total Users</div><div class="stat-value" id="s-users">-</div><div class="stat-sub" id="s-users-sub"></div></div>
-        <div class="card p-4"><div class="stat-label">Total Revenue</div><div class="stat-value" id="s-revenue">-</div><div class="stat-sub" id="s-revenue-sub"></div></div>
-        <div class="card p-4"><div class="stat-label">API Requests</div><div class="stat-value" id="s-requests">-</div><div class="stat-sub" id="s-requests-sub"></div></div>
-        <div class="card p-4"><div class="stat-label">API Cost (Our)</div><div class="stat-value" id="s-cost">-</div><div class="stat-sub" id="s-cost-sub"></div></div>
-        <div class="card p-4"><div class="stat-label">Referrals</div><div class="stat-value" id="s-referrals">-</div><div class="stat-sub" id="s-referrals-sub"></div></div>
-      </div>
-
-      <!-- Charts row -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="card p-4">
-          <div class="stat-label mb-2">Daily Usage (30 days)</div>
-          <div class="chart-container"><canvas id="chart-usage"></canvas></div>
-        </div>
-        <div class="card p-4">
-          <div class="stat-label mb-2">Daily Revenue (30 days)</div>
-          <div class="chart-container"><canvas id="chart-revenue"></canvas></div>
-        </div>
+      <div class="nav-item" data-tab="announcements" onclick="switchTab('announcements')">
+        <span class="nav-icon">📢</span> Announcements
       </div>
     </div>
 
-    <!-- Tab content divs -->
-    <div id="tab-users" class="card overflow-hidden">
-        <div class="p-3 flex items-center gap-3" style="border-bottom:1px solid var(--border)">
-          <input id="user-search" type="text" placeholder="Search by email..." class="input-sm w-64"
-            oninput="debouncedSearchUsers(this.value)" />
-        </div>
-        <table>
-          <thead><tr>
-            <th>Email</th><th>Plan</th><th>Balance</th><th>Deposited</th><th>Used</th><th>Requests</th><th>Joined</th><th>Actions</th>
-          </tr></thead>
-          <tbody id="users-tbody"></tbody>
-          <!-- User Detail Modal -->
-          <div id="user-detail-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center" style="background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding-top:40px;cursor:default;" onclick="if(event.target===this)closeUserDetail()">
-            <div class="card" style="width:760px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
-              <div class="p-4 flex items-center justify-between" style="border-bottom:1px solid var(--border)">
-                <div class="font-semibold" id="ud-title" style="color:var(--text)">User Detail</div>
-                <button onclick="closeUserDetail()" class="text-lg transition" style="color:var(--text-dim)" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">&#x2715;</button>
-              </div>
-              <!-- User info card -->
-              <div class="p-4 grid grid-cols-4 gap-3" id="ud-info" style="border-bottom:1px solid var(--border)"></div>
-              <!-- Sub-tabs -->
-              <div class="flex gap-1 px-4 pt-3" style="background:rgba(255,255,255,0.02)">
-                <div class="tab active" data-udtab="txns" onclick="switchUdTab('txns')" style="font-size:12px;">Transactions</div>
-                <div class="tab" data-udtab="reqs" onclick="switchUdTab('reqs')" style="font-size:12px;">Requests</div>
-                <div class="tab" data-udtab="mods" onclick="switchUdTab('mods')" style="font-size:12px;">Models</div>
-              </div>
-              <div style="overflow-y:auto;flex:1;">
-                <div id="ud-tab-txns">
-                  <table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance After</th><th>Description</th></tr></thead>
-                  <tbody id="ud-txns-tbody"></tbody></table>
-                </div>
-                <div id="ud-tab-reqs" class="hidden">
-                  <table><thead><tr><th>Date</th><th>Model</th><th>Provider</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr></thead>
-                  <tbody id="ud-reqs-tbody"></tbody></table>
-                </div>
-                <div id="ud-tab-mods" class="hidden">
-                  <table><thead><tr><th>Model</th><th>Requests</th><th>Cost</th><th>Tokens</th></tr></thead>
-                  <tbody id="ud-mods-tbody"></tbody></table>
-                </div>
-              </div>
-            </div>
+    <div class="sidebar-bottom">
+      <button class="btn-sm" onclick="loadDashboard()">🔄 Refresh</button>
+      <button class="btn-sm danger" onclick="logout()">Logout</button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="topbar-title">Dashboard</div>
+      <div style="font-size:12px;color:var(--text-dim)" id="last-updated"></div>
+    </div>
+    <div class="content">
+
+      <!-- DASHBOARD TAB -->
+      <div id="tab-dashboard" class="tab-panel">
+        <div id="stat-cards" class="grid grid-stat mb-4"></div>
+        <div class="grid grid-2 mb-4">
+          <div class="card">
+            <div class="section-header"><div class="section-title">Usage Trend (30d)</div></div>
+            <div class="chart-wrap"><canvas id="usage-chart"></canvas></div>
           </div>
-        </table>
-        <div id="users-pagination" class="page-controls hidden">
-          <span class="page-info" id="users-page-info"></span>
-          <div class="flex gap-1">
-            <button class="btn-sm" onclick="usersPage('prev')">Prev</button>
-            <button class="btn-sm" onclick="usersPage('next')">Next</button>
+          <div class="card">
+            <div class="section-header"><div class="section-title">Revenue Trend (30d)</div></div>
+            <div class="chart-wrap"><canvas id="revenue-chart"></canvas></div>
           </div>
         </div>
       </div>
 
-      <div id="tab-transactions" class="card overflow-hidden hidden">
-        <table>
-          <thead><tr>
-            <th>Date</th><th>User</th><th>Type</th><th>Amount</th><th>Balance After</th><th>Description</th>
-          </tr></thead>
-          <tbody id="transactions-tbody"></tbody>
-        </table>
-        <div id="txn-pagination" class="page-controls hidden">
-          <span class="page-info" id="txn-page-info"></span>
-          <div class="flex gap-1">
-            <button class="btn-sm" onclick="txnPage('prev')">Prev</button>
-            <button class="btn-sm" onclick="txnPage('next')">Next</button>
+      <!-- USERS TAB -->
+      <div id="tab-users" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header">
+            <div class="section-title">Users</div>
+            <button class="btn-sm primary" onclick="showAdjustModal()">+ Adjust Balance</button>
+          </div>
+          <div class="search-row">
+            <input type="text" id="users-search" class="input-sm" placeholder="Search email or UID..." oninput="debounceSearch(this.value)"/>
+            <button class="btn-sm" onclick="applySearch()">Search</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Email</th><th>UID</th><th>Plan</th><th>Balance</th><th>Deposited</th><th>Used</th><th>Requests</th><th>Joined</th><th>Actions</th>
+              </tr></thead>
+              <tbody id="users-tbody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="users-pagination"></div>
+        </div>
+      </div>
+
+      <!-- TRANSACTIONS TAB -->
+      <div id="tab-transactions" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header"><div class="section-title">Transactions</div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Date</th><th>User</th><th>Type</th><th>Amount</th><th>Description</th><th>Ref</th>
+              </tr></thead>
+              <tbody id="transactions-tbody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="txn-pagination"></div>
+        </div>
+      </div>
+
+      <!-- MODELS USAGE TAB -->
+      <div id="tab-models" class="tab-panel hidden">
+        <div class="grid grid-2 mb-4">
+          <div class="card">
+            <div class="section-header"><div class="section-title">Model Usage (7d)</div></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Model</th><th>Requests</th><th>Input Tokens</th><th>Output Tokens</th><th>Cost</th><th>Avg Latency</th></tr></thead>
+                <tbody id="models-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-header"><div class="section-title">Provider Usage (7d)</div></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Provider</th><th>Requests</th><th>Cost</th><th>Tokens</th></tr></thead>
+                <tbody id="providers-tbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
 
-      <div id="tab-models" class="card overflow-hidden hidden">
-        <table>
-          <thead><tr>
-            <th>Model</th><th>Requests</th><th>Cost</th><th>Input Tokens</th><th>Output Tokens</th><th>Avg Latency</th>
-          </tr></thead>
-          <tbody id="models-tbody"></tbody>
-        </table>
-      </div>
-
-      <!-- Registry Tab -->
-      <div id="tab-registry" class="hidden space-y-4">
-        <div class="card p-4">
-          <div class="flex items-center justify-between mb-4">
-            <div class="stat-label">Model Registry</div>
-            <div class="flex gap-2">
-              <button class="btn-sm" onclick="reloadRegistryCache()">&#8635; Reload Cache</button>
-              <button class="btn-sm primary" onclick="showModelForm()">+ Add Model</button>
-            </div>
+      <!-- REGISTRY TAB -->
+      <div id="tab-registry" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header">
+            <div class="section-title">Model Registry</div>
+            <button class="btn-sm primary" onclick="showModelForm()">+ Add Model</button>
           </div>
-
-          <!-- Add/Edit Model Form -->
-          <div id="model-form" class="hidden mb-4 p-4 rounded-xl space-y-4" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
-            <div class="text-sm font-semibold" id="model-form-title" style="color:var(--text)">Add Model</div>
-            <input type="hidden" id="mf-id" />
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Model ID *</label>
-                <input id="mf-modelId" type="text" placeholder="e.g. gpt-4o" class="input-sm w-full" />
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Display Name *</label>
-                <input id="mf-displayName" type="text" placeholder="e.g. GPT-4o" class="input-sm w-full" />
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Provider *</label>
-                <select id="mf-provider" class="input-sm w-full">
-                  <option value="">Select...</option>
-                  <option>OpenAI</option><option>Anthropic</option><option>Google</option>
-                  <option>DeepSeek</option><option>MiniMax</option><option>Kimi</option><option>FLock.io</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Status</label>
-                <select id="mf-status" class="input-sm w-full">
-                  <option value="active">Active</option>
-                  <option value="beta">Beta</option>
-                  <option value="deprecated">Deprecated</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Tier</label>
-                <select id="mf-tier" class="input-sm w-full">
-                  <option value="flagship">Flagship</option>
-                  <option value="fast">Fast</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="text-xs font-semibold mt-2" style="color:var(--text-muted)">Scores (0.00 – 1.00)</div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Quality</label>
-                <input id="mf-quality" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Speed</label>
-                <input id="mf-speed" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Cost Efficiency</label>
-                <input id="mf-costEfficiency" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Code Strength</label>
-                <input id="mf-codeStrength" type="number" step="0.01" min="0" max="1" value="0.70" class="input-sm w-full" />
-              </div>
-            </div>
-
-            <div class="text-xs font-semibold mt-2" style="color:var(--text-muted)">Operational</div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Max Context Tokens</label>
-                <input id="mf-maxContextTokens" type="number" value="128000" class="input-sm w-full" />
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Avg TTFT (ms)</label>
-                <input id="mf-avgTtftMs" type="number" value="500" class="input-sm w-full" />
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Price Input ($/1M)</label>
-                <input id="mf-priceInput" type="number" step="0.01" value="1.00" class="input-sm w-full" />
-              </div>
-              <div>
-                <label class="block text-xs mb-1" style="color:var(--text-dim)">Price Output ($/1M)</label>
-                <input id="mf-priceOutput" type="number" step="0.01" value="3.00" class="input-sm w-full" />
-              </div>
-            </div>
-
-            <div class="text-xs font-semibold mt-2" style="color:var(--text-muted)">Capabilities</div>
-            <div class="flex flex-wrap gap-4">
-              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
-                <input type="checkbox" id="mf-supportsVision" /> Vision
-              </label>
-              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
-                <input type="checkbox" id="mf-supportsFunctionCall" checked /> Function Call
-              </label>
-              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
-                <input type="checkbox" id="mf-supportsLongContext" /> Long Context
-              </label>
-              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
-                <input type="checkbox" id="mf-chineseOptimized" /> Chinese Optimized
-              </label>
-              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
-                <input type="checkbox" id="mf-isFlockNode" /> FLock Node
-              </label>
-            </div>
-
-            <div class="text-xs font-semibold mt-2" style="color:var(--text-muted)">Plan Access</div>
-            <div class="flex flex-wrap gap-4">
-              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
-                <input type="checkbox" id="mf-plan-all" onchange="onPlanAllChange(this)" checked /> All (no restriction)
-              </label>
-              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
-                <input type="checkbox" id="mf-plan-free" onchange="onPlanFreeProChange()" /> Free
-              </label>
-              <label class="flex items-center gap-1.5 text-xs" style="color:var(--text-muted)">
-                <input type="checkbox" id="mf-plan-pro" onchange="onPlanFreeProChange()" /> Pro
-              </label>
-            </div>
-
-            <div class="flex gap-2 mt-2">
-              <button class="btn-sm primary" onclick="saveModel()">Save</button>
-              <button class="btn-sm" onclick="hideModelForm()">Cancel</button>
-            </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Model ID</th><th>Display Name</th><th>Provider</th><th>Tier</th><th>Context</th>
+                <th>In $/M</th><th>Out $/M</th><th>Markup</th><th>Status</th><th>Free</th><th>Actions</th>
+              </tr></thead>
+              <tbody id="registry-tbody"></tbody>
+            </table>
           </div>
-
-          <!-- Registry Table -->
-          <table>
-            <thead><tr>
-              <th>Model ID</th><th>Provider</th><th>Tier</th><th>Status</th>
-              <th>Q</th><th>S</th><th>C</th><th>Code</th>
-              <th>Plans</th><th>Caps</th><th></th>
-            </tr></thead>
-            <tbody id="registry-tbody"></tbody>
-          </table>
         </div>
       </div>
 
-      <div id="tab-providers" class="card overflow-hidden hidden">
-        <table>
-          <thead><tr>
-            <th>Provider</th><th>Requests</th><th>Cost</th><th>Total Tokens</th>
-          </tr></thead>
-          <tbody id="providers-tbody"></tbody>
-        </table>
+      <!-- PROVIDERS & MODELS TAB (NEW) -->
+      <div id="tab-providers-manage" class="tab-panel hidden">
+        <div class="section-header">
+          <div class="section-title">Providers &amp; Models</div>
+          <button class="btn-sm primary" onclick="showModelForm()">+ Add Model</button>
+        </div>
+        <div id="providers-manage-list"></div>
       </div>
 
-      <!-- API Keys Tab -->
-      <div id="tab-keys" class="hidden space-y-4">
-        <div class="card p-4">
-          <div class="flex items-center justify-between mb-4">
-            <div class="stat-label">Provider API Keys</div>
-            <button class="btn-sm primary" onclick="showAddKeyForm()">+ Add Key</button>
+      <!-- PROVIDERS USAGE TAB -->
+      <div id="tab-providers" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header"><div class="section-title">Provider Usage (7d)</div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Provider</th><th>Requests</th><th>Cost</th><th>Tokens</th></tr></thead>
+              <tbody id="providers-usage-tbody"></tbody>
+            </table>
           </div>
-          <div id="add-key-form" class="hidden mb-4 p-3 rounded-xl space-y-3" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <select id="ak-provider" class="input-sm">
-                <option value="">Provider...</option>
-                <option>OpenAI</option><option>Anthropic</option><option>Google</option>
-                <option>DeepSeek</option><option>MiniMax</option><option>Kimi</option><option>OpenRouter</option>
-              </select>
-              <input id="ak-key" type="password" placeholder="API Key" class="input-sm" />
-              <input id="ak-label" type="text" placeholder="Label (optional)" class="input-sm" />
-              <input id="ak-url" type="text" placeholder="Base URL (optional)" class="input-sm" />
-            </div>
-            <div class="flex gap-2">
-              <button class="btn-sm primary" onclick="addKey()">Save</button>
-              <button class="btn-sm" onclick="hideAddKeyForm()">Cancel</button>
-            </div>
-          </div>
-          <table>
-            <thead><tr>
-              <th>Provider</th><th>Label</th><th>Key</th><th>Base URL</th><th>Active</th><th>Created</th><th></th>
-            </tr></thead>
-            <tbody id="keys-tbody"></tbody>
-          </table>
         </div>
       </div>
 
-      <!-- Access Tab -->
-      <div id="tab-access" class="hidden">
-        <div class="card p-4">
-          <div class="stat-label mb-4" style="color:var(--text-muted)">Provider Access Control</div>
-          <table>
-            <thead><tr>
-              <th>Provider</th><th>Enabled</th><th>Allowed Plans</th><th></th>
-            </tr></thead>
-            <tbody id="access-tbody"></tbody>
-          </table>
+      <!-- KEYS TAB -->
+      <div id="tab-keys" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header">
+            <div class="section-title">Provider API Keys</div>
+            <button class="btn-sm primary" onclick="showKeyForm()">+ Add Key</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Provider</th><th>Label</th><th>Prefix</th><th>Weight</th><th>Active</th><th>Added</th><th>Actions</th>
+              </tr></thead>
+              <tbody id="keys-tbody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      <!-- Packages Tab -->
-      <div id="tab-packages" class="hidden space-y-4">
-        <div class="card p-4">
-          <div class="flex items-center justify-between mb-4">
-            <div class="stat-label">Credit Packages</div>
+      <!-- ACCESS TAB -->
+      <div id="tab-access" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header">
+            <div class="section-title">Provider Access Control</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Provider</th><th>Enabled</th><th>Allowed Plans</th><th>Actions</th></tr></thead>
+              <tbody id="access-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- PACKAGES TAB -->
+      <div id="tab-packages" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header">
+            <div class="section-title">Credit Packages</div>
             <button class="btn-sm primary" onclick="showPkgForm()">+ Add Package</button>
           </div>
-          <div id="pkg-form" class="hidden mb-4 p-4 rounded-xl space-y-3" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
-            <div class="text-sm font-semibold" id="pkg-form-title" style="color:var(--text)">Add Package</div>
-            <input type="hidden" id="pf-id" />
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Package ID *</label>
-                <input id="pf-pkgId" type="text" placeholder="e.g. credits_5" class="input-sm w-full" /></div>
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Polar Product ID</label>
-                <input id="pf-polarProductId" type="text" placeholder="Polar UUID" class="input-sm w-full" /></div>
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Label *</label>
-                <input id="pf-label" type="text" placeholder="e.g. $5" class="input-sm w-full" /></div>
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Amount (cents) *</label>
-                <input id="pf-amount" type="number" placeholder="500" class="input-sm w-full" /></div>
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Credits (cents) *</label>
-                <input id="pf-credits" type="number" placeholder="500" class="input-sm w-full" /></div>
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Bonus Text</label>
-                <input id="pf-bonus" type="text" placeholder="+10%" class="input-sm w-full" /></div>
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Sort Order</label>
-                <input id="pf-sortOrder" type="number" value="0" class="input-sm w-full" /></div>
-            </div>
-            <div class="flex gap-2">
-              <button class="btn-sm primary" onclick="savePkg()">Save</button>
-              <button class="btn-sm" onclick="hidePkgForm()">Cancel</button>
-            </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Label</th><th>Credits</th><th>Price</th><th>Bonus</th><th>Active</th><th>Polar Product ID</th><th>Actions</th>
+              </tr></thead>
+              <tbody id="packages-tbody"></tbody>
+            </table>
           </div>
-          <table>
-            <thead><tr>
-              <th>ID</th><th>Label</th><th>Amount</th><th>Credits</th><th>Bonus</th><th>Active</th><th>Polar Product ID</th><th></th>
-            </tr></thead>
-            <tbody id="packages-tbody"></tbody>
-          </table>
         </div>
       </div>
 
-      <!-- Announcements Tab -->
-      <div id="tab-announcements" class="hidden space-y-4">
-        <div class="card p-4">
-          <div class="flex items-center justify-between mb-4">
-            <div class="stat-label">Announcements</div>
-            <button class="btn-sm primary" onclick="showAnnForm()">+ New Announcement</button>
-          </div>
-          <div id="ann-form" class="hidden mb-4 p-4 rounded-xl space-y-3" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
-            <div class="text-sm font-semibold" style="color:var(--text)">New Announcement</div>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Title *</label>
-                <input id="af-title" type="text" placeholder="Announcement title" class="input-sm w-full" /></div>
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Type</label>
-                <select id="af-type" class="input-sm w-full">
-                  <option value="info">Info</option>
-                  <option value="warning">Warning</option>
-                  <option value="error">Error</option>
-                </select></div>
-              <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Ends At (optional)</label>
-                <input id="af-endsAt" type="datetime-local" class="input-sm w-full" /></div>
-            </div>
-            <div><label class="block text-xs mb-1" style="color:var(--text-dim)">Message *</label>
-              <textarea id="af-message" rows="3" placeholder="Announcement message..." class="input-sm w-full" style="resize:vertical;"></textarea></div>
-            <div class="flex gap-2">
-              <button class="btn-sm primary" onclick="saveAnn()">Publish</button>
-              <button class="btn-sm" onclick="hideAnnForm()">Cancel</button>
+      <!-- ANNOUNCEMENTS TAB -->
+      <div id="tab-announcements" class="tab-panel hidden">
+        <div class="section-header">
+          <div class="section-title">Announcements</div>
+          <button class="btn-sm primary" onclick="showAnnForm()">+ New Announcement</button>
+        </div>
+        <div id="announcements-list"></div>
+      </div>
+
+      <!-- REFERRALS TAB -->
+      <div id="tab-referrals" class="tab-panel hidden">
+        <div class="grid grid-stat mb-4" id="referral-stat-cards"></div>
+        <div class="grid grid-2 mb-4">
+          <div class="card">
+            <div class="section-header"><div class="section-title">Top Referrers</div></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Email</th><th>Code</th><th>Uses</th><th>Rewards Earned ($)</th><th>Reward Count</th></tr></thead>
+                <tbody id="referrers-tbody"></tbody>
+              </table>
             </div>
           </div>
-          <table>
-            <thead><tr>
-              <th>Title</th><th>Type</th><th>Message</th><th>Active</th><th>Ends At</th><th>Created</th><th></th>
-            </tr></thead>
-            <tbody id="announcements-tbody"></tbody>
-          </table>
+          <div class="card">
+            <div class="section-header"><div class="section-title">Recent Claims</div></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Referrer</th><th>Referred</th><th>Code</th><th>Referrer Rewarded</th><th>Date</th></tr></thead>
+                <tbody id="claims-tbody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Referrals Tab -->
-      <div id="tab-referrals" class="hidden space-y-4">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div class="card p-4"><div class="stat-label">Total Codes</div><div class="stat-value" id="ref-codes">-</div></div>
-          <div class="card p-4"><div class="stat-label">Total Claims</div><div class="stat-value" id="ref-claims">-</div></div>
-          <div class="card p-4"><div class="stat-label">Rewards Given</div><div class="stat-value" id="ref-rewards">-</div></div>
-          <div class="card p-4"><div class="stat-label">Reward Value</div><div class="stat-value" id="ref-value">-</div></div>
-        </div>
-        <div class="card overflow-hidden">
-          <div class="p-3" style="border-bottom:1px solid var(--border)"><span class="stat-label" style="color:var(--text-muted)">Top Referrers</span></div>
+    </div><!-- end .content -->
+  </div><!-- end .main -->
+</div><!-- end #app-shell -->
+
+<!-- ====== MODALS ====== -->
+
+<!-- Adjust Balance Modal -->
+<div id="adjust-modal" class="modal-backdrop hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title">Adjust User Balance</div>
+      <button class="modal-close" onclick="closeModal('adjust-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>User Email or UID</label>
+        <input type="text" id="adj-user" class="input-sm" placeholder="user@example.com"/>
+      </div>
+      <div class="form-group">
+        <label>Amount (USD, negative to deduct)</label>
+        <input type="number" id="adj-amount" class="input-sm" step="0.01" placeholder="5.00"/>
+      </div>
+      <div class="form-group">
+        <label>Reason</label>
+        <input type="text" id="adj-reason" class="input-sm" placeholder="Admin adjustment"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal('adjust-modal')">Cancel</button>
+      <button class="btn-sm primary" onclick="submitAdjust()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Detail Modal -->
+<div id="user-detail-modal" class="modal-backdrop hidden">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="ud-email" style="margin-bottom:4px"></div>
+        <div id="ud-uid-badge"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('user-detail-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="ud-info-grid" id="ud-info-grid"></div>
+      <div class="subtabs">
+        <div class="subtab active" data-udtab="txns" onclick="switchUdTab('txns')">Transactions</div>
+        <div class="subtab" data-udtab="reqs" onclick="switchUdTab('reqs')">Requests</div>
+        <div class="subtab" data-udtab="mods" onclick="switchUdTab('mods')">Models</div>
+        <div class="subtab" data-udtab="apikeys" onclick="switchUdTab('apikeys')">API Keys</div>
+      </div>
+      <div id="ud-tab-txns">
+        <div class="table-wrap">
           <table>
-            <thead><tr>
-              <th>Email</th><th>Code</th><th>Uses</th><th>Rewards</th><th>Earned</th>
-            </tr></thead>
-            <tbody id="referrers-tbody"></tbody>
-          </table>
-        </div>
-        <div class="card overflow-hidden">
-          <div class="p-3" style="border-bottom:1px solid var(--border)"><span class="stat-label" style="color:var(--text-muted)">Recent Claims</span></div>
-          <table>
-            <thead><tr>
-              <th>Date</th><th>Referred</th><th>Referrer</th><th>Code</th><th>Referred Rewarded</th><th>Referrer Rewarded</th>
-            </tr></thead>
-            <tbody id="claims-tbody"></tbody>
+            <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Description</th></tr></thead>
+            <tbody id="ud-txns-tbody"></tbody>
           </table>
         </div>
       </div>
+      <div id="ud-tab-reqs" class="hidden">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Model</th><th>Tokens In</th><th>Tokens Out</th><th>Cost</th><th>Status</th></tr></thead>
+            <tbody id="ud-reqs-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="ud-tab-mods" class="hidden">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Model</th><th>Requests</th><th>Tokens</th><th>Cost ($)</th></tr></thead>
+            <tbody id="ud-mods-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="ud-tab-apikeys" class="hidden">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Prefix</th><th>Last Used</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody id="ud-apikeys-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm danger" onclick="deleteUser()">Delete User</button>
+      <button class="btn-sm primary" onclick="showAdjustForUser()">Adjust Balance</button>
+      <button class="btn-sm" onclick="closeModal('user-detail-modal')">Close</button>
+    </div>
+  </div>
+</div>
 
-  </main>
+<!-- Model Form Modal -->
+<div id="model-form-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="mf-title">Add Model</div>
+      <button class="modal-close" onclick="closeModal('model-form-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="mf-id"/>
+      <div class="grid grid-2">
+        <div class="form-group">
+          <label>Model ID</label>
+          <input type="text" id="mf-modelId" class="input-sm" placeholder="gpt-4o"/>
+        </div>
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" id="mf-displayName" class="input-sm" placeholder="GPT-4o"/>
+        </div>
+        <div class="form-group">
+          <label>Provider</label>
+          <input type="text" id="mf-provider" class="input-sm" placeholder="openai"/>
+        </div>
+        <div class="form-group">
+          <label>Tier</label>
+          <select id="mf-tier" class="input-sm">
+            <option value="fast">Fast</option>
+            <option value="flagship">Flagship</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Context Window</label>
+          <input type="number" id="mf-contextWindow" class="input-sm" placeholder="128000"/>
+        </div>
+        <div class="form-group">
+          <label>Max Output Tokens</label>
+          <input type="number" id="mf-maxOutput" class="input-sm" placeholder="4096"/>
+        </div>
+        <div class="form-group">
+          <label>Input Cost ($/M tokens)</label>
+          <input type="number" id="mf-inputCost" class="input-sm" step="0.0001" placeholder="0.005"/>
+        </div>
+        <div class="form-group">
+          <label>Output Cost ($/M tokens)</label>
+          <input type="number" id="mf-outputCost" class="input-sm" step="0.0001" placeholder="0.015"/>
+        </div>
+        <div class="form-group">
+          <label>Markup Multiplier</label>
+          <input type="number" id="mf-markup" class="input-sm" step="0.01" placeholder="1.3"/>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="mf-status" class="input-sm">
+            <option value="active">Active</option>
+            <option value="beta">Beta</option>
+            <option value="deprecated">Deprecated</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Free Tier Requests</label>
+          <input type="number" id="mf-freeReqs" class="input-sm" placeholder="0"/>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:20px">
+          <div class="toggle" id="mf-vision-toggle" onclick="this.classList.toggle('on')"></div>
+          <label style="margin:0">Vision Support</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="mf-description" class="input-sm"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal('model-form-modal')">Cancel</button>
+      <button class="btn-sm primary" onclick="submitModelForm()">Save</button>
+    </div>
+  </div>
+</div>
 
+<!-- Key Form Modal -->
+<div id="key-form-modal" class="modal-backdrop hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" id="kf-title">Add Provider Key</div>
+      <button class="modal-close" onclick="closeModal('key-form-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="kf-id"/>
+      <div class="form-group">
+        <label>Provider Name</label>
+        <input type="text" id="kf-provider" class="input-sm" placeholder="openai"/>
+      </div>
+      <div class="form-group">
+        <label>Label</label>
+        <input type="text" id="kf-label" class="input-sm" placeholder="Main key"/>
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="text" id="kf-key" class="input-sm" placeholder="sk-..."/>
+      </div>
+      <div class="form-group">
+        <label>Weight (1-100)</label>
+        <input type="number" id="kf-weight" class="input-sm" value="1" min="1" max="100"/>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <div class="toggle on" id="kf-active-toggle" onclick="this.classList.toggle('on')"></div>
+        <label style="margin:0">Active</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal('key-form-modal')">Cancel</button>
+      <button class="btn-sm primary" onclick="submitKeyForm()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Access Form Modal -->
+<div id="access-form-modal" class="modal-backdrop hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title">Edit Provider Access</div>
+      <button class="modal-close" onclick="closeModal('access-form-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="af-provider"/>
+      <div class="form-group">
+        <label>Provider: <strong id="af-provider-name"></strong></label>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <div class="toggle" id="af-enabled-toggle" onclick="this.classList.toggle('on')"></div>
+        <label style="margin:0">Enabled</label>
+      </div>
+      <div class="form-group">
+        <label>Allowed Plans (comma-separated, or "all")</label>
+        <input type="text" id="af-plans" class="input-sm" placeholder="all"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal('access-form-modal')">Cancel</button>
+      <button class="btn-sm primary" onclick="submitAccessForm()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Package Form Modal -->
+<div id="pkg-form-modal" class="modal-backdrop hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" id="pkg-form-title">Add Package</div>
+      <button class="modal-close" onclick="closeModal('pkg-form-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pf-id"/>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="pf-name" class="input-sm" placeholder="Starter"/>
+      </div>
+      <div class="form-group">
+        <label>Credits ($)</label>
+        <input type="number" id="pf-credits" class="input-sm" step="0.01" placeholder="10.00"/>
+      </div>
+      <div class="form-group">
+        <label>Price ($)</label>
+        <input type="number" id="pf-price" class="input-sm" step="0.01" placeholder="10.00"/>
+      </div>
+      <div class="form-group">
+        <label>Bonus Credits ($)</label>
+        <input type="number" id="pf-bonus" class="input-sm" step="0.01" placeholder="0.00"/>
+      </div>
+      <div class="form-group">
+        <label>Stripe Price ID</label>
+        <input type="text" id="pf-stripe" class="input-sm" placeholder="price_..."/>
+      </div>
+      <div class="form-group" style="display:flex;gap:16px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="toggle" id="pf-popular-toggle" onclick="this.classList.toggle('on')"></div>
+          <label style="margin:0">Popular</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="toggle on" id="pf-active-toggle" onclick="this.classList.toggle('on')"></div>
+          <label style="margin:0">Active</label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal('pkg-form-modal')">Cancel</button>
+      <button class="btn-sm primary" onclick="submitPkgForm()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Announcement Form Modal -->
+<div id="ann-form-modal" class="modal-backdrop hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" id="ann-form-title">New Announcement</div>
+      <button class="modal-close" onclick="closeModal('ann-form-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="anf-id"/>
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="anf-title" class="input-sm" placeholder="System update"/>
+      </div>
+      <div class="form-group">
+        <label>Message</label>
+        <textarea id="anf-message" class="input-sm"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <select id="anf-type" class="input-sm">
+          <option value="info">Info</option>
+          <option value="warning">Warning</option>
+          <option value="success">Success</option>
+          <option value="danger">Danger</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Expires At (optional)</label>
+        <input type="datetime-local" id="anf-expires" class="input-sm"/>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <div class="toggle on" id="anf-active-toggle" onclick="this.classList.toggle('on')"></div>
+        <label style="margin:0">Active</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal('ann-form-modal')">Cancel</button>
+      <button class="btn-sm primary" onclick="submitAnnForm()">Save</button>
+    </div>
+  </div>
 </div>
 
 <script>
+// ============================================================
+// MODULE-LEVEL VARIABLES
+// ============================================================
 const API_BASE = location.origin;
 let token = localStorage.getItem('rb_admin_token');
+let adminEmail = '';
 let charts = {};
-
-// Chart.js global dark theme defaults
-if (typeof Chart !== 'undefined') {
-  Chart.defaults.color = '#64748B';
-  Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
-  Chart.defaults.backgroundColor = 'rgba(139,92,246,0.1)';
-}
-
-// ── Pagination state ─────────────────────────────────────────────────────
+let _registryModels = [];
+let pkgCache = [];
+let _currentUserId = null;
+let _providersManageData = { providers: [], models: [], keys: [] };
+let _expandedProviders = new Set();
+let _searchTimer = null;
 
 const pageState = {
-  users: { offset: 0, limit: 100, total: 0, search: '' },
-  txn: { offset: 0, limit: 50, total: 0 },
+  users: { limit: 25, offset: 0, total: 0, search: '' },
+  txn: { limit: 25, offset: 0, total: 0 }
 };
 
-// ── Registry model cache (for XSS-safe edit) ────────────────────────────
-let _registryModels = [];
-let _currentUserId = null;
-
-// ── Loading ──────────────────────────────────────────────────────────────
-
-function setLoading(show) {
-  document.getElementById('loading-overlay').classList.toggle('hidden', !show);
-}
-
-// ── Auth ──────────────────────────────────────────────────────────────────
-
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const email = document.getElementById('login-email').value;
-  const password = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-error');
-  errEl.classList.add('hidden');
-
-  try {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      errEl.textContent = data.error?.message || 'Login failed';
-      errEl.classList.remove('hidden');
-      return;
-    }
-    token = data.token;
-    localStorage.setItem('rb_admin_token', token);
-    showDashboard(email);
-  } catch (err) {
-    errEl.textContent = 'Network error';
-    errEl.classList.remove('hidden');
-  }
-});
-
-function logout() {
-  token = null;
-  localStorage.removeItem('rb_admin_token');
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('dashboard').style.display = 'none';
-}
-
-async function showDashboard(email) {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('dashboard').style.display = 'flex';
-  document.getElementById('admin-email').textContent = email || '';
-  await loadDashboard();
-}
-
-// ── API helpers ───────────────────────────────────────────────────────────
-
-async function api(path) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  if (res.status === 401 || res.status === 403) {
-    logout();
-    const data = await res.json().catch(() => ({}));
-    alert(data.error?.message || 'Admin access denied. Check ADMIN_EMAILS config.');
-    throw new Error('Unauthorized');
-  }
-  return res.json();
-}
-
-async function apiMutate(method, path, body) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (res.status === 401 || res.status === 403) { logout(); throw new Error('Unauthorized'); }
-  return res.json();
-}
-
-// ── Load dashboard ────────────────────────────────────────────────────────
-
-async function loadDashboard() {
-  setLoading(true);
-  try {
-    const s = pageState.users;
-    const t = pageState.txn;
-    const [stats, usersRes, txnRes, models, providers, usageTrend, revTrend, keys, access, refStats, topRef, refClaims, registry, packagesRes, announcementsRes] = await Promise.all([
-      api('/admin/stats'),
-      api(`/admin/users?limit=${s.limit}&offset=${s.offset}&search=${encodeURIComponent(s.search)}`),
-      api(`/admin/transactions?limit=${t.limit}&offset=${t.offset}`),
-      api('/admin/usage/models?days=7'),
-      api('/admin/usage/providers?days=7'),
-      api('/admin/usage/trend?days=30'),
-      api('/admin/revenue/trend?days=30'),
-      api('/admin/provider-keys'),
-      api('/admin/provider-access'),
-      api('/admin/referrals/stats'),
-      api('/admin/referrals/top'),
-      api('/admin/referrals/claims'),
-      api('/admin/models/registry'),
-      api('/admin/packages'),
-      api('/admin/announcements'),
-    ]);
-
-    s.total = usersRes.total;
-    t.total = txnRes.total;
-
-    renderStats(stats);
-    renderUsers(usersRes.users);
-    renderUsersPagination();
-    renderTransactions(txnRes.transactions);
-    renderTxnPagination();
-    renderModels(models.models);
-    renderProviders(providers.providers);
-    renderUsageChart(usageTrend.trend);
-    renderRevenueChart(revTrend.trend);
-    renderKeys(keys.keys);
-    renderAccess(access.providers);
-    renderReferralStats(refStats);
-    renderTopReferrers(topRef.referrers);
-    renderReferralClaims(refClaims.claims);
-    renderRegistry(registry.models);
-    renderPackages(packagesRes.packages);
-    renderAnnouncements(announcementsRes.announcements);
-  } catch (err) {
-    if (err.message !== 'Unauthorized') console.error('Dashboard load error:', err);
-  } finally {
-    setLoading(false);
-  }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-function fmtCents(cents) {
-  if (!cents && cents !== 0) return '$0.00';
-  const dollars = cents / 100;
-  if (dollars >= 1) return '$' + dollars.toFixed(2);
-  if (dollars >= 0.01) return '$' + dollars.toFixed(3);
-  return '$' + dollars.toFixed(4);
-}
-
-function fmtNum(n) {
-  if (n == null) return '0';
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return String(n);
+// ============================================================
+// HELPERS
+// ============================================================
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function fmtDate(d) {
@@ -998,224 +1046,1036 @@ function fmtDateTime(d) {
   return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function esc(s) {
-  if (!s) return '';
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
+function fmtUSD(n) {
+  if (n == null) return '$0.00';
+  return '$' + Number(n).toFixed(2);
 }
 
-// ── Render: Stats ─────────────────────────────────────────────────────────
+function fmtCents(n) {
+  if (n == null) return '$0.00';
+  return '$' + (Number(n) / 100).toFixed(2);
+}
 
-function renderStats(s) {
-  document.getElementById('s-users').textContent = s.users.total;
-  document.getElementById('s-users-sub').textContent = `+${s.users.todayRegistrations} today \u00b7 +${s.users.weekRegistrations} this week`;
+function fmtNum(n) {
+  if (n == null) return '0';
+  return Number(n).toLocaleString();
+}
 
-  document.getElementById('s-revenue').textContent = fmtCents(s.deposits.totalCents);
-  document.getElementById('s-revenue-sub').textContent = `+${fmtCents(s.deposits.todayCents)} today \u00b7 ${s.deposits.totalCount} deposits`;
+function setLoading(on) {
+  document.getElementById('loading-overlay').classList.toggle('hidden', !on);
+}
 
-  document.getElementById('s-requests').textContent = fmtNum(s.usage.totalRequests);
-  document.getElementById('s-requests-sub').textContent = `+${fmtNum(s.usage.todayRequests)} today \u00b7 ${fmtNum(s.usage.totalTokens)} tokens`;
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+}
 
-  document.getElementById('s-cost').textContent = fmtCents(s.usage.totalCostCents);
-  document.getElementById('s-cost-sub').textContent = `+${fmtCents(s.usage.todayCostCents)} today \u00b7 ${fmtCents(s.balance.totalOutstandingCents)} outstanding`;
+function openModal(id) {
+  document.getElementById(id).classList.remove('hidden');
+}
 
-  if (s.referrals) {
-    document.getElementById('s-referrals').textContent = s.referrals.totalClaims;
-    document.getElementById('s-referrals-sub').textContent = `${s.referrals.totalCodes} codes \u00b7 ${s.referrals.rewardsDistributed} rewards`;
+function decodeJwtEmail(t) {
+  try {
+    const b64 = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(b64)).email || '';
+  } catch { return ''; }
+}
+
+function renderPanelError(containerId, msg) {
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML = `<div style="padding:16px;color:var(--red);font-size:13px">⚠ ${msg}</div>`;
+}
+
+function renderTableError(tbodyId, cols, msg) {
+  const el = document.getElementById(tbodyId);
+  if (el) el.innerHTML = `<tr><td colspan="${cols}" style="padding:16px;text-align:center;color:var(--red)">⚠ ${msg}</td></tr>`;
+}
+
+// ============================================================
+// API
+// ============================================================
+async function api(path) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (res.status === 401 || res.status === 403) {
+    logout();
+    throw new Error('Unauthorized');
+  }
+  return res.json();
+}
+
+async function apiMutate(method, path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (res.status === 401 || res.status === 403) {
+    logout();
+    throw new Error('Unauthorized');
+  }
+  return res.json();
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.classList.add('hidden');
+  try {
+    const res = await fetch(`${API_BASE}/admin/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Login failed';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    token = data.token;
+    adminEmail = decodeJwtEmail(token);
+    localStorage.setItem('rb_admin_token', token);
+    showDashboard(adminEmail);
+  } catch (err) {
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.classList.remove('hidden');
+  }
+});
+
+function logout() {
+  token = null;
+  adminEmail = '';
+  localStorage.removeItem('rb_admin_token');
+  document.getElementById('app-shell').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+function showDashboard(email) {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app-shell').classList.remove('hidden');
+  document.getElementById('sidebar-email').textContent = email || 'Admin';
+  loadDashboard();
+}
+
+// ============================================================
+// TAB SWITCHING
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('.nav-item[data-tab]').forEach(el => el.classList.remove('active'));
+  const active = document.querySelector(`[data-tab="${name}"]`);
+  if (active) active.classList.add('active');
+
+  const tabTitles = {
+    dashboard: 'Dashboard',
+    users: 'Users',
+    transactions: 'Transactions',
+    models: 'Model Usage',
+    registry: 'Model Registry',
+    'providers-manage': 'Providers & Models',
+    providers: 'Provider Usage',
+    keys: 'Provider Keys',
+    access: 'Access Control',
+    packages: 'Credit Packages',
+    announcements: 'Announcements',
+    referrals: 'Referrals'
+  };
+  document.getElementById('topbar-title').textContent = tabTitles[name] || name;
+
+  const allTabs = ['dashboard','users','transactions','models','registry','providers-manage','providers','keys','access','packages','announcements','referrals'];
+  allTabs.forEach(t => {
+    const el = document.getElementById(`tab-${t}`);
+    if (el) el.classList.toggle('hidden', t !== name);
+  });
+}
+
+// ============================================================
+// LOAD DASHBOARD (Bug Fix 1: individual catches)
+// ============================================================
+async function loadDashboard() {
+  setLoading(true);
+  const safe = p => p.catch(err => { if (err?.message === 'Unauthorized') throw err; return null; });
+  try {
+    const s = pageState.users, t = pageState.txn;
+    const [stats, usersRes, txnRes, models, providers, usageTrend, revTrend, keys, access, refStats, topRef, refClaims, registry, packagesRes, announcementsRes] = await Promise.all([
+      safe(api('/admin/stats')),
+      safe(api(`/admin/users?limit=${s.limit}&offset=${s.offset}&search=${encodeURIComponent(s.search)}`)),
+      safe(api(`/admin/transactions?limit=${t.limit}&offset=${t.offset}`)),
+      safe(api('/admin/usage/models?days=7')),
+      safe(api('/admin/usage/providers?days=7')),
+      safe(api('/admin/usage/trend?days=30')),
+      safe(api('/admin/revenue/trend?days=30')),
+      safe(api('/admin/provider-keys')),
+      safe(api('/admin/provider-access')),
+      safe(api('/admin/referrals/stats')),
+      safe(api('/admin/referrals/top')),
+      safe(api('/admin/referrals/claims')),
+      safe(api('/admin/models/registry')),
+      safe(api('/admin/packages')),
+      safe(api('/admin/announcements')),
+    ]);
+    if (usersRes) { s.total = usersRes.total; }
+    if (txnRes) { t.total = txnRes.total; }
+    if (stats) renderStats(stats); else renderPanelError('stat-cards', 'Stats failed to load');
+    if (usersRes) { renderUsers(usersRes.users); renderUsersPagination(); } else renderTableError('users-tbody', 9, 'Failed to load users');
+    if (txnRes) { renderTransactions(txnRes.transactions); renderTxnPagination(); } else renderTableError('transactions-tbody', 6, 'Failed to load transactions');
+    if (models) renderModels(models.models); else renderTableError('models-tbody', 6, 'Failed to load model usage');
+    if (providers) renderProviders(providers.providers); else renderTableError('providers-tbody', 4, 'Failed to load provider usage');
+    if (usageTrend) renderUsageChart(usageTrend.trend);
+    if (revTrend) renderRevenueChart(revTrend.trend);
+    if (keys) renderKeys(keys.keys); else renderTableError('keys-tbody', 7, 'Failed to load keys');
+    if (access) renderAccess(access.providers); else renderTableError('access-tbody', 4, 'Failed to load access');
+    if (refStats) renderReferralStats(refStats);
+    if (topRef) renderTopReferrers(topRef.referrers); else renderTableError('referrers-tbody', 5, 'Failed to load referrers');
+    if (refClaims) renderReferralClaims(refClaims.claims); else renderTableError('claims-tbody', 5, 'Failed to load claims');
+    if (registry) renderRegistry(registry.models); else renderTableError('registry-tbody', 11, 'Failed to load registry');
+    if (packagesRes) renderPackages(packagesRes.packages); else renderTableError('packages-tbody', 7, 'Failed to load packages');
+    if (announcementsRes) renderAnnouncements(announcementsRes.announcements); else renderTableError('announcements-tbody', 7, 'Failed to load announcements');
+    // Providers manage panel
+    _providersManageData = { providers: access?.providers || [], models: registry?.models || [], keys: keys?.keys || [] };
+    renderProvidersManage();
+    // Update last updated
+    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch (err) {
+    if (err?.message !== 'Unauthorized') console.error('Dashboard load error:', err);
+  } finally {
+    setLoading(false);
   }
 }
 
-// ── Render: Users ─────────────────────────────────────────────────────────
+// ============================================================
+// RENDER STATS
+// ============================================================
+function renderStats(stats) {
+  const cards = [
+    { label: 'Total Users', value: fmtNum(stats.users?.total), sub: `+${stats.users?.todayRegistrations||0} today` },
+    { label: 'Total Revenue', value: fmtCents(stats.deposits?.totalCents), sub: `${fmtCents(stats.deposits?.todayCents)} today` },
+    { label: 'API Requests', value: fmtNum(stats.usage?.totalRequests), sub: `${fmtNum(stats.usage?.todayRequests)} today` },
+    { label: 'Outstanding Credits', value: fmtCents(stats.balance?.totalOutstandingCents), sub: 'in user wallets' },
+    { label: 'Credits Used', value: fmtCents(stats.balance?.totalUsedCents), sub: 'all time' },
+    { label: 'Total Deposits', value: fmtNum(stats.deposits?.totalCount), sub: 'payments' },
+  ];
+  document.getElementById('stat-cards').innerHTML = cards.map(c => `
+    <div class="card stat-card">
+      <div class="stat-label">${esc(c.label)}</div>
+      <div class="stat-value">${esc(c.value)}</div>
+      <div class="stat-sub">${esc(c.sub)}</div>
+    </div>
+  `).join('');
+}
 
+// ============================================================
+// RENDER USERS (Bug Fix: UID column)
+// ============================================================
 function renderUsers(users) {
-  const tbody = document.getElementById('users-tbody');
-  tbody.innerHTML = users.map(u => `<tr>
-    <td class="font-medium">${esc(u.email)}</td>
-    <td>
-      <select class="input-sm text-xs" style="padding:2px 6px" onchange="changeUserPlan('${u.id}', this.value)">
-        <option value="free" ${u.plan === 'free' ? 'selected' : ''}>free</option>
-        <option value="pro" ${u.plan === 'pro' ? 'selected' : ''}>pro</option>
-      </select>
-    </td>
-    <td>${fmtCents(u.balanceCents)}</td>
-    <td>${fmtCents(u.totalDepositedCents)}</td>
-    <td>${fmtCents(u.totalUsedCents)}</td>
-    <td>${u.requestCount}</td>
-    <td class="text-xs" style="color:var(--text-dim)">${fmtDate(u.createdAt)}</td>
-    <td class="flex gap-1">
-      <button class="btn-sm" onclick="promptAdjustBalance('${u.id}', '${esc(u.email)}')">Adjust</button>
-      <button class="btn-sm primary" onclick="openUserDetail('${u.id}', '${esc(u.email)}')">Detail</button>
-    </td>
-  </tr>`).join('');
+  if (!users || users.length === 0) {
+    document.getElementById('users-tbody').innerHTML = '<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--text-dim)">No users found</td></tr>';
+    return;
+  }
+  document.getElementById('users-tbody').innerHTML = users.map(u => `
+    <tr>
+      <td>
+        <div class="font-medium">${esc(u.email)}</div>
+        <div class="text-xs text-dim">${u.plan || 'free'}</div>
+      </td>
+      <td>
+        <span class="font-mono text-xs" style="color:var(--purple);background:rgba(108,99,255,0.1);padding:2px 6px;border-radius:4px">${esc(u.uid||'-')}</span>
+      </td>
+      <td><span class="badge badge-${u.plan === 'pro' ? 'pro' : 'free'}">${esc(u.plan||'free')}</span></td>
+      <td class="font-medium">${fmtCents(u.balanceCents)}</td>
+      <td>${fmtCents(u.totalDepositedCents)}</td>
+      <td>${fmtCents(u.totalUsedCents)}</td>
+      <td>${fmtNum(u.requestCount)}</td>
+      <td class="text-xs text-dim">${fmtDate(u.createdAt)}</td>
+      <td>
+        <div class="flex gap-1">
+          <button class="btn-sm" onclick="openUserDetail('${u.id}')">View</button>
+          <button class="btn-sm primary" onclick="showAdjustForUserId('${u.id}','${esc(u.email)}')">Adjust</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
 }
 
 function renderUsersPagination() {
   const s = pageState.users;
-  const el = document.getElementById('users-pagination');
-  const info = document.getElementById('users-page-info');
-  if (s.total <= s.limit) { el.classList.add('hidden'); return; }
-  el.classList.remove('hidden');
-  const from = s.offset + 1;
-  const to = Math.min(s.offset + s.limit, s.total);
-  info.textContent = `Showing ${from}–${to} of ${s.total}`;
+  const total = s.total || 0;
+  const page = Math.floor(s.offset / s.limit) + 1;
+  const totalPages = Math.ceil(total / s.limit) || 1;
+  document.getElementById('users-pagination').innerHTML = `
+    <button class="btn-sm" onclick="usersPage(-1)" ${s.offset === 0 ? 'disabled' : ''}>&#8592;</button>
+    <span>Page ${page} of ${totalPages} &nbsp;(${fmtNum(total)} users)</span>
+    <button class="btn-sm" onclick="usersPage(1)" ${s.offset + s.limit >= total ? 'disabled' : ''}>&#8594;</button>
+  `;
 }
 
 function usersPage(dir) {
   const s = pageState.users;
-  if (dir === 'next' && s.offset + s.limit < s.total) s.offset += s.limit;
-  if (dir === 'prev' && s.offset > 0) s.offset = Math.max(0, s.offset - s.limit);
+  s.offset = Math.max(0, s.offset + dir * s.limit);
   loadDashboard();
 }
 
-let _searchTimer;
-function debouncedSearchUsers(val) {
+function debounceSearch(val) {
   clearTimeout(_searchTimer);
-  _searchTimer = setTimeout(() => {
-    pageState.users.search = val;
-    pageState.users.offset = 0;
-    loadDashboard();
-  }, 300);
+  _searchTimer = setTimeout(() => { applySearch(val); }, 400);
 }
 
-async function changeUserPlan(userId, plan) {
-  try {
-    const res = await apiMutate('PATCH', `/admin/users/${userId}`, { plan });
-    if (res.error) { alert(res.error.message); return; }
-  } catch (err) { alert('Failed to update plan'); }
+function applySearch(val) {
+  const v = val !== undefined ? val : document.getElementById('users-search').value.trim();
+  pageState.users.search = v;
+  pageState.users.offset = 0;
+  loadDashboard();
 }
 
-async function promptAdjustBalance(userId, email) {
-  const input = prompt(`Adjust balance for ${email}\nEnter amount in cents (positive to add, negative to deduct):`);
-  if (input === null) return;
-  const amountCents = parseInt(input);
-  if (isNaN(amountCents) || amountCents === 0) { alert('Invalid amount'); return; }
-  const reason = prompt('Reason for adjustment:');
-  if (!reason) { alert('Reason is required'); return; }
+// ============================================================
+// RENDER TRANSACTIONS
+// ============================================================
+function renderTransactions(txns) {
+  if (!txns || txns.length === 0) {
+    document.getElementById('transactions-tbody').innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim)">No transactions</td></tr>';
+    return;
+  }
+  document.getElementById('transactions-tbody').innerHTML = txns.map(t => `
+    <tr>
+      <td class="text-xs text-dim">${fmtDateTime(t.createdAt)}</td>
+      <td>${esc(t.userEmail || t.userId)}</td>
+      <td><span class="badge badge-${t.type}">${esc(t.type)}</span></td>
+      <td class="font-medium ${Number(t.amountCents) >= 0 ? 'text-green' : 'text-red'}">${fmtCents(t.amountCents)}</td>
+      <td class="text-xs text-muted">${esc(t.description||'-')}</td>
+      <td class="text-xs font-mono text-dim">${esc(t.paymentRef||'-')}</td>
+    </tr>
+  `).join('');
+}
+
+function renderTxnPagination() {
+  const t = pageState.txn;
+  const total = t.total || 0;
+  const page = Math.floor(t.offset / t.limit) + 1;
+  const totalPages = Math.ceil(total / t.limit) || 1;
+  document.getElementById('txn-pagination').innerHTML = `
+    <button class="btn-sm" onclick="txnPage(-1)" ${t.offset === 0 ? 'disabled' : ''}>&#8592;</button>
+    <span>Page ${page} of ${totalPages} &nbsp;(${fmtNum(total)} transactions)</span>
+    <button class="btn-sm" onclick="txnPage(1)" ${t.offset + t.limit >= total ? 'disabled' : ''}>&#8594;</button>
+  `;
+}
+
+function txnPage(dir) {
+  const t = pageState.txn;
+  t.offset = Math.max(0, t.offset + dir * t.limit);
+  loadDashboard();
+}
+
+// ============================================================
+// RENDER MODELS + PROVIDERS (usage)
+// ============================================================
+function renderModels(models) {
+  if (!models || models.length === 0) {
+    document.getElementById('models-tbody').innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim)">No data</td></tr>';
+    return;
+  }
+  document.getElementById('models-tbody').innerHTML = models.map(m => `
+    <tr>
+      <td class="font-mono text-xs">${esc(m.model)}</td>
+      <td>${fmtNum(m.requests)}</td>
+      <td>${fmtNum(m.inputTokens)}</td>
+      <td>${fmtNum(m.outputTokens)}</td>
+      <td>${fmtCents(m.costCents)}</td>
+      <td class="text-dim">${m.avgLatencyMs ? fmtNum(m.avgLatencyMs)+'ms' : '-'}</td>
+    </tr>
+  `).join('');
+}
+
+function renderProviders(providers) {
+  if (!providers || providers.length === 0) {
+    document.getElementById('providers-tbody').innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-dim)">No data</td></tr>';
+    return;
+  }
+  document.getElementById('providers-tbody').innerHTML = providers.map(p => `
+    <tr>
+      <td class="font-medium">${esc(p.provider)}</td>
+      <td>${fmtNum(p.requests)}</td>
+      <td>${fmtCents(p.costCents)}</td>
+      <td>${fmtNum(Number(p.totalTokens))}</td>
+    </tr>
+  `).join('');
+  // Also update providers usage tab
+  const el = document.getElementById('providers-usage-tbody');
+  if (el) el.innerHTML = document.getElementById('providers-tbody').innerHTML;
+}
+
+// ============================================================
+// CHARTS (light theme)
+// ============================================================
+Chart.defaults.color = '#718096';
+Chart.defaults.borderColor = 'rgba(163,177,198,0.3)';
+
+function renderUsageChart(trend) {
+  const ctx = document.getElementById('usage-chart');
+  if (!ctx) return;
+  if (charts.usage) charts.usage.destroy();
+  const labels = (trend||[]).map(d => d.date);
+  const data = (trend||[]).map(d => d.requests || 0);
+  charts.usage = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Requests',
+        data,
+        borderColor: '#6C63FF',
+        backgroundColor: 'rgba(108,99,255,0.08)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 2,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderRevenueChart(trend) {
+  const ctx = document.getElementById('revenue-chart');
+  if (!ctx) return;
+  if (charts.revenue) charts.revenue.destroy();
+  const labels = (trend||[]).map(d => d.date);
+  const data = (trend||[]).map(d => d.revenue || 0);
+  charts.revenue = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Revenue ($)',
+        data,
+        backgroundColor: 'rgba(56,189,248,0.5)',
+        borderColor: '#38BDF8',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// ============================================================
+// RENDER KEYS
+// ============================================================
+function renderKeys(keys) {
+  if (!keys || keys.length === 0) {
+    document.getElementById('keys-tbody').innerHTML = '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--text-dim)">No keys</td></tr>';
+    return;
+  }
+  document.getElementById('keys-tbody').innerHTML = keys.map(k => `
+    <tr>
+      <td class="font-medium">${esc(k.providerName)}</td>
+      <td>${esc(k.label||'-')}</td>
+      <td class="font-mono text-xs text-dim">${esc(k.keyPrefix||'-')}...</td>
+      <td>${k.weight||1}</td>
+      <td><span class="badge ${k.isActive ? 'badge-pro' : 'badge-free'}">${k.isActive ? 'Active' : 'Inactive'}</span></td>
+      <td class="text-xs text-dim">${fmtDate(k.createdAt)}</td>
+      <td>
+        <div class="flex gap-1">
+          <button class="btn-sm" onclick="editKey('${k.id}')">Edit</button>
+          <button class="btn-sm danger" onclick="deleteKey('${k.id}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ============================================================
+// RENDER ACCESS
+// ============================================================
+function renderAccess(providers) {
+  if (!providers || providers.length === 0) {
+    document.getElementById('access-tbody').innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-dim)">No access rules</td></tr>';
+    return;
+  }
+  document.getElementById('access-tbody').innerHTML = providers.map(p => `
+    <tr>
+      <td class="font-medium">${esc(p.providerName)}</td>
+      <td><span class="badge ${p.isEnabled ? 'badge-pro' : 'badge-free'}">${p.isEnabled ? 'Enabled' : 'Disabled'}</span></td>
+      <td class="text-xs">${esc((p.allowedPlans||[]).join(', ') || 'all')}</td>
+      <td>
+        <button class="btn-sm" onclick="editAccess('${esc(p.providerName)}', ${p.isEnabled}, '${esc((p.allowedPlans||[]).join(','))}')">Edit</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ============================================================
+// RENDER REGISTRY (Bug Fix: uses _registryModels)
+// ============================================================
+function renderRegistry(models) {
+  _registryModels = models || [];
+  if (!_registryModels.length) {
+    document.getElementById('registry-tbody').innerHTML = '<tr><td colspan="11" style="padding:16px;text-align:center;color:var(--text-dim)">No models in registry</td></tr>';
+    return;
+  }
+  document.getElementById('registry-tbody').innerHTML = _registryModels.map(m => `
+    <tr>
+      <td class="font-mono text-xs">${esc(m.modelId)}</td>
+      <td>${esc(m.displayName)}</td>
+      <td class="text-xs text-muted">${esc(m.provider)}</td>
+      <td>
+        ${m.tier === 'flagship'
+          ? '<span style="color:var(--amber);font-size:11px;font-weight:600">Flagship</span>'
+          : '<span style="color:var(--text-dim);font-size:11px">Fast</span>'}
+      </td>
+      <td class="text-xs">${fmtNum(m.contextWindow)}</td>
+      <td class="text-xs">${m.inputCostPerMillion != null ? '$'+Number(m.inputCostPerMillion).toFixed(4) : '-'}</td>
+      <td class="text-xs">${m.outputCostPerMillion != null ? '$'+Number(m.outputCostPerMillion).toFixed(4) : '-'}</td>
+      <td class="text-xs">${m.markupMultiplier != null ? Number(m.markupMultiplier).toFixed(2)+'x' : '-'}</td>
+      <td><span class="badge ${m.status === 'active' ? 'badge-pro' : m.status === 'beta' ? 'badge-bonus' : 'badge-free'}">${esc(m.status)}</span></td>
+      <td class="text-xs">${m.freeTierRequests > 0 ? m.freeTierRequests : '-'}</td>
+      <td>
+        <div class="flex gap-1">
+          <button class="btn-sm" onclick="editModel('${m.id}')">Edit</button>
+          <button class="btn-sm danger" onclick="deleteModel('${m.id}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function editModel(id) {
+  const m = _registryModels.find(x => x.id === id);
+  if (m) showModelForm(m);
+}
+
+// ============================================================
+// RENDER PACKAGES (Bug Fix 2: pkgCache)
+// ============================================================
+function renderPackages(packages) {
+  pkgCache = packages || [];
+  if (!pkgCache.length) {
+    document.getElementById('packages-tbody').innerHTML = '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--text-dim)">No packages</td></tr>';
+    return;
+  }
+  document.getElementById('packages-tbody').innerHTML = pkgCache.map(p => `
+    <tr>
+      <td class="font-medium">${esc(p.label)}</td>
+      <td>${fmtCents(p.creditsCents)}</td>
+      <td>${fmtCents(p.amountCents)}</td>
+      <td>${p.bonus || '-'}</td>
+      <td><span class="badge ${p.isActive ? 'badge-pro' : 'badge-free'}">${p.isActive ? 'Active' : 'Inactive'}</span></td>
+      <td class="font-mono text-xs text-dim">${esc(p.polarProductId||'-')}</td>
+      <td>
+        <div class="flex gap-1">
+          <button class="btn-sm" onclick="editPkg('${p.id}')">Edit</button>
+          <button class="btn-sm danger" onclick="deletePkg('${p.id}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function editPkg(id) {
+  const pkg = pkgCache.find(p => p.id === id);
+  if (pkg) showPkgForm(pkg);
+}
+
+// ============================================================
+// RENDER ANNOUNCEMENTS
+// ============================================================
+function renderAnnouncements(anns) {
+  if (!anns || anns.length === 0) {
+    document.getElementById('announcements-list').innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-dim)">No announcements</div>';
+    return;
+  }
+  document.getElementById('announcements-list').innerHTML = anns.map(a => `
+    <div class="announcement-card">
+      <div class="ann-header">
+        <div>
+          <div class="ann-title">${esc(a.title)} <span class="badge badge-${a.type}">${esc(a.type)}</span></div>
+          <div class="ann-msg">${esc(a.message)}</div>
+          <div class="ann-meta">
+            ${a.isActive ? '<span class="badge badge-pro">Active</span>' : '<span class="badge badge-free">Inactive</span>'}
+            ${a.expiresAt ? ` · Expires ${fmtDate(a.expiresAt)}` : ''}
+            &nbsp;· Created ${fmtDate(a.createdAt)}
+          </div>
+        </div>
+        <div class="flex gap-1">
+          <button class="btn-sm" onclick="editAnn('${a.id}')">Edit</button>
+          <button class="btn-sm danger" onclick="deleteAnn('${a.id}')">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+let _announcements = [];
+function editAnn(id) {
+  // Re-fetch or use cached
+  api('/admin/announcements').then(r => {
+    _announcements = r.announcements || [];
+    const a = _announcements.find(x => x.id === id);
+    if (a) showAnnForm(a);
+  }).catch(() => {});
+}
+
+// ============================================================
+// RENDER REFERRALS
+// ============================================================
+function renderReferralStats(stats) {
+  document.getElementById('referral-stat-cards').innerHTML = [
+    { label: 'Total Codes', value: fmtNum(stats.totalCodes) },
+    { label: 'Total Claims', value: fmtNum(stats.totalClaims) },
+    { label: 'Rewards Given', value: fmtNum(stats.rewardsGiven) },
+    { label: 'Total Rewards', value: fmtCents(stats.totalRewardCents) },
+  ].map(c => `
+    <div class="card stat-card">
+      <div class="stat-label">${esc(c.label)}</div>
+      <div class="stat-value">${esc(c.value)}</div>
+    </div>
+  `).join('');
+}
+
+function renderTopReferrers(referrers) {
+  if (!referrers || referrers.length === 0) {
+    document.getElementById('referrers-tbody').innerHTML = '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text-dim)">No referrers</td></tr>';
+    return;
+  }
+  document.getElementById('referrers-tbody').innerHTML = referrers.map(r => `
+    <tr>
+      <td>${esc(r.email)}</td>
+      <td class="font-mono text-xs">${esc(r.code)}</td>
+      <td>${fmtNum(r.uses)}</td>
+      <td>${fmtCents(r.totalEarnedCents)}</td>
+      <td>${fmtNum(r.rewardsEarned)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderReferralClaims(claims) {
+  if (!claims || claims.length === 0) {
+    document.getElementById('claims-tbody').innerHTML = '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text-dim)">No claims</td></tr>';
+    return;
+  }
+  document.getElementById('claims-tbody').innerHTML = claims.map(c => `
+    <tr>
+      <td class="text-xs">${esc(c.referrerEmail)}</td>
+      <td class="text-xs">${esc(c.referredEmail)}</td>
+      <td class="font-mono text-xs">${esc(c.code)}</td>
+      <td><span class="badge ${c.referrerRewarded ? 'badge-pro' : 'badge-free'}">${c.referrerRewarded ? 'Rewarded' : 'Pending'}</span></td>
+      <td class="text-xs text-dim">${fmtDate(c.createdAt)}</td>
+    </tr>
+  `).join('');
+}
+
+</script>
+
+<script>
+// ============================================================
+// PROVIDERS & MODELS PANEL
+// ============================================================
+function renderProvidersManage() {
+  const { providers, models, keys } = _providersManageData;
+  const container = document.getElementById('providers-manage-list');
+  if (!container) return;
+
+  const modelsByProvider = {};
+  (models || []).forEach(m => {
+    if (!modelsByProvider[m.provider]) modelsByProvider[m.provider] = [];
+    modelsByProvider[m.provider].push(m);
+  });
+
+  const keysByProvider = {};
+  (keys || []).forEach(k => {
+    keysByProvider[k.providerName] = (keysByProvider[k.providerName] || 0) + 1;
+  });
+
+  const allProviderNames = new Set([
+    ...(providers || []).map(p => p.providerName),
+    ...Object.keys(modelsByProvider)
+  ]);
+
+  if (allProviderNames.size === 0) {
+    container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-dim)">No providers configured yet</div>';
+    return;
+  }
+
+  container.innerHTML = [...allProviderNames].map(name => {
+    const providerAccess = (providers || []).find(p => p.providerName === name);
+    const isEnabled = providerAccess ? providerAccess.isEnabled : true;
+    const provModels = modelsByProvider[name] || [];
+    const keyCount = keysByProvider[name] || 0;
+    const isExpanded = _expandedProviders.has(name);
+    const escapedName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+    const modelRows = provModels.map(m => {
+      const statusBadge = m.status === 'active' ? 'badge-pro' : m.status === 'beta' ? 'badge-bonus' : 'badge-free';
+      const tierLabel = m.tier === 'flagship'
+        ? '<span style="color:var(--amber);font-size:11px;font-weight:600">Flagship</span>'
+        : '<span style="color:var(--text-dim);font-size:11px">Fast</span>';
+      const mId = String(m.id).replace(/'/g, "\\'");
+      const mStatus = String(m.status).replace(/'/g, "\\'");
+      return `<tr>
+        <td class="font-mono text-xs">${esc(m.modelId)}</td>
+        <td class="text-xs">${esc(m.displayName)}</td>
+        <td>${tierLabel}</td>
+        <td><span class="badge ${statusBadge}">${esc(m.status)}</span></td>
+        <td>
+          <div class="flex gap-1">
+            <button class="btn-sm" onclick="editModel('${mId}'); switchTab('registry')">Edit</button>
+            <button class="btn-sm ${m.status === 'deprecated' ? 'primary' : 'danger'}" onclick="toggleModelStatus('${mId}','${mStatus}')">
+              ${m.status === 'deprecated' ? 'Enable' : 'Disable'}
+            </button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const currentPlans = (providerAccess?.allowedPlans || ['all']).join(',');
+
+    return `
+      <div class="card mb-3" style="overflow:hidden">
+        <div style="padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:${isExpanded ? '1px solid var(--border)' : 'none'}">
+          <div style="flex:1">
+            <div style="font-weight:600;color:var(--text);font-size:14px">${esc(name)}</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:2px">${keyCount} key${keyCount!==1?'s':''} · ${provModels.length} model${provModels.length!==1?'s':''}</div>
+          </div>
+          <div class="toggle ${isEnabled ? 'on' : ''}" onclick="toggleProviderAccess('${escapedName}', ${!isEnabled}, '${currentPlans}')" title="${isEnabled?'Disable':'Enable'} provider"></div>
+          <span class="badge ${isEnabled ? 'badge-pro' : 'badge-free'}">${isEnabled ? 'Enabled' : 'Disabled'}</span>
+          <button class="btn-sm primary" onclick="openAddModelForProvider('${escapedName}')" style="white-space:nowrap">+ Add Model</button>
+          <button class="btn-sm" onclick="toggleProviderExpand('${escapedName}')">${isExpanded ? '&#9650; Collapse' : '&#9660; Expand'}</button>
+        </div>
+        ${isExpanded ? `
+        <div style="padding:12px 16px">
+          ${provModels.length === 0
+            ? '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">No models registered for this provider</div>'
+            : `<div class="table-wrap" style="margin-bottom:8px"><table>
+                <thead><tr>
+                  <th>Model ID</th><th>Display Name</th><th>Tier</th><th>Status</th><th>Actions</th>
+                </tr></thead>
+                <tbody>${modelRows}</tbody>
+              </table></div>`
+          }
+        </div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function openAddModelForProvider(providerName) {
+  showModelForm();
+  // Small delay to ensure modal is rendered
+  setTimeout(() => {
+    const el = document.getElementById('mf-provider');
+    if (el) el.value = providerName;
+  }, 50);
+}
+
+function toggleProviderExpand(name) {
+  if (_expandedProviders.has(name)) _expandedProviders.delete(name);
+  else _expandedProviders.add(name);
+  renderProvidersManage();
+}
+
+async function toggleProviderAccess(name, enabled, currentPlans) {
   try {
-    const res = await apiMutate('POST', `/admin/users/${userId}/adjust`, { amountCents, reason });
-    if (res.error) { alert(res.error.message); return; }
+    await apiMutate('PUT', `/admin/provider-access/${encodeURIComponent(name)}`, {
+      isEnabled: enabled,
+      allowedPlans: currentPlans.split(',').map(s => s.trim()).filter(Boolean),
+    });
+    await loadDashboard();
+  } catch (err) { alert('Failed to update provider access'); }
+}
+
+async function toggleModelStatus(id, currentStatus) {
+  const newStatus = currentStatus === 'deprecated' ? 'active' : 'deprecated';
+  try {
+    await apiMutate('PATCH', `/admin/models/registry/${id}`, { status: newStatus });
+    await loadDashboard();
+  } catch (err) { alert('Failed to update model status'); }
+}
+
+// ============================================================
+// USER DETAIL MODAL
+// ============================================================
+async function openUserDetail(userId) {
+  _currentUserId = userId;
+  openModal('user-detail-modal');
+  document.getElementById('ud-email').textContent = 'Loading...';
+  document.getElementById('ud-uid-badge').innerHTML = '';
+  document.getElementById('ud-info-grid').innerHTML = '';
+  document.getElementById('ud-txns-tbody').innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-dim)">Loading...</td></tr>';
+  document.getElementById('ud-reqs-tbody').innerHTML = '';
+  document.getElementById('ud-mods-tbody').innerHTML = '';
+  document.getElementById('ud-apikeys-tbody').innerHTML = '';
+  // Reset sub-tabs
+  switchUdTab('txns');
+
+  try {
+    const [user, txns, reqs, mods] = await Promise.all([
+      api(`/admin/users/${userId}`).catch(() => null),
+      api(`/admin/users/${userId}/transactions`).catch(() => null),
+      api(`/admin/users/${userId}/requests`).catch(() => null),
+      api(`/admin/users/${userId}/models`).catch(() => null),
+    ]);
+
+    if (user) {
+      document.getElementById('ud-email').textContent = user.email || 'Unknown';
+      if (user.uid) {
+        document.getElementById('ud-uid-badge').innerHTML = `
+          <span class="font-mono text-xs" style="color:var(--purple);background:rgba(108,99,255,0.1);padding:2px 8px;border-radius:4px">${esc(user.uid)}</span>`;
+      }
+      document.getElementById('ud-info-grid').innerHTML = `
+        <div class="ud-stat"><div class="ud-stat-label">Balance</div><div class="ud-stat-value">${fmtCents(user.balanceCents)}</div></div>
+        <div class="ud-stat"><div class="ud-stat-label">Deposited</div><div class="ud-stat-value">${fmtCents(user.totalDepositedCents)}</div></div>
+        <div class="ud-stat"><div class="ud-stat-label">Used</div><div class="ud-stat-value">${fmtCents(user.totalUsedCents)}</div></div>
+        <div class="ud-stat"><div class="ud-stat-label">Requests</div><div class="ud-stat-value">${fmtNum(user.requestCount)}</div></div>
+      `;
+    }
+
+    if (txns) {
+      const rows = (txns.transactions || txns || []);
+      document.getElementById('ud-txns-tbody').innerHTML = rows.length
+        ? rows.map(t => `<tr>
+            <td class="text-xs text-dim">${fmtDateTime(t.createdAt)}</td>
+            <td><span class="badge badge-${t.type}">${esc(t.type)}</span></td>
+            <td class="${Number(t.amountCents) >= 0 ? 'text-green' : 'text-red'} font-medium">${fmtCents(t.amountCents)}</td>
+            <td class="text-xs text-muted">${esc(t.description||'-')}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-dim)">No transactions</td></tr>';
+    }
+
+    if (reqs) {
+      const rows = (reqs.requests || reqs || []);
+      document.getElementById('ud-reqs-tbody').innerHTML = rows.length
+        ? rows.map(r => `<tr>
+            <td class="text-xs text-dim">${fmtDateTime(r.createdAt)}</td>
+            <td class="font-mono text-xs">${esc(r.model)}</td>
+            <td>${fmtNum(r.inputTokens)}</td>
+            <td>${fmtNum(r.outputTokens)}</td>
+            <td>${fmtCents(r.costCents)}</td>
+            <td><span class="badge badge-${r.status === 'success' ? 'pro' : 'danger'}">${esc(r.status)}</span></td>
+          </tr>`).join('')
+        : '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim)">No requests</td></tr>';
+    }
+
+    if (mods) {
+      const rows = (mods.models || mods || []);
+      document.getElementById('ud-mods-tbody').innerHTML = rows.length
+        ? rows.map(m => `<tr>
+            <td class="font-mono text-xs">${esc(m.model)}</td>
+            <td>${fmtNum(m.requests)}</td>
+            <td>${fmtNum(m.totalTokens)}</td>
+            <td>${fmtCents(m.costCents)}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-dim)">No model usage</td></tr>';
+    }
+
+  } catch (err) {
+    if (err?.message !== 'Unauthorized') console.error('User detail error:', err);
+  }
+}
+
+function switchUdTab(name) {
+  document.querySelectorAll('[data-udtab]').forEach(el => el.classList.remove('active'));
+  const tab = document.querySelector(`[data-udtab="${name}"]`);
+  if (tab) tab.classList.add('active');
+  ['txns', 'reqs', 'mods', 'apikeys'].forEach(t => {
+    const el = document.getElementById(`ud-tab-${t}`);
+    if (el) el.classList.toggle('hidden', t !== name);
+  });
+  if (name === 'apikeys' && _currentUserId) {
+    loadUserApiKeys(_currentUserId);
+  }
+}
+
+async function loadUserApiKeys(userId) {
+  const tbody = document.getElementById('ud-apikeys-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim)">Loading...</td></tr>';
+  try {
+    const res = await api(`/admin/users/${userId}/api-keys`);
+    const keys = res.apiKeys || res || [];
+    if (!keys.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim)">No API keys</td></tr>';
+      return;
+    }
+    tbody.innerHTML = keys.map(k => `
+      <tr>
+        <td class="font-medium">${esc(k.name)}</td>
+        <td class="font-mono text-xs" style="color:var(--purple)">${esc(k.keyPrefix)}...</td>
+        <td class="text-xs" style="color:var(--text-dim)">${k.lastUsedAt ? fmtDateTime(k.lastUsedAt) : 'Never'}</td>
+        <td><span class="badge ${k.isActive ? 'badge-pro' : 'badge-free'}">${k.isActive ? 'Active' : 'Revoked'}</span></td>
+        <td class="text-xs" style="color:var(--text-dim)">${fmtDate(k.createdAt)}</td>
+        <td>${k.isActive ? `<button class="btn-sm danger" onclick="revokeApiKey('${k.id}','${userId}')">Revoke</button>` : '-'}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--red)">Failed to load API keys</td></tr>';
+  }
+}
+
+async function revokeApiKey(keyId, userId) {
+  if (!confirm('Revoke this API key?')) return;
+  try {
+    await apiMutate('DELETE', `/admin/api-keys/${keyId}`);
+    await loadUserApiKeys(userId);
+  } catch (err) { alert('Failed to revoke key'); }
+}
+
+async function deleteUser() {
+  if (!_currentUserId) return;
+  if (!confirm('Permanently delete this user? This cannot be undone.')) return;
+  try {
+    await apiMutate('DELETE', `/admin/users/${_currentUserId}`);
+    closeModal('user-detail-modal');
+    await loadDashboard();
+  } catch (err) { alert('Failed to delete user: ' + (err?.message || 'Unknown error')); }
+}
+
+function showAdjustForUser() {
+  closeModal('user-detail-modal');
+  openModal('adjust-modal');
+}
+
+function showAdjustForUserId(id, email) {
+  document.getElementById('adj-user').value = email || id;
+  openModal('adjust-modal');
+}
+
+function showAdjustModal() {
+  document.getElementById('adj-user').value = '';
+  document.getElementById('adj-amount').value = '';
+  document.getElementById('adj-reason').value = '';
+  openModal('adjust-modal');
+}
+
+async function submitAdjust() {
+  const user = document.getElementById('adj-user').value.trim();
+  const amount = parseFloat(document.getElementById('adj-amount').value);
+  const reason = document.getElementById('adj-reason').value.trim();
+  if (!user || isNaN(amount)) { alert('Please fill in user and amount'); return; }
+  try {
+    await apiMutate('POST', '/admin/users/adjust-balance', { userIdentifier: user, amount, reason });
+    closeModal('adjust-modal');
     await loadDashboard();
   } catch (err) { alert('Failed to adjust balance'); }
 }
 
-// ── Render: Transactions ──────────────────────────────────────────────────
-
-function renderTransactions(txns) {
-  const tbody = document.getElementById('transactions-tbody');
-  tbody.innerHTML = txns.map(t => {
-    const isPositive = t.type === 'deposit' || t.type === 'bonus' || (t.type === 'admin_adjustment' && t.amountCents > 0);
-    const amtColor = isPositive ? '#10B981' : 'var(--text-muted)';
-    const sign = isPositive ? '+' : '';
-    const badgeMap = { deposit: 'badge-pro', bonus: 'badge-bonus', admin_adjustment: 'badge-admin_adjustment' };
-    const badgeClass = badgeMap[t.type] || 'badge-free';
-    return `<tr>
-      <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(t.createdAt)}</td>
-      <td>${esc(t.userEmail)}</td>
-      <td><span class="badge ${badgeClass}">${t.type}</span></td>
-      <td class="font-medium" style="color:${amtColor}">${sign}${fmtCents(Math.abs(t.amountCents))}</td>
-      <td>${fmtCents(t.balanceAfterCents)}</td>
-      <td class="text-xs max-w-[200px] truncate" style="color:var(--text-muted)">${esc(t.description || '-')}</td>
-    </tr>`;
-  }).join('');
+// ============================================================
+// MODEL FORM
+// ============================================================
+function showModelForm(m) {
+  document.getElementById('mf-title').textContent = m ? 'Edit Model' : 'Add Model';
+  document.getElementById('mf-id').value = m?.id || '';
+  document.getElementById('mf-modelId').value = m?.modelId || '';
+  document.getElementById('mf-displayName').value = m?.displayName || '';
+  document.getElementById('mf-provider').value = m?.provider || '';
+  document.getElementById('mf-tier').value = m?.tier || 'fast';
+  document.getElementById('mf-contextWindow').value = m?.contextWindow || '';
+  document.getElementById('mf-maxOutput').value = m?.maxOutputTokens || '';
+  document.getElementById('mf-inputCost').value = m?.inputCostPerMillion || '';
+  document.getElementById('mf-outputCost').value = m?.outputCostPerMillion || '';
+  document.getElementById('mf-markup').value = m?.markupMultiplier || '';
+  document.getElementById('mf-status').value = m?.status || 'active';
+  document.getElementById('mf-freeReqs').value = m?.freeTierRequests || 0;
+  document.getElementById('mf-description').value = m?.description || '';
+  document.getElementById('mf-vision-toggle').classList.toggle('on', !!(m?.supportsVision));
+  openModal('model-form-modal');
 }
 
-function renderTxnPagination() {
-  const s = pageState.txn;
-  const el = document.getElementById('txn-pagination');
-  const info = document.getElementById('txn-page-info');
-  if (s.total <= s.limit) { el.classList.add('hidden'); return; }
-  el.classList.remove('hidden');
-  const from = s.offset + 1;
-  const to = Math.min(s.offset + s.limit, s.total);
-  info.textContent = `Showing ${from}–${to} of ${s.total}`;
-}
-
-function txnPage(dir) {
-  const s = pageState.txn;
-  if (dir === 'next' && s.offset + s.limit < s.total) s.offset += s.limit;
-  if (dir === 'prev' && s.offset > 0) s.offset = Math.max(0, s.offset - s.limit);
-  loadDashboard();
-}
-
-// ── Render: Models ────────────────────────────────────────────────────────
-
-function renderModels(models) {
-  const tbody = document.getElementById('models-tbody');
-  tbody.innerHTML = models.map(m => `<tr>
-    <td class="font-medium">${esc(m.model)}</td>
-    <td>${fmtNum(m.requests)}</td>
-    <td>${fmtCents(m.costCents)}</td>
-    <td>${fmtNum(m.inputTokens)}</td>
-    <td>${fmtNum(m.outputTokens)}</td>
-    <td style="color:var(--text-muted)">${m.avgLatencyMs}ms</td>
-  </tr>`).join('');
-  if (models.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-dim)">No usage data yet</td></tr>';
-  }
-}
-
-// ── Render: Providers ─────────────────────────────────────────────────────
-
-function renderProviders(providers) {
-  const tbody = document.getElementById('providers-tbody');
-  tbody.innerHTML = providers.map(p => `<tr>
-    <td class="font-medium">${esc(p.provider)}</td>
-    <td>${fmtNum(p.requests)}</td>
-    <td>${fmtCents(p.costCents)}</td>
-    <td>${fmtNum(p.totalTokens)}</td>
-  </tr>`).join('');
-  if (providers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4" style="color:var(--text-dim)">No usage data yet</td></tr>';
-  }
-}
-
-// ── Render: API Keys ──────────────────────────────────────────────────────
-
-function renderKeys(keys) {
-  const tbody = document.getElementById('keys-tbody');
-  if (!keys || keys.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4" style="color:var(--text-dim)">No DB-managed keys (using env vars only)</td></tr>';
-    return;
-  }
-  tbody.innerHTML = keys.map(k => `<tr>
-    <td class="font-medium">${esc(k.providerName)}</td>
-    <td>${esc(k.label || '-')}</td>
-    <td class="font-mono text-xs" style="color:var(--text-muted)">${esc(k.maskedKey)}</td>
-    <td class="text-xs" style="color:var(--text-muted)">${esc(k.baseUrl || 'default')}</td>
-    <td>
-      <div class="toggle ${k.isActive ? 'on' : ''}" onclick="toggleKey('${k.id}', ${!k.isActive})"></div>
-    </td>
-    <td class="text-xs" style="color:var(--text-dim)">${fmtDate(k.createdAt)}</td>
-    <td><button class="btn-sm danger" onclick="deleteKey('${k.id}')">Delete</button></td>
-  </tr>`).join('');
-}
-
-function showAddKeyForm() { document.getElementById('add-key-form').classList.remove('hidden'); }
-function hideAddKeyForm() { document.getElementById('add-key-form').classList.add('hidden'); }
-
-async function addKey() {
-  const provider = document.getElementById('ak-provider').value;
-  const apiKey = document.getElementById('ak-key').value;
-  const label = document.getElementById('ak-label').value || undefined;
-  const baseUrl = document.getElementById('ak-url').value || undefined;
-  if (!provider || !apiKey) { alert('Provider and API Key are required'); return; }
+async function submitModelForm() {
+  const id = document.getElementById('mf-id').value;
+  const payload = {
+    modelId: document.getElementById('mf-modelId').value.trim(),
+    displayName: document.getElementById('mf-displayName').value.trim(),
+    provider: document.getElementById('mf-provider').value.trim(),
+    tier: document.getElementById('mf-tier').value,
+    contextWindow: parseInt(document.getElementById('mf-contextWindow').value) || null,
+    maxOutputTokens: parseInt(document.getElementById('mf-maxOutput').value) || null,
+    inputCostPerMillion: parseFloat(document.getElementById('mf-inputCost').value) || null,
+    outputCostPerMillion: parseFloat(document.getElementById('mf-outputCost').value) || null,
+    markupMultiplier: parseFloat(document.getElementById('mf-markup').value) || null,
+    status: document.getElementById('mf-status').value,
+    freeTierRequests: parseInt(document.getElementById('mf-freeReqs').value) || 0,
+    description: document.getElementById('mf-description').value.trim(),
+    supportsVision: document.getElementById('mf-vision-toggle').classList.contains('on'),
+  };
   try {
-    await apiMutate('POST', '/admin/provider-keys', { providerName: provider, apiKey, label, baseUrl });
-    hideAddKeyForm();
-    document.getElementById('ak-provider').value = '';
-    document.getElementById('ak-key').value = '';
-    document.getElementById('ak-label').value = '';
-    document.getElementById('ak-url').value = '';
+    if (id) {
+      await apiMutate('PATCH', `/admin/models/registry/${id}`, payload);
+    } else {
+      await apiMutate('POST', '/admin/models/registry', payload);
+    }
+    closeModal('model-form-modal');
     await loadDashboard();
-  } catch (err) { alert('Failed to add key: ' + err.message); }
+  } catch (err) { alert('Failed to save model'); }
 }
 
-async function toggleKey(id, active) {
+async function deleteModel(id) {
+  if (!confirm('Delete this model from the registry?')) return;
   try {
-    await apiMutate('PATCH', `/admin/provider-keys/${id}`, { isActive: active });
+    await apiMutate('DELETE', `/admin/models/registry/${id}`);
     await loadDashboard();
-  } catch (err) { alert('Failed to update key'); }
+  } catch (err) { alert('Failed to delete model'); }
+}
+
+// ============================================================
+// KEY FORM
+// ============================================================
+function showKeyForm(k) {
+  document.getElementById('kf-title').textContent = k ? 'Edit Key' : 'Add Provider Key';
+  document.getElementById('kf-id').value = k?.id || '';
+  document.getElementById('kf-provider').value = k?.providerName || '';
+  document.getElementById('kf-label').value = k?.label || '';
+  document.getElementById('kf-key').value = '';
+  document.getElementById('kf-weight').value = k?.weight || 1;
+  document.getElementById('kf-active-toggle').classList.toggle('on', k ? !!k.isActive : true);
+  openModal('key-form-modal');
+}
+
+function editKey(id) {
+  // Find from rendered data - reload from server if needed
+  api('/admin/provider-keys').then(r => {
+    const k = (r.keys||[]).find(x => x.id === id);
+    if (k) showKeyForm(k);
+  }).catch(() => {});
+}
+
+async function submitKeyForm() {
+  const id = document.getElementById('kf-id').value;
+  const payload = {
+    providerName: document.getElementById('kf-provider').value.trim(),
+    label: document.getElementById('kf-label').value.trim(),
+    apiKey: document.getElementById('kf-key').value.trim(),
+    weight: parseInt(document.getElementById('kf-weight').value) || 1,
+    isActive: document.getElementById('kf-active-toggle').classList.contains('on'),
+  };
+  try {
+    if (id) {
+      await apiMutate('PUT', `/admin/provider-keys/${id}`, payload);
+    } else {
+      await apiMutate('POST', '/admin/provider-keys', payload);
+    }
+    closeModal('key-form-modal');
+    await loadDashboard();
+  } catch (err) { alert('Failed to save key'); }
 }
 
 async function deleteKey(id) {
@@ -1226,623 +2086,110 @@ async function deleteKey(id) {
   } catch (err) { alert('Failed to delete key'); }
 }
 
-// ── Render: Access Control ────────────────────────────────────────────────
-
-function renderAccess(providers) {
-  const tbody = document.getElementById('access-tbody');
-  if (!providers || providers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4" style="color:var(--text-dim)">No access rules configured</td></tr>';
-    return;
-  }
-  tbody.innerHTML = providers.map(p => {
-    const plans = p.allowedPlans.join(',');
-    return `<tr>
-      <td class="font-medium">${esc(p.providerName)}</td>
-      <td>
-        <div class="toggle ${p.isEnabled ? 'on' : ''}" onclick="toggleAccess('${esc(p.providerName)}', ${!p.isEnabled}, '${plans}')"></div>
-      </td>
-      <td>
-        <select class="input-sm" onchange="updateAccessPlans('${esc(p.providerName)}', ${p.isEnabled}, this.value)">
-          <option value="all" ${plans === 'all' ? 'selected' : ''}>All Users</option>
-          <option value="pro" ${plans === 'pro' ? 'selected' : ''}>Pro Only</option>
-          <option value="free,pro" ${plans === 'free,pro' ? 'selected' : ''}>Free + Pro</option>
-        </select>
-      </td>
-      <td class="text-xs" style="color:${p.isEnabled ? '#10B981' : 'var(--text-dim)'}">${p.isEnabled ? 'Active' : 'Disabled'}</td>
-    </tr>`;
-  }).join('');
+// ============================================================
+// ACCESS FORM
+// ============================================================
+function editAccess(provider, isEnabled, plans) {
+  document.getElementById('af-provider').value = provider;
+  document.getElementById('af-provider-name').textContent = provider;
+  document.getElementById('af-enabled-toggle').classList.toggle('on', isEnabled);
+  document.getElementById('af-plans').value = plans || 'all';
+  openModal('access-form-modal');
 }
 
-async function toggleAccess(name, enabled, currentPlans) {
+async function submitAccessForm() {
+  const provider = document.getElementById('af-provider').value;
+  const isEnabled = document.getElementById('af-enabled-toggle').classList.contains('on');
+  const plans = document.getElementById('af-plans').value.split(',').map(s => s.trim()).filter(Boolean);
   try {
-    await apiMutate('PUT', `/admin/provider-access/${encodeURIComponent(name)}`, {
-      isEnabled: enabled,
-      allowedPlans: currentPlans.split(','),
+    await apiMutate('PUT', `/admin/provider-access/${encodeURIComponent(provider)}`, {
+      isEnabled,
+      allowedPlans: plans.length ? plans : ['all'],
     });
+    closeModal('access-form-modal');
     await loadDashboard();
   } catch (err) { alert('Failed to update access'); }
 }
 
-async function updateAccessPlans(name, enabled, plans) {
-  try {
-    await apiMutate('PUT', `/admin/provider-access/${encodeURIComponent(name)}`, {
-      isEnabled: enabled,
-      allowedPlans: plans.split(','),
-    });
-    await loadDashboard();
-  } catch (err) { alert('Failed to update access'); }
+// ============================================================
+// PACKAGE FORM
+// ============================================================
+function showPkgForm(p) {
+  document.getElementById('pkg-form-title').textContent = p ? 'Edit Package' : 'Add Package';
+  document.getElementById('pf-id').value = p?.id || '';
+  document.getElementById('pf-name').value = p?.name || '';
+  document.getElementById('pf-credits').value = p?.credits || '';
+  document.getElementById('pf-price').value = p?.price || '';
+  document.getElementById('pf-bonus').value = p?.bonusCredits || 0;
+  document.getElementById('pf-stripe').value = p?.stripePriceId || '';
+  document.getElementById('pf-popular-toggle').classList.toggle('on', !!(p?.isPopular));
+  document.getElementById('pf-active-toggle').classList.toggle('on', p ? !!p.isActive : true);
+  openModal('pkg-form-modal');
 }
 
-// ── Render: Referrals ─────────────────────────────────────────────────────
-
-function renderReferralStats(s) {
-  document.getElementById('ref-codes').textContent = s.totalCodes;
-  document.getElementById('ref-claims').textContent = s.totalClaims;
-  document.getElementById('ref-rewards').textContent = s.rewardsGiven;
-  document.getElementById('ref-value').textContent = fmtCents(s.totalRewardCents);
-}
-
-function renderTopReferrers(referrers) {
-  const tbody = document.getElementById('referrers-tbody');
-  if (!referrers || referrers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4" style="color:var(--text-dim)">No referrals yet</td></tr>';
-    return;
-  }
-  tbody.innerHTML = referrers.map(r => `<tr>
-    <td>${esc(r.email)}</td>
-    <td class="font-mono text-xs" style="color:var(--cyan)">${esc(r.code)}</td>
-    <td>${r.uses}</td>
-    <td>${r.rewardsEarned}</td>
-    <td>${fmtCents(r.totalEarnedCents)}</td>
-  </tr>`).join('');
-}
-
-function renderReferralClaims(claims) {
-  const tbody = document.getElementById('claims-tbody');
-  if (!claims || claims.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-dim)">No claims yet</td></tr>';
-    return;
-  }
-  tbody.innerHTML = claims.map(c => `<tr>
-    <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(c.createdAt)}</td>
-    <td>${esc(c.referredEmail)}</td>
-    <td>${esc(c.referrerEmail)}</td>
-    <td class="font-mono text-xs" style="color:var(--cyan)">${esc(c.code)}</td>
-    <td>${c.referredRewarded ? '\u2705' : '\u23f3'}</td>
-    <td>${c.referrerRewarded ? '\u2705' : '\u23f3'}</td>
-  </tr>`).join('');
-}
-
-// ── Render: Model Registry ───────────────────────────────────────────
-
-function renderRegistry(models) {
-  _registryModels = models || [];
-  const tbody = document.getElementById('registry-tbody');
-  if (!models || models.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4" style="color:var(--text-dim)">No models in registry</td></tr>';
-    return;
-  }
-  tbody.innerHTML = models.map(m => {
-    const statusBadge = m.status === 'active' ? 'badge-pro' : m.status === 'beta' ? 'badge-bonus' : 'badge-free';
-    const tierLabel = m.tier === 'flagship' ? '<span class="text-xs font-medium" style="color:#FBBF24">Flagship</span>' : '<span class="text-xs" style="color:var(--text-dim)">Fast</span>';
-    const caps = [
-      m.supportsVision ? '<span title="Vision">V</span>' : '',
-      m.supportsFunctionCall ? '<span title="Function Call">F</span>' : '',
-      m.supportsLongContext ? '<span title="Long Context">L</span>' : '',
-      m.chineseOptimized ? '<span title="Chinese">ZH</span>' : '',
-      m.isFlockNode ? '<span title="FLock" style="color:#A78BFA">FL</span>' : '',
-    ].filter(Boolean).join(' ');
-    const plans = m.allowedPlans ?? ['all'];
-    const planBadges = plans.includes('all')
-      ? '<span class="badge badge-free text-[10px]">all</span>'
-      : plans.map(p => `<span class="badge ${p === 'pro' ? 'badge-pro' : 'badge-free'} text-[10px]">${p}</span>`).join(' ');
-    return `<tr>
-      <td class="font-medium text-xs">${esc(m.modelId)}<div class="text-[10px]" style="color:var(--text-dim)">${esc(m.displayName)}</div></td>
-      <td class="text-xs">${esc(m.provider)}</td>
-      <td>${tierLabel}</td>
-      <td><span class="badge ${statusBadge}">${m.status}</span></td>
-      <td><div class="w-10 rounded-full h-1.5" style="background:rgba(255,255,255,0.1)"><div class="h-1.5 rounded-full" style="width:${m.quality * 100}%;background:#8B5CF6"></div></div><span class="text-[10px]" style="color:var(--text-dim)">${m.quality.toFixed(2)}</span></td>
-      <td><div class="w-10 rounded-full h-1.5" style="background:rgba(255,255,255,0.1)"><div class="h-1.5 rounded-full" style="width:${m.speed * 100}%;background:#06B6D4"></div></div><span class="text-[10px]" style="color:var(--text-dim)">${m.speed.toFixed(2)}</span></td>
-      <td><div class="w-10 rounded-full h-1.5" style="background:rgba(255,255,255,0.1)"><div class="h-1.5 rounded-full" style="width:${m.costEfficiency * 100}%;background:#10B981"></div></div><span class="text-[10px]" style="color:var(--text-dim)">${m.costEfficiency.toFixed(2)}</span></td>
-      <td><div class="w-10 rounded-full h-1.5" style="background:rgba(255,255,255,0.1)"><div class="h-1.5 rounded-full" style="width:${m.codeStrength * 100}%;background:#A78BFA"></div></div><span class="text-[10px]" style="color:var(--text-dim)">${m.codeStrength.toFixed(2)}</span></td>
-      <td class="text-xs">${planBadges}</td>
-      <td class="text-xs font-mono">${caps || '-'}</td>
-      <td>
-        <div class="flex gap-1">
-          <button class="btn-sm" onclick="editModel('${m.id}')">Edit</button>
-          <button class="btn-sm danger" onclick="deleteRegistryModel('${m.id}')">Del</button>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function showModelForm(model) {
-  const form = document.getElementById('model-form');
-  const title = document.getElementById('model-form-title');
-  const idInput = document.getElementById('mf-modelId');
-
-  if (model) {
-    title.textContent = 'Edit Model';
-    document.getElementById('mf-id').value = model.id;
-    idInput.value = model.modelId;
-    idInput.disabled = true;
-    document.getElementById('mf-displayName').value = model.displayName;
-    document.getElementById('mf-provider').value = model.provider;
-    document.getElementById('mf-status').value = model.status;
-    document.getElementById('mf-tier').value = model.tier;
-    document.getElementById('mf-quality').value = model.quality;
-    document.getElementById('mf-speed').value = model.speed;
-    document.getElementById('mf-costEfficiency').value = model.costEfficiency;
-    document.getElementById('mf-codeStrength').value = model.codeStrength;
-    document.getElementById('mf-maxContextTokens').value = model.maxContextTokens;
-    document.getElementById('mf-avgTtftMs').value = model.avgTtftMs;
-    document.getElementById('mf-priceInput').value = model.priceInput;
-    document.getElementById('mf-priceOutput').value = model.priceOutput;
-    document.getElementById('mf-supportsVision').checked = model.supportsVision;
-    document.getElementById('mf-supportsFunctionCall').checked = model.supportsFunctionCall;
-    document.getElementById('mf-supportsLongContext').checked = model.supportsLongContext;
-    document.getElementById('mf-chineseOptimized').checked = model.chineseOptimized;
-    document.getElementById('mf-isFlockNode').checked = model.isFlockNode;
-    const plans = model.allowedPlans ?? ['all'];
-    document.getElementById('mf-plan-all').checked = plans.includes('all');
-    document.getElementById('mf-plan-free').checked = plans.includes('free');
-    document.getElementById('mf-plan-pro').checked = plans.includes('pro');
-  } else {
-    title.textContent = 'Add Model';
-    document.getElementById('mf-id').value = '';
-    idInput.value = '';
-    idInput.disabled = false;
-    document.getElementById('mf-displayName').value = '';
-    document.getElementById('mf-provider').value = '';
-    document.getElementById('mf-status').value = 'active';
-    document.getElementById('mf-tier').value = 'fast';
-    document.getElementById('mf-quality').value = '0.70';
-    document.getElementById('mf-speed').value = '0.70';
-    document.getElementById('mf-costEfficiency').value = '0.70';
-    document.getElementById('mf-codeStrength').value = '0.70';
-    document.getElementById('mf-maxContextTokens').value = '128000';
-    document.getElementById('mf-avgTtftMs').value = '500';
-    document.getElementById('mf-priceInput').value = '1.00';
-    document.getElementById('mf-priceOutput').value = '3.00';
-    document.getElementById('mf-supportsVision').checked = false;
-    document.getElementById('mf-supportsFunctionCall').checked = true;
-    document.getElementById('mf-supportsLongContext').checked = false;
-    document.getElementById('mf-chineseOptimized').checked = false;
-    document.getElementById('mf-isFlockNode').checked = false;
-    document.getElementById('mf-plan-all').checked = true;
-    document.getElementById('mf-plan-free').checked = false;
-    document.getElementById('mf-plan-pro').checked = false;
-  }
-  form.classList.remove('hidden');
-}
-
-function hideModelForm() {
-  document.getElementById('model-form').classList.add('hidden');
-  document.getElementById('mf-modelId').disabled = false;
-}
-
-function editModel(id) {
-  const model = _registryModels.find(m => m.id === id);
-  if (model) showModelForm(model);
-}
-
-async function saveModel() {
-  const id = document.getElementById('mf-id').value;
-  const data = {
-    modelId: document.getElementById('mf-modelId').value,
-    displayName: document.getElementById('mf-displayName').value,
-    provider: document.getElementById('mf-provider').value,
-    status: document.getElementById('mf-status').value,
-    tier: document.getElementById('mf-tier').value,
-    quality: parseFloat(document.getElementById('mf-quality').value),
-    speed: parseFloat(document.getElementById('mf-speed').value),
-    costEfficiency: parseFloat(document.getElementById('mf-costEfficiency').value),
-    codeStrength: parseFloat(document.getElementById('mf-codeStrength').value),
-    maxContextTokens: parseInt(document.getElementById('mf-maxContextTokens').value),
-    avgTtftMs: parseInt(document.getElementById('mf-avgTtftMs').value),
-    priceInput: parseFloat(document.getElementById('mf-priceInput').value),
-    priceOutput: parseFloat(document.getElementById('mf-priceOutput').value),
-    supportsVision: document.getElementById('mf-supportsVision').checked,
-    supportsFunctionCall: document.getElementById('mf-supportsFunctionCall').checked,
-    supportsLongContext: document.getElementById('mf-supportsLongContext').checked,
-    chineseOptimized: document.getElementById('mf-chineseOptimized').checked,
-    isFlockNode: document.getElementById('mf-isFlockNode').checked,
-    allowedPlans: buildAllowedPlans(),
+async function submitPkgForm() {
+  const id = document.getElementById('pf-id').value;
+  const payload = {
+    name: document.getElementById('pf-name').value.trim(),
+    credits: parseFloat(document.getElementById('pf-credits').value) || 0,
+    price: parseFloat(document.getElementById('pf-price').value) || 0,
+    bonusCredits: parseFloat(document.getElementById('pf-bonus').value) || 0,
+    stripePriceId: document.getElementById('pf-stripe').value.trim(),
+    isPopular: document.getElementById('pf-popular-toggle').classList.contains('on'),
+    isActive: document.getElementById('pf-active-toggle').classList.contains('on'),
   };
-
-  if (!data.modelId || !data.displayName || !data.provider) {
-    alert('Model ID, Display Name, and Provider are required');
-    return;
-  }
-
-  // Score range validation
-  for (const field of ['quality', 'speed', 'costEfficiency', 'codeStrength']) {
-    const v = data[field];
-    if (isNaN(v) || v < 0 || v > 1) { alert(`${field} must be between 0.00 and 1.00`); return; }
-  }
-  // Integer fields
-  if (!Number.isInteger(data.maxContextTokens) || data.maxContextTokens < 1) {
-    alert('Max Context Tokens must be a positive integer'); return;
-  }
-  if (!Number.isInteger(data.avgTtftMs) || data.avgTtftMs < 0) {
-    alert('Avg TTFT must be a non-negative integer'); return;
-  }
-  // Price fields
-  if (isNaN(data.priceInput) || data.priceInput < 0) { alert('Price Input must be >= 0'); return; }
-  if (isNaN(data.priceOutput) || data.priceOutput < 0) { alert('Price Output must be >= 0'); return; }
-
   try {
     if (id) {
-      await apiMutate('PATCH', `/admin/models/registry/${id}`, data);
+      await apiMutate('PUT', `/admin/packages/${id}`, payload);
     } else {
-      await apiMutate('POST', '/admin/models/registry', data);
+      await apiMutate('POST', '/admin/packages', payload);
     }
-    hideModelForm();
+    closeModal('pkg-form-modal');
     await loadDashboard();
-  } catch (err) { alert('Failed to save model: ' + err.message); }
+  } catch (err) { alert('Failed to save package'); }
 }
 
-async function deleteRegistryModel(id) {
-  if (!confirm('Delete this model from the registry?')) return;
+async function deletePkg(id) {
+  if (!confirm('Delete this package?')) return;
   try {
-    await apiMutate('DELETE', `/admin/models/registry/${id}`);
+    await apiMutate('DELETE', `/admin/packages/${id}`);
     await loadDashboard();
-  } catch (err) { alert('Failed to delete model'); }
+  } catch (err) { alert('Failed to delete package'); }
 }
 
-async function reloadRegistryCache() {
+// ============================================================
+// ANNOUNCEMENT FORM
+// ============================================================
+function showAnnForm(a) {
+  document.getElementById('ann-form-title').textContent = a ? 'Edit Announcement' : 'New Announcement';
+  document.getElementById('anf-id').value = a?.id || '';
+  document.getElementById('anf-title').value = a?.title || '';
+  document.getElementById('anf-message').value = a?.message || '';
+  document.getElementById('anf-type').value = a?.type || 'info';
+  document.getElementById('anf-expires').value = a?.expiresAt ? new Date(a.expiresAt).toISOString().slice(0,16) : '';
+  document.getElementById('anf-active-toggle').classList.toggle('on', a ? !!a.isActive : true);
+  openModal('ann-form-modal');
+}
+
+async function submitAnnForm() {
+  const id = document.getElementById('anf-id').value;
+  const expiresVal = document.getElementById('anf-expires').value;
+  const payload = {
+    title: document.getElementById('anf-title').value.trim(),
+    message: document.getElementById('anf-message').value.trim(),
+    type: document.getElementById('anf-type').value,
+    expiresAt: expiresVal ? new Date(expiresVal).toISOString() : null,
+    isActive: document.getElementById('anf-active-toggle').classList.contains('on'),
+  };
   try {
-    await apiMutate('POST', '/admin/models/registry/reload');
-    alert('Registry cache reloaded');
-  } catch (err) { alert('Failed to reload cache'); }
-}
-
-// ── Charts ────────────────────────────────────────────────────────────────
-
-function renderUsageChart(trend) {
-  const ctx = document.getElementById('chart-usage').getContext('2d');
-  if (charts.usage) charts.usage.destroy();
-
-  charts.usage = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: trend.map(t => t.date.slice(5)),
-      datasets: [
-        {
-          label: 'Requests',
-          data: trend.map(t => t.requests),
-          borderColor: '#8B5CF6',
-          backgroundColor: 'rgba(139, 92, 246, 0.12)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 0,
-          borderWidth: 2,
-        },
-        {
-          label: 'Active Users',
-          data: trend.map(t => t.activeUsers),
-          borderColor: '#06B6D4',
-          backgroundColor: 'transparent',
-          tension: 0.4,
-          pointRadius: 0,
-          borderWidth: 2,
-          yAxisID: 'y1',
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 11 }, color: '#94A3B8' } } },
-      scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748B', maxTicksLimit: 10 } },
-        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 10 }, color: '#64748B' }, beginAtZero: true },
-        y1: { position: 'right', grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748B' }, beginAtZero: true },
-      },
-    },
-  });
-}
-
-function renderRevenueChart(trend) {
-  const ctx = document.getElementById('chart-revenue').getContext('2d');
-  if (charts.revenue) charts.revenue.destroy();
-
-  charts.revenue = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: trend.map(t => t.date.slice(5)),
-      datasets: [{
-        label: 'Revenue',
-        data: trend.map(t => t.depositCents / 100),
-        backgroundColor: 'rgba(16, 185, 129, 0.35)',
-        borderColor: '#10B981',
-        borderWidth: 1,
-        borderRadius: 6,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748B', maxTicksLimit: 10 } },
-        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 10 }, color: '#64748B', callback: v => '$' + v }, beginAtZero: true },
-      },
-    },
-  });
-}
-
-// ── Tabs ──────────────────────────────────────────────────────────────────
-
-function switchTab(name) {
-  document.querySelectorAll('.tab[data-tab]').forEach(el => el.classList.remove('active'));
-  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
-
-  ['dashboard', 'users', 'transactions', 'models', 'registry', 'providers', 'keys', 'access', 'packages', 'announcements', 'referrals'].forEach(t => {
-    document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
-  });
-}
-
-// ── Plan Access helpers ───────────────────────────────────────────────────
-
-function onPlanAllChange(el) {
-  if (el.checked) {
-    document.getElementById('mf-plan-free').checked = false;
-    document.getElementById('mf-plan-pro').checked = false;
-  }
-}
-
-function onPlanFreeProChange() {
-  const hasFreeOrPro = document.getElementById('mf-plan-free').checked ||
-                       document.getElementById('mf-plan-pro').checked;
-  if (hasFreeOrPro) {
-    document.getElementById('mf-plan-all').checked = false;
-  } else {
-    document.getElementById('mf-plan-all').checked = true;
-  }
-}
-
-function buildAllowedPlans() {
-  if (document.getElementById('mf-plan-all').checked) return ['all'];
-  const plans = [];
-  if (document.getElementById('mf-plan-free').checked) plans.push('free');
-  if (document.getElementById('mf-plan-pro').checked) plans.push('pro');
-  return plans.length > 0 ? plans : ['all'];
-}
-
-// ── User Detail Modal ─────────────────────────────────────────────────────
-
-function switchUdTab(name) {
-  document.querySelectorAll('[data-udtab]').forEach(el => el.classList.remove('active'));
-  document.querySelector(`[data-udtab="${name}"]`).classList.add('active');
-  ['txns', 'reqs', 'mods'].forEach(t => {
-    document.getElementById(`ud-tab-${t}`).classList.toggle('hidden', t !== name);
-  });
-}
-
-async function openUserDetail(userId, email) {
-  _currentUserId = userId;
-  document.getElementById('ud-title').textContent = 'User: ' + email;
-  document.getElementById('user-detail-modal').classList.remove('hidden');
-  document.getElementById('ud-info').innerHTML = '<div class="text-xs" style="color:var(--text-dim)">Loading...</div>';
-  document.getElementById('ud-txns-tbody').innerHTML = '';
-  document.getElementById('ud-reqs-tbody').innerHTML = '';
-  document.getElementById('ud-mods-tbody').innerHTML = '';
-
-  try {
-    const [userRes, txnRes, reqRes, modRes] = await Promise.all([
-      api(`/admin/users/${userId}`),
-      api(`/admin/users/${userId}/transactions?limit=50`),
-      api(`/admin/users/${userId}/requests?limit=50`),
-      api(`/admin/users/${userId}/models?days=30`),
-    ]);
-
-    document.getElementById('ud-info').innerHTML = `
-      <div class="card p-3"><div class="stat-label">Balance</div><div class="font-semibold" style="color:var(--text)">${fmtCents(userRes.balanceCents)}</div></div>
-      <div class="card p-3"><div class="stat-label">Total Deposited</div><div class="font-semibold" style="color:var(--text)">${fmtCents(userRes.totalDepositedCents)}</div></div>
-      <div class="card p-3"><div class="stat-label">Total Used</div><div class="font-semibold" style="color:var(--text)">${fmtCents(userRes.totalUsedCents)}</div></div>
-      <div class="card p-3"><div class="stat-label">Requests</div><div class="font-semibold" style="color:var(--text)">${userRes.requestCount}</div></div>
-    `;
-
-    document.getElementById('ud-txns-tbody').innerHTML = txnRes.transactions.length === 0
-      ? '<tr><td colspan="5" class="text-center py-4" style="color:var(--text-dim)">No transactions</td></tr>'
-      : txnRes.transactions.map(t => {
-          const isPos = t.type === 'deposit' || t.type === 'bonus' || (t.type === 'admin_adjustment' && t.amountCents > 0);
-          return `<tr>
-            <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(t.createdAt)}</td>
-            <td><span class="badge badge-free">${t.type}</span></td>
-            <td class="font-medium" style="color:${isPos ? '#10B981' : 'var(--text-muted)'}">${isPos ? '+' : ''}${fmtCents(Math.abs(t.amountCents))}</td>
-            <td>${fmtCents(t.balanceAfterCents)}</td>
-            <td class="text-xs max-w-[200px] truncate" style="color:var(--text-muted)">${esc(t.description || '-')}</td>
-          </tr>`;
-        }).join('');
-
-    document.getElementById('ud-reqs-tbody').innerHTML = reqRes.requests.length === 0
-      ? '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-dim)">No requests</td></tr>'
-      : reqRes.requests.map(r => `<tr>
-          <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(r.createdAt)}</td>
-          <td class="text-xs font-medium">${esc(r.model || '-')}</td>
-          <td class="text-xs">${esc(r.provider || '-')}</td>
-          <td class="text-xs">${fmtNum((r.inputTokens || 0) + (r.outputTokens || 0))}</td>
-          <td>${fmtCents(r.costCents)}</td>
-          <td class="text-xs" style="color:var(--text-dim)">${r.latencyMs}ms</td>
-        </tr>`).join('');
-
-    document.getElementById('ud-mods-tbody').innerHTML = modRes.models.length === 0
-      ? '<tr><td colspan="4" class="text-center py-4" style="color:var(--text-dim)">No model usage</td></tr>'
-      : modRes.models.map(m => `<tr>
-          <td class="font-medium text-xs" style="color:var(--purple)">${esc(m.model)}</td>
-          <td>${m.requests}</td>
-          <td>${fmtCents(m.costCents)}</td>
-          <td>${fmtNum(m.totalTokens)}</td>
-        </tr>`).join('');
-
-  } catch (err) {
-    document.getElementById('ud-info').innerHTML = '<div class="text-xs" style="color:#F87171">Failed to load user details</div>';
-  }
-}
-
-function closeUserDetail() {
-  document.getElementById('user-detail-modal').classList.add('hidden');
-  _currentUserId = null;
-}
-
-// ── Render: Packages ─────────────────────────────────────────────────────
-
-function renderPackages(packages) {
-  const tbody = document.getElementById('packages-tbody');
-  if (!packages || packages.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4" style="color:var(--text-dim)">No packages configured</td></tr>';
-    return;
-  }
-  tbody.innerHTML = packages.map(p => `<tr>
-    <td class="font-mono text-xs">${esc(p.id)}</td>
-    <td class="font-medium">${esc(p.label)}</td>
-    <td>${fmtCents(p.amountCents)}</td>
-    <td>${fmtCents(p.creditsCents)}</td>
-    <td>${esc(p.bonus || '-')}</td>
-    <td>
-      <div class="toggle ${p.isActive ? 'on' : ''}" onclick="togglePkgActive('${esc(p.id)}', ${!p.isActive})"></div>
-    </td>
-    <td class="font-mono text-[10px] max-w-[160px] truncate" style="color:var(--text-dim)">${esc(p.polarProductId || 'not set')}</td>
-    <td><button class="btn-sm" onclick="editPkg('${esc(p.id)}')">Edit</button></td>
-  </tr>`).join('');
-}
-
-let _packages = [];
-
-function showPkgForm(pkg) {
-  _packages = _packages; // no-op to satisfy linter
-  const form = document.getElementById('pkg-form');
-  if (pkg) {
-    document.getElementById('pkg-form-title').textContent = 'Edit Package';
-    document.getElementById('pf-id').value = pkg.id;
-    document.getElementById('pf-pkgId').value = pkg.id;
-    document.getElementById('pf-pkgId').disabled = true;
-    document.getElementById('pf-polarProductId').value = pkg.polarProductId || '';
-    document.getElementById('pf-label').value = pkg.label;
-    document.getElementById('pf-amount').value = pkg.amountCents;
-    document.getElementById('pf-credits').value = pkg.creditsCents;
-    document.getElementById('pf-bonus').value = pkg.bonus || '';
-    document.getElementById('pf-sortOrder').value = pkg.sortOrder ?? 0;
-  } else {
-    document.getElementById('pkg-form-title').textContent = 'Add Package';
-    document.getElementById('pf-id').value = '';
-    document.getElementById('pf-pkgId').value = '';
-    document.getElementById('pf-pkgId').disabled = false;
-    document.getElementById('pf-polarProductId').value = '';
-    document.getElementById('pf-label').value = '';
-    document.getElementById('pf-amount').value = '';
-    document.getElementById('pf-credits').value = '';
-    document.getElementById('pf-bonus').value = '';
-    document.getElementById('pf-sortOrder').value = '0';
-  }
-  form.classList.remove('hidden');
-}
-
-function hidePkgForm() {
-  document.getElementById('pkg-form').classList.add('hidden');
-  document.getElementById('pf-pkgId').disabled = false;
-}
-
-async function savePkg() {
-  const existingId = document.getElementById('pf-id').value;
-  const id = document.getElementById('pf-pkgId').value;
-  const label = document.getElementById('pf-label').value;
-  const amount = parseInt(document.getElementById('pf-amount').value);
-  const credits = parseInt(document.getElementById('pf-credits').value);
-  const bonus = document.getElementById('pf-bonus').value || undefined;
-  const sortOrder = parseInt(document.getElementById('pf-sortOrder').value) || 0;
-  const polarProductId = document.getElementById('pf-polarProductId').value;
-
-  if (!label || !amount || !credits) { alert('Label, Amount, and Credits are required'); return; }
-
-  try {
-    if (existingId) {
-      await apiMutate('PATCH', `/admin/packages/${existingId}`, { polarProductId, label, bonus: bonus || null, sortOrder });
+    if (id) {
+      await apiMutate('PUT', `/admin/announcements/${id}`, payload);
     } else {
-      if (!id) { alert('Package ID is required'); return; }
-      await apiMutate('POST', '/admin/packages', { id, polarProductId, amountCents: amount, creditsCents: credits, label, bonus, sortOrder });
+      await apiMutate('POST', '/admin/announcements', payload);
     }
-    hidePkgForm();
+    closeModal('ann-form-modal');
     await loadDashboard();
-  } catch (err) { alert('Failed to save package: ' + err.message); }
-}
-
-async function togglePkgActive(id, active) {
-  try {
-    await apiMutate('PATCH', `/admin/packages/${id}`, { isActive: active });
-    await loadDashboard();
-  } catch (err) { alert('Failed to update package'); }
-}
-
-function editPkg(id) {
-  const pkg = document.getElementById('packages-tbody')
-    .__pkgData?.find(p => p.id === id);
-  // Fallback: find from rendered data
-  showPkgForm({ id, polarProductId: '', label: '', amountCents: 0, creditsCents: 0 });
-  // Re-load by opening tab and refetching
-  api('/admin/packages').then(res => {
-    const found = res.packages.find(p => p.id === id);
-    if (found) showPkgForm(found);
-  });
-}
-
-// ── Render: Announcements ─────────────────────────────────────────────────
-
-function renderAnnouncements(announcements) {
-  const tbody = document.getElementById('announcements-tbody');
-  if (!announcements || announcements.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4" style="color:var(--text-dim)">No announcements</td></tr>';
-    return;
-  }
-  const typeColors = { info: 'badge-info', warning: 'badge-warning', error: 'badge-danger' };
-  tbody.innerHTML = announcements.map(a => `<tr>
-    <td class="font-medium">${esc(a.title)}</td>
-    <td><span class="badge ${typeColors[a.type] || 'badge-free'}">${a.type}</span></td>
-    <td class="text-xs max-w-[200px] truncate" style="color:var(--text-muted)">${esc(a.message)}</td>
-    <td>
-      <div class="toggle ${a.is_active ? 'on' : ''}" onclick="toggleAnn('${a.id}', ${!a.is_active})"></div>
-    </td>
-    <td class="text-xs" style="color:var(--text-dim)">${a.ends_at ? fmtDateTime(a.ends_at) : 'No expiry'}</td>
-    <td class="text-xs" style="color:var(--text-dim)">${fmtDateTime(a.created_at)}</td>
-    <td>
-      <button class="btn-sm danger" onclick="deleteAnn('${a.id}')">Delete</button>
-    </td>
-  </tr>`).join('');
-}
-
-function showAnnForm() { document.getElementById('ann-form').classList.remove('hidden'); }
-function hideAnnForm() {
-  document.getElementById('ann-form').classList.add('hidden');
-  document.getElementById('af-title').value = '';
-  document.getElementById('af-message').value = '';
-  document.getElementById('af-type').value = 'info';
-  document.getElementById('af-endsAt').value = '';
-}
-
-async function saveAnn() {
-  const title = document.getElementById('af-title').value;
-  const message = document.getElementById('af-message').value;
-  const type = document.getElementById('af-type').value;
-  const endsAtVal = document.getElementById('af-endsAt').value;
-  const endsAt = endsAtVal ? new Date(endsAtVal).toISOString() : undefined;
-
-  if (!title || !message) { alert('Title and Message are required'); return; }
-
-  try {
-    await apiMutate('POST', '/admin/announcements', { title, message, type, ...(endsAt ? { endsAt } : {}) });
-    hideAnnForm();
-    await loadDashboard();
-  } catch (err) { alert('Failed to create announcement: ' + err.message); }
-}
-
-async function toggleAnn(id, active) {
-  try {
-    await apiMutate('PATCH', `/admin/announcements/${id}`, { isActive: active });
-    await loadDashboard();
-  } catch (err) { alert('Failed to update announcement'); }
+  } catch (err) { alert('Failed to save announcement'); }
 }
 
 async function deleteAnn(id) {
@@ -1853,13 +2200,24 @@ async function deleteAnn(id) {
   } catch (err) { alert('Failed to delete announcement'); }
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────
+// ============================================================
+// CLOSE MODALS ON BACKDROP CLICK
+// ============================================================
+document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) backdrop.classList.add('hidden');
+  });
+});
 
+// ============================================================
+// INIT (Bug Fix 3: adminEmail from JWT)
+// ============================================================
 (async function init() {
   if (token) {
+    adminEmail = decodeJwtEmail(token);
     try {
-      await api('/admin/stats');
-      showDashboard();
+      const res = await api('/admin/stats').catch(() => null);
+      if (res) showDashboard(adminEmail);
     } catch {
       // Token invalid, show login
     }

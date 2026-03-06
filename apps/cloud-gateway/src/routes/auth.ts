@@ -74,6 +74,7 @@ app.post("/register", async (c) => {
       token,
       user: {
         id: user.id,
+        uid: user.uid,
         email: user.email,
         displayName: user.displayName,
         plan: user.plan,
@@ -128,6 +129,7 @@ app.post("/login", async (c) => {
     token,
     user: {
       id: user.id,
+      uid: user.uid,
       email: user.email,
       displayName: user.displayName,
       plan: user.plan,
@@ -152,6 +154,7 @@ app.get("/me", jwtAuth, async (c) => {
   return c.json({
     user: {
       id: profile.id,
+      uid: profile.uid,
       email: profile.email,
       displayName: profile.displayName,
       plan: profile.plan,

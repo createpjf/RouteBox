@@ -86,7 +86,7 @@ export async function getAdminStats() {
 export async function getAdminUsers(limit = 100, offset = 0, search = "") {
   const rows = await sql`
     SELECT
-      u.id, u.email, u.display_name, u.plan,
+      u.id, u.uid, u.email, u.display_name, u.plan,
       u.created_at,
       COALESCE(c.balance_cents, 0) AS balance_cents,
       COALESCE(c.total_deposited_cents, 0) AS total_deposited_cents,
@@ -105,6 +105,7 @@ export async function getAdminUsers(limit = 100, offset = 0, search = "") {
   return {
     users: rows.map((r) => ({
       id: r.id,
+      uid: r.uid,
       email: r.email,
       displayName: r.display_name,
       plan: r.plan,
@@ -377,7 +378,7 @@ export async function adjustUserBalance(
 export async function getAdminUser(userId: string) {
   const [row] = await sql`
     SELECT
-      u.id, u.email, u.display_name, u.plan, u.created_at, u.updated_at,
+      u.id, u.uid, u.email, u.display_name, u.plan, u.created_at, u.updated_at,
       COALESCE(c.balance_cents, 0) AS balance_cents,
       COALESCE(c.total_deposited_cents, 0) AS total_deposited_cents,
       COALESCE(c.total_used_cents, 0) AS total_used_cents,
@@ -390,6 +391,7 @@ export async function getAdminUser(userId: string) {
   if (!row) return null;
   return {
     id: row.id,
+    uid: row.uid,
     email: row.email,
     displayName: row.display_name,
     plan: row.plan,

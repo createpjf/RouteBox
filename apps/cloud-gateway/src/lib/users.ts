@@ -9,7 +9,7 @@ export async function createUser(
   email: string,
   password: string,
   displayName?: string,
-): Promise<{ id: string; email: string; displayName: string | null; plan: string }> {
+): Promise<{ id: string; email: string; displayName: string | null; plan: string; uid: string }> {
   // Hash password with Bun's built-in bcrypt
   const passwordHash = await Bun.password.hash(password, {
     algorithm: "bcrypt",
@@ -19,7 +19,7 @@ export async function createUser(
   const [user] = await sql`
     INSERT INTO users (email, password_hash, display_name)
     VALUES (${email}, ${passwordHash}, ${displayName ?? null})
-    RETURNING id, email, display_name, plan
+    RETURNING id, email, display_name, plan, uid
   `;
 
   // Create credits row
@@ -32,6 +32,7 @@ export async function createUser(
     email: user.email,
     displayName: user.display_name,
     plan: user.plan,
+    uid: user.uid,
   };
 }
 
@@ -39,9 +40,9 @@ export async function createUser(
 export async function authenticateUser(
   email: string,
   password: string,
-): Promise<{ id: string; email: string; displayName: string | null; plan: string } | null> {
+): Promise<{ id: string; email: string; displayName: string | null; plan: string; uid: string } | null> {
   const [user] = await sql`
-    SELECT id, email, password_hash, display_name, plan
+    SELECT id, email, password_hash, display_name, plan, uid
     FROM users WHERE email = ${email}
   `;
   if (!user) return null;
@@ -54,13 +55,14 @@ export async function authenticateUser(
     email: user.email,
     displayName: user.display_name,
     plan: user.plan,
+    uid: user.uid,
   };
 }
 
 /** Get user by ID with balance */
 export async function getUserById(id: string) {
   const [row] = await sql`
-    SELECT u.id, u.email, u.display_name, u.plan, u.polar_customer_id,
+    SELECT u.id, u.email, u.display_name, u.plan, u.polar_customer_id, u.uid,
            u.created_at, c.balance_cents, c.total_deposited_cents, c.total_used_cents
     FROM users u
     LEFT JOIN credits c ON c.user_id = u.id
@@ -72,6 +74,7 @@ export async function getUserById(id: string) {
     email: row.email,
     displayName: row.display_name,
     plan: row.plan,
+    uid: row.uid,
     polarCustomerId: row.polar_customer_id,
     createdAt: row.created_at,
     balanceCents: row.balance_cents ?? 0,

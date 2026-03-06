@@ -522,4 +522,70 @@ app.delete("/announcements/:id", async (c) => {
   return c.json({ success: true });
 });
 
+// ── Admin API Key Management ──────────────────────────────────────────────
+
+app.get("/users/:id/api-keys", async (c) => {
+  const userId = c.req.param("id");
+  const rows = await sql`
+    SELECT id, name, key_prefix, last_used_at, is_active, created_at
+    FROM api_keys
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+  `;
+  return c.json({
+    apiKeys: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      keyPrefix: r.key_prefix,
+      lastUsedAt: r.last_used_at,
+      isActive: r.is_active,
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+app.delete("/api-keys/:id", async (c) => {
+  const id = c.req.param("id");
+  const [key] = await sql`
+    UPDATE api_keys SET is_active = false
+    WHERE id = ${id}
+    RETURNING id
+  `;
+  if (!key) return c.json({ error: { message: "Key not found", type: "not_found" } }, 404);
+  return c.json({ success: true });
+});
+
+// ── User API Keys (admin view) ─────────────────────────────────────────────
+
+app.get("/users/:id/api-keys", async (c) => {
+  const userId = c.req.param("id");
+  const rows = await sql`
+    SELECT id, name, key_prefix, last_used_at, is_active, created_at
+    FROM api_keys
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+  `;
+  return c.json({
+    apiKeys: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      keyPrefix: r.key_prefix,
+      lastUsedAt: r.last_used_at,
+      isActive: r.is_active,
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+app.delete("/api-keys/:id", async (c) => {
+  const id = c.req.param("id");
+  const result = await sql`
+    UPDATE api_keys SET is_active = false WHERE id = ${id}
+  `;
+  if (result.count === 0) {
+    return c.json({ error: { message: "API key not found", type: "not_found" } }, 404);
+  }
+  return c.json({ success: true });
+});
+
 export default app;
