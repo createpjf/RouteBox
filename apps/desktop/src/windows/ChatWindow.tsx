@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Square, Columns, MessageSquare, Globe, Copy, Check } from "lucide-react";
+import { Send, Square, Columns, MessageSquare, Globe, Copy, Check, ArrowDown } from "lucide-react";
+import clsx from "clsx";
 import { useStreamChat } from "../hooks/useStreamChat";
 import { ModelSwitcher } from "../components/shared/ModelSwitcher";
 import { CostBar } from "../components/shared/CostBar";
@@ -30,8 +31,10 @@ export const ChatWindow: React.FC = () => {
   const [compareMode, setCompareMode] = useState(false);
   const [searchEnabled, setSearchEnabled] = useState(false);
   const [searchOn, setSearchOn] = useState(false);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const { streaming, streamedText, meta, sendMessage, abort, clearStream } = useStreamChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load conversations
@@ -72,9 +75,20 @@ export const ChatWindow: React.FC = () => {
   }, [activeConvId]);
 
   // Auto-scroll
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamedText]);
+  }, []);
+
+  useEffect(() => {
+    if (!showScrollBtn) scrollToBottom();
+  }, [messages, streamedText, showScrollBtn, scrollToBottom]);
+
+  // Track scroll position for "scroll to bottom" button
+  const handleScroll = useCallback(() => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    setShowScrollBtn(scrollHeight - scrollTop - clientHeight > 100);
+  }, []);
 
   // Append streamed response to messages when done
   useEffect(() => {
@@ -177,13 +191,11 @@ export const ChatWindow: React.FC = () => {
 
   return (
     <div
+      className="flex w-full h-screen"
       style={{
-        display: "flex",
-        width: "100%",
-        height: "100vh",
-        background: "#1A1A1C",
-        color: "rgba(255,255,255,0.85)",
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+        background: "var(--color-bg-panel)",
+        color: "var(--color-text-primary)",
+        fontFamily: "var(--font-sans)",
       }}
     >
       {/* Sidebar */}
@@ -196,206 +208,173 @@ export const ChatWindow: React.FC = () => {
       />
 
       {/* Main chat area */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Header — draggable title bar */}
         <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "8px 14px",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
-            background: "rgba(255,255,255,0.015)",
-            minHeight: 44,
-          }}
+          className="flex items-center justify-between px-4 border-b border-border shrink-0"
+          style={{ minHeight: 48, background: "var(--color-bg-card)" }}
           data-tauri-drag-region
         >
           <ModelSwitcher value={model} onChange={setModel} />
-          <button
-            onClick={() => setCompareMode(!compareMode)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px",
-              background: compareMode ? "rgba(88,166,255,0.12)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${compareMode ? "rgba(88,166,255,0.2)" : "rgba(255,255,255,0.06)"}`,
-              borderRadius: 7,
-              color: compareMode ? "#58a6ff" : "rgba(255,255,255,0.4)",
-              fontSize: 11,
-              fontWeight: 500,
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <Columns size={12} /> Compare
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCompareMode(!compareMode)}
+              className={clsx(
+                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all",
+                compareMode
+                  ? "bg-accent-blue/10 border border-accent-blue/20 text-accent-blue"
+                  : "bg-hover-overlay border border-border text-text-tertiary hover:text-text-secondary",
+              )}
+            >
+              <Columns size={12} /> Compare
+            </button>
+          </div>
         </div>
 
         {/* Messages area */}
         <div
-          style={{
-            flex: 1,
-            overflow: "auto",
-            padding: "16px 20px",
-          }}
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto relative"
+          style={{ scrollbarWidth: "thin" }}
         >
-          {/* Empty state */}
-          {isEmpty && (
-            <div
+          <div className="max-w-[720px] mx-auto px-5 py-5">
+            {/* Empty state */}
+            {isEmpty && (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 animate-fade-in">
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                  style={{
+                    background: "rgba(255, 77, 0, 0.08)",
+                    border: "1px solid rgba(255, 77, 0, 0.12)",
+                  }}
+                >
+                  <MessageSquare size={24} strokeWidth={1.4} style={{ color: "#ff4d00" }} />
+                </div>
+                <div className="text-center">
+                  <p className="text-[15px] font-semibold text-text-primary mb-1">Start a conversation</p>
+                  <p className="text-[12px] text-text-tertiary">
+                    Select a model and type a message below
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {messages.map((msg) => (
+              <MessageBubble key={msg.id} message={msg} />
+            ))}
+
+            {/* Streaming response */}
+            {streamedText && (
+              <div className="mb-4 animate-fade-in">
+                <div
+                  className="rounded-2xl rounded-bl-md px-4 py-3"
+                  style={{
+                    background: "var(--color-bg-card)",
+                    border: "1px solid var(--color-border-light)",
+                    maxWidth: "85%",
+                    boxShadow: "var(--shadow-card)",
+                  }}
+                >
+                  <MarkdownRenderer content={streamedText} />
+                  {streaming && (
+                    <span className="inline-block w-0.5 h-4 ml-0.5 rounded-full pulse" style={{ background: "#ff4d00" }} />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Streaming meta */}
+            {!streaming && meta && streamedText && (
+              <div className="mb-4" style={{ maxWidth: "85%" }}>
+                <CostBar meta={meta} />
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Scroll to bottom */}
+          {showScrollBtn && (
+            <button
+              onClick={scrollToBottom}
+              className="fixed bottom-24 right-6 w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105"
               style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                gap: 12,
-                opacity: 0.4,
+                background: "var(--color-bg-elevated)",
+                border: "1px solid var(--color-border)",
+                boxShadow: "var(--shadow-elevated)",
               }}
             >
-              <MessageSquare size={32} strokeWidth={1.2} />
-              <span style={{ fontSize: 13, fontWeight: 500 }}>Start a conversation</span>
-              <span style={{ fontSize: 11, opacity: 0.7 }}>
-                Select a model and type a message below
-              </span>
-            </div>
+              <ArrowDown size={14} strokeWidth={2} className="text-text-secondary" />
+            </button>
           )}
-
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
-
-          {/* Streaming / pending-save response */}
-          {streamedText && (
-            <div style={{ marginBottom: 14 }}>
-              <div
-                style={{
-                  padding: "12px 14px",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.05)",
-                  borderRadius: 14,
-                  maxWidth: "85%",
-                }}
-              >
-                <MarkdownRenderer content={streamedText} />
-                {streaming && (
-                  <span
-                    style={{
-                      display: "inline-block",
-                      width: 2,
-                      height: 14,
-                      background: "rgba(255,255,255,0.5)",
-                      marginLeft: 2,
-                      animation: "pulse 1s infinite",
-                    }}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Streaming meta */}
-          {!streaming && meta && streamedText && (
-            <div style={{ marginBottom: 14, maxWidth: "85%" }}>
-              <CostBar meta={meta} />
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
         </div>
 
         {/* Input area */}
         <div
-          style={{
-            padding: "10px 16px 12px",
-            borderTop: "1px solid rgba(255,255,255,0.06)",
-            background: "rgba(255,255,255,0.015)",
-          }}
+          className="px-4 pb-4 pt-2 shrink-0"
+          style={{ background: "var(--color-bg-panel)" }}
         >
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "flex-end",
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 14,
-              padding: "4px 4px 4px 10px",
-            }}
-          >
-            {/* Search toggle */}
-            {searchEnabled && (
-              <button
-                onClick={() => setSearchOn(!searchOn)}
-                title={searchOn ? "Web search ON" : "Web search OFF"}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
-                  border: "none",
-                  background: searchOn ? "rgba(52,199,89,0.15)" : "transparent",
-                  color: searchOn ? "#34C759" : "rgba(255,255,255,0.25)",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                  flexShrink: 0,
-                  alignSelf: "flex-end",
-                }}
-              >
-                <Globe size={14} />
-              </button>
-            )}
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Send a message..."
-              rows={1}
+          <div className="max-w-[720px] mx-auto">
+            <div
+              className="flex items-end gap-2 rounded-2xl px-3 py-1.5 transition-all"
               style={{
-                flex: 1,
-                background: "transparent",
-                border: "none",
-                padding: "8px 0",
-                color: "rgba(255,255,255,0.9)",
-                fontSize: 13,
-                lineHeight: "1.5",
-                fontFamily: "inherit",
-                resize: "none",
-                outline: "none",
-                maxHeight: 140,
-              }}
-            />
-            <button
-              onClick={() => streaming ? abort() : handleSend()}
-              disabled={!streaming && !input.trim()}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 34,
-                height: 34,
-                borderRadius: 10,
-                border: "none",
-                background: streaming
-                  ? "rgba(255,59,48,0.15)"
-                  : input.trim()
-                    ? "rgba(88,166,255,0.2)"
-                    : "rgba(255,255,255,0.04)",
-                color: streaming
-                  ? "#FF3B30"
-                  : input.trim()
-                    ? "#58a6ff"
-                    : "rgba(255,255,255,0.2)",
-                cursor: streaming || input.trim() ? "pointer" : "default",
-                transition: "all 0.15s ease",
-                flexShrink: 0,
+                background: "var(--color-bg-card)",
+                border: "1px solid var(--color-border)",
+                boxShadow: "var(--shadow-card)",
               }}
             >
-              {streaming ? <Square size={14} fill="currentColor" /> : <Send size={14} />}
-            </button>
+              {/* Search toggle */}
+              {searchEnabled && (
+                <button
+                  onClick={() => setSearchOn(!searchOn)}
+                  title={searchOn ? "Web search ON" : "Web search OFF"}
+                  className={clsx(
+                    "flex items-center justify-center w-8 h-8 rounded-lg shrink-0 mb-0.5 transition-colors",
+                    searchOn
+                      ? "bg-accent-green/12 text-accent-green"
+                      : "text-text-tertiary hover:text-text-secondary hover:bg-hover-overlay",
+                  )}
+                >
+                  <Globe size={15} strokeWidth={1.75} />
+                </button>
+              )}
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Send a message..."
+                rows={1}
+                className="flex-1 bg-transparent py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-tertiary outline-none resize-none"
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  maxHeight: 140,
+                  caretColor: "#ff4d00",
+                }}
+              />
+              <button
+                onClick={() => streaming ? abort() : handleSend()}
+                disabled={!streaming && !input.trim()}
+                className={clsx(
+                  "flex items-center justify-center w-8 h-8 rounded-xl shrink-0 mb-0.5 transition-all",
+                  streaming
+                    ? "bg-accent-red/12 text-accent-red hover:bg-accent-red/20"
+                    : input.trim()
+                      ? "text-white hover:scale-105"
+                      : "bg-hover-overlay text-text-tertiary cursor-default",
+                )}
+                style={!streaming && input.trim() ? {
+                  background: "#ff4d00",
+                  boxShadow: "0 0 12px rgba(255, 77, 0, 0.3)",
+                } : undefined}
+              >
+                {streaming ? <Square size={13} fill="currentColor" /> : <Send size={13} />}
+              </button>
+            </div>
+            <p className="text-[10px] text-text-tertiary text-center mt-2 opacity-60">
+              Routed via RouteBox · {model}
+            </p>
           </div>
         </div>
       </div>
@@ -403,7 +382,8 @@ export const ChatWindow: React.FC = () => {
   );
 };
 
-// Inline message bubble component
+// ── Message Bubble ────────────────────────────────────────────────────────────
+
 const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
   const isUser = message.role === "user";
   const [hovered, setHovered] = useState(false);
@@ -435,56 +415,54 @@ const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
 
   return (
     <div
-      style={{
-        display: "flex",
-        justifyContent: isUser ? "flex-end" : "flex-start",
-        marginBottom: 14,
-      }}
+      className={clsx("flex mb-4", isUser ? "justify-end" : "justify-start")}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ maxWidth: "85%", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div className="flex flex-col gap-1" style={{ maxWidth: "85%" }}>
         <div
+          className={clsx(
+            "px-4 py-3 transition-shadow",
+            isUser
+              ? "rounded-2xl rounded-br-md"
+              : "rounded-2xl rounded-bl-md",
+          )}
           style={{
-            padding: "10px 14px",
-            borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
             background: isUser
-              ? "rgba(88,166,255,0.12)"
-              : "rgba(255,255,255,0.03)",
-            border: `1px solid ${isUser ? "rgba(88,166,255,0.15)" : "rgba(255,255,255,0.05)"}`,
+              ? "rgba(255, 77, 0, 0.08)"
+              : "var(--color-bg-card)",
+            border: isUser
+              ? "1px solid rgba(255, 77, 0, 0.12)"
+              : "1px solid var(--color-border-light)",
+            boxShadow: isUser ? "none" : "var(--shadow-card)",
           }}
         >
           {isUser ? (
-            <div style={{ fontSize: 13, lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
+            <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-text-primary">
               {message.content}
             </div>
           ) : (
             <MarkdownRenderer content={message.content} />
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+
+        {/* Meta bar + Copy */}
+        <div className="flex items-center gap-1 px-1">
           {metaObj && metaObj.cost > 0 && (
             <CostBar meta={metaObj} compact />
           )}
           {!isUser && (
             <button
               onClick={handleCopy}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 3,
-                padding: "2px 6px",
-                background: "transparent",
-                border: "none",
-                borderRadius: 4,
-                color: copied ? "#34C759" : "rgba(255,255,255,0.35)",
-                fontSize: 11,
-                cursor: "pointer",
-                opacity: hovered || copied ? 1 : 0,
-                transition: "opacity 0.15s ease, color 0.15s ease",
-              }}
+              className={clsx(
+                "flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] transition-all",
+                copied
+                  ? "text-accent-green"
+                  : "text-text-tertiary hover:text-text-secondary hover:bg-hover-overlay",
+              )}
+              style={{ opacity: hovered || copied ? 1 : 0 }}
             >
-              {copied ? <Check size={11} /> : <Copy size={11} />}
+              {copied ? <Check size={10} /> : <Copy size={10} />}
               {copied ? "Copied" : "Copy"}
             </button>
           )}

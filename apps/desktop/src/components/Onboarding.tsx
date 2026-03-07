@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Check, Copy, Zap, Cloud } from "lucide-react";
+import clsx from "clsx";
 import { ProviderKeyManager } from "./ProviderKeyManager";
 import { getGatewayUrl } from "@/lib/constants";
 
@@ -17,13 +18,7 @@ export function Onboarding({ gatewayMode, hasProviders, authToken, onDismiss }: 
   const [copiedField, setCopiedField] = useState<"url" | "token" | "curl" | null>(null);
   const [tokenTimeout, setTokenTimeout] = useState(false);
 
-  // Auto-advance step 1 → 2 when providers configured (local only)
-  useEffect(() => {
-    if (gatewayMode === "local" && step === 1 && hasProviders) {
-      const timer = setTimeout(() => setStep(2), 600);
-      return () => clearTimeout(timer);
-    }
-  }, [gatewayMode, step, hasProviders]);
+  // (removed auto-advance — user clicks Next manually)
 
   // Show error if token hasn't appeared within 6s on step 2
   useEffect(() => {
@@ -76,7 +71,7 @@ export function Onboarding({ gatewayMode, hasProviders, authToken, onDismiss }: 
 
         {/* Step content */}
         <div className="flex-1 flex flex-col items-center justify-center animate-page-in" key={step}>
-          {step === 1 && <StepProviders />}
+          {step === 1 && <StepProviders hasProviders={hasProviders} onNext={() => setStep(2)} />}
           {step === 2 && (
             <StepReady
               gatewayUrl={gatewayUrl}
@@ -142,7 +137,7 @@ function CloudConfirmation({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
-function StepProviders() {
+function StepProviders({ hasProviders, onNext }: { hasProviders: boolean; onNext: () => void }) {
   return (
     <div className="flex flex-col items-center w-full gap-4">
       <div className="text-center">
@@ -156,6 +151,18 @@ function StepProviders() {
       <div className="w-full">
         <ProviderKeyManager />
       </div>
+      <button
+        onClick={onNext}
+        disabled={!hasProviders}
+        className={clsx(
+          "w-full !h-10 !text-[14px] rounded-xl font-medium transition-colors",
+          hasProviders
+            ? "btn-primary"
+            : "bg-bg-elevated text-text-tertiary cursor-not-allowed"
+        )}
+      >
+        {hasProviders ? "Next" : "Add a provider to continue"}
+      </button>
     </div>
   );
 }

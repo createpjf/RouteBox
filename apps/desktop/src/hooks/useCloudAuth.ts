@@ -23,7 +23,7 @@ export interface CloudReferral {
   totalRewardCents: number;
 }
 
-export function useCloudAuth(onLoginSuccess?: () => void) {
+export function useCloudAuth(onLoginSuccess?: () => void, showToast?: (msg: string) => void) {
   const isCloud = getGatewayMode() === "cloud";
 
   const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
@@ -132,22 +132,38 @@ export function useCloudAuth(onLoginSuccess?: () => void) {
   const handleRecharge = useCallback(async (packageId: string) => {
     try {
       const res = await api.cloudCreateCheckout(packageId);
-      const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl(res.url);
+      if (!res.url) throw new Error("No checkout URL returned");
+      showToast?.("Opening checkout…");
+      try {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(res.url);
+      } catch {
+        window.open(res.url, "_blank");
+      }
     } catch (err) {
-      setCloudError(err instanceof Error ? err.message : "Failed to create checkout");
+      const msg = err instanceof Error ? err.message : "Failed to create checkout";
+      setCloudError(msg);
+      showToast?.(msg);
     }
-  }, []);
+  }, [showToast]);
 
   const handleUpgradePlan = useCallback(async (planId: string) => {
     try {
       const res = await api.cloudSubscribe(planId);
-      const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl(res.url);
+      if (!res.url) throw new Error("No subscription URL returned");
+      showToast?.("Opening checkout…");
+      try {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(res.url);
+      } catch {
+        window.open(res.url, "_blank");
+      }
     } catch (err) {
-      setCloudError(err instanceof Error ? err.message : "Failed to create subscription");
+      const msg = err instanceof Error ? err.message : "Failed to create subscription";
+      setCloudError(msg);
+      showToast?.(msg);
     }
-  }, []);
+  }, [showToast]);
 
   const handleCopyReferral = useCallback(async () => {
     if (!cloudReferral?.code) return;

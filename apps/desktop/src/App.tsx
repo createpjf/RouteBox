@@ -5,6 +5,7 @@ import { HeroSection } from "@/components/HeroSection";
 import { HomePage } from "@/components/HomePage";
 import { RoutingPage } from "@/components/RoutingPage";
 import { ActivityPage } from "@/components/ActivityPage";
+import { AccountPage } from "@/components/AccountPage";
 import { TabBar } from "@/components/TabBar";
 import type { TabId } from "@/components/TabBar";
 import { Settings } from "@/components/Settings";
@@ -223,6 +224,15 @@ export function App() {
   }, [gatewayState, showToast]);
 
   const handleCloudLoginSuccess = useCallback(async () => {
+    setOnboardingDismissed(true);
+    setShowOnboarding(false);
+    try {
+      const { load } = await import("@tauri-apps/plugin-store");
+      const store = await load("settings.json", { defaults: {} });
+      await store.set("onboardingDismissed", true);
+    } catch {
+      // Not in Tauri — no persistence
+    }
     setGatewayState("checking");
     setGatewayError(null);
     const { checkGatewayHealth: check } = await import("@/lib/gateway-health");
@@ -277,7 +287,7 @@ export function App() {
           />
         )}
         <div className="flex flex-1 min-h-0 relative">
-          {(["home", "routing", "activity"] as const).map((tab) => (
+          {(["home", "routing", "activity", "account"] as const).map((tab) => (
             <div
               key={tab}
               className={tab === activeTab
@@ -290,9 +300,14 @@ export function App() {
                 <ActivityPage
                   requestLog={requestLog}
                   onSelectEntry={setSelectedRequest}
+                />
+              )}
+              {tab === "account" && (
+                <AccountPage
                   onCloudLoginSuccess={handleCloudLoginSuccess}
                   gatewayRunningAt={gatewayRunningAt}
                   onGoToSettings={() => setShowSettings(true)}
+                  showToast={showToast}
                 />
               )}
             </div>

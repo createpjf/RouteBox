@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Copy, Check, Pause, Play, Plus, X, Pin, Ban, Loader2, Search } from "lucide-react";
+import { Copy, Check, Pause, Play, Plus, X, Pin, Ban, Loader2, Search, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { ProviderStatus } from "@/components/ProviderStatus";
 import { RoutingStrategy } from "@/components/RoutingStrategy";
 import { api } from "@/lib/api";
 import type { ModelPreference, RoutingRule } from "@/lib/api";
 import type { RealtimeStats } from "@/types/stats";
-import { getGatewayMode } from "@/lib/constants";
+import { getGatewayMode, PROVIDER_COLORS } from "@/lib/constants";
 
 interface RoutingPageProps {
   stats: RealtimeStats;
@@ -42,7 +42,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   const [modelIndex, setModelIndex] = useState<Map<string, ModelProviderEntry[]>>(new Map());
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [modelsError, setModelsError] = useState(false);
-  const [cloudModelIds, setCloudModelIds] = useState<string[]>([]);
+  const [cloudModelsByProvider, setCloudModelsByProvider] = useState<Map<string, string[]>>(new Map());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("");
@@ -86,7 +86,19 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     if (!isCloud) return;
     api.cloudGetModels()
       .then((res) => {
-        setCloudModelIds(res.data.map((m) => m.id).sort());
+        // Group by owned_by (provider)
+        const grouped = new Map<string, string[]>();
+        for (const m of res.data) {
+          const provider = m.owned_by || "unknown";
+          const list = grouped.get(provider) || [];
+          list.push(m.id);
+          grouped.set(provider, list);
+        }
+        // Sort models within each provider
+        for (const [key, list] of grouped) {
+          grouped.set(key, list.sort());
+        }
+        setCloudModelsByProvider(grouped);
         setModelsLoaded(true);
         setModelsError(false);
       })
@@ -278,29 +290,9 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         </div>
       )}
 
-      {/* Available Models — cloud mode */}
-      {isCloud && modelsLoaded && cloudModelIds.length > 0 && (
-        <div>
-          <h3 className="section-header">Available Models</h3>
-          <div className="glass-card-static overflow-hidden">
-            {cloudModelIds.slice(0, 20).map((modelId, i) => (
-              <div
-                key={modelId}
-                className={clsx(
-                  "flex items-center h-9 px-3",
-                  i < Math.min(cloudModelIds.length, 20) - 1 && "border-b border-border-light"
-                )}
-              >
-                <span className="text-[12px] font-mono text-text-primary truncate">{modelId}</span>
-              </div>
-            ))}
-            {cloudModelIds.length > 20 && (
-              <div className="px-3 py-2 text-center border-t border-border-light">
-                <p className="text-[10px] text-text-secondary">+{cloudModelIds.length - 20} more models</p>
-              </div>
-            )}
-          </div>
-        </div>
+      {/* Available Models — cloud mode, grouped by provider */}
+      {isCloud && modelsLoaded && cloudModelsByProvider.size > 0 && (
+        <CloudProviderModels modelsByProvider={cloudModelsByProvider} />
       )}
 
       {/* Routing Strategy — local mode only */}
@@ -747,7 +739,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
       </div>}
 
       {/* Provider Status */}
-      <ProviderStatus providers={stats.providers} />
+      {!isCloud && <ProviderStatus providers={stats.providers} />}
 
       {/* Models error message */}
       {modelsError && (
@@ -791,6 +783,73 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
           </button>
         </div>
       </div>}
+    </div>
+  );
+}
+
+function CloudProviderModels({ modelsByProvider }: { modelsByProvider: Map<string, string[]> }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggle = (name: string) => setExpanded((prev) => ({ ...prev, [name]: !prev[name] }));
+  const providers = [...modelsByProvider.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const totalModels = providers.reduce((sum, [, models]) => sum + models.length, 0);
+
+  return (
+    <div>
+      <h3 className="section-header">Available Models ({totalModels})</h3>
+      <div className="glass-card-static overflow-hidden">
+        {providers.map(([provider, models], i) => {
+          const isExpanded = expanded[provider] ?? false;
+          const color = PROVIDER_COLORS[provider] ?? "#666666";
+
+          return (
+            <div
+              key={provider}
+              className={clsx(i < providers.length - 1 && "border-b border-border-light")}
+            >
+              <div
+                className="flex items-center justify-between py-3 px-4 cursor-pointer hover:bg-hover-overlay transition-colors"
+                onClick={() => toggle(provider)}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <ChevronRight
+                    size={13}
+                    strokeWidth={2}
+                    className={clsx(
+                      "text-text-tertiary shrink-0 transition-transform duration-200",
+                      isExpanded && "rotate-90"
+                    )}
+                  />
+                  <div
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="text-[13px] font-medium text-text-primary">{provider}</span>
+                  <span className="text-[10px] text-text-tertiary bg-bg-input px-1.5 py-0.5 rounded-md">
+                    {models.length} models
+                  </span>
+                </div>
+              </div>
+
+              <div
+                className="grid transition-[grid-template-rows] duration-200 ease-out"
+                style={{ gridTemplateRows: isExpanded ? "1fr" : "0fr" }}
+              >
+                <div className="overflow-hidden min-h-0">
+                  <div className="px-4 pb-2.5">
+                    {models.map((modelId) => (
+                      <div key={modelId} className="flex items-center py-1.5 px-2">
+                        <span className="text-[11px] font-mono text-text-secondary truncate">
+                          {modelId}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

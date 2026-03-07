@@ -14,6 +14,9 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [toggles, setToggles] = useState<Map<string, boolean>>(new Map());
 
+  // Stable key: only re-fetch when the provider list actually changes
+  const providerKey = providers.map((p) => p.name).sort().join(",");
+
   useEffect(() => {
     api.getModels()
       .then((res) => {
@@ -31,7 +34,7 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
         setToggles(map);
       })
       .catch(() => {});
-  }, [providers.length]);
+  }, [providerKey]);
 
   const toggle = (name: string) =>
     setExpanded((prev) => ({ ...prev, [name]: !prev[name] }));

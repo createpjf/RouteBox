@@ -1,7 +1,7 @@
-import { LayoutDashboard, Route, ScrollText } from "lucide-react";
+import { LayoutDashboard, Route, ScrollText, User } from "lucide-react";
 import clsx from "clsx";
 
-export type TabId = "home" | "routing" | "activity";
+export type TabId = "home" | "routing" | "activity" | "account";
 
 interface TabBarProps {
   activeTab: TabId;
@@ -12,6 +12,7 @@ const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "home",     label: "Home",     icon: LayoutDashboard },
   { id: "routing",  label: "Routing",  icon: Route },
   { id: "activity", label: "Activity", icon: ScrollText },
+  { id: "account",  label: "Account",  icon: User },
 ];
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {

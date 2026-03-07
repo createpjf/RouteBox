@@ -6,32 +6,35 @@
 <title>RouteBox Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root {
-  --bg: #E8EDF5;
-  --surface: #EEF2F7;
-  --surface-inset: #E0E5EE;
-  --text: #2D3748;
-  --text-muted: #718096;
-  --text-dim: #A0AEC0;
-  --border: rgba(163,177,198,0.4);
-  --shadow-raised: 6px 6px 16px rgba(163,177,198,0.6), -6px -6px 16px rgba(255,255,255,0.85);
-  --shadow-inset: inset 4px 4px 10px rgba(163,177,198,0.5), inset -4px -4px 10px rgba(255,255,255,0.7);
-  --shadow-sm: 3px 3px 8px rgba(163,177,198,0.5), -3px -3px 8px rgba(255,255,255,0.75);
-  --purple: #6C63FF;
-  --cyan: #38BDF8;
+  --bg: #F3F4F6;
+  --surface: #FFFFFF;
+  --surface-inset: #F3F4F6;
+  --text: #111827;
+  --text-muted: #6B7280;
+  --text-dim: #9CA3AF;
+  --border: #E5E7EB;
+  --shadow-raised: 0 1px 3px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.06);
+  --shadow-inset: inset 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --purple: #ff4d00;
+  --cyan: #ff6a2a;
   --green: #34D399;
   --red: #F87171;
   --amber: #FBBF24;
+  --color-ember: #ff4d00;
+  --color-ember-soft: rgba(255, 77, 0, 0.08);
+  --color-ember-border: rgba(255, 77, 0, 0.18);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: 'Inter', sans-serif; font-size: 14px; background: var(--bg); color: var(--text); }
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(163,177,198,0.5); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
 
 /* Layout */
 .app { display: flex; height: 100vh; overflow: hidden; }
@@ -54,9 +57,8 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; font-size: 14px; ba
 }
 .logo-icon {
   width: 32px; height: 32px; border-radius: 8px;
-  background: linear-gradient(135deg, #6C63FF, #38BDF8);
   display: flex; align-items: center; justify-content: center;
-  color: white; font-weight: 700; font-size: 14px; flex-shrink: 0;
+  flex-shrink: 0; overflow: hidden;
 }
 .logo-text { font-weight: 700; font-size: 13px; color: var(--text); line-height: 1.2; }
 .logo-sub { font-size: 10px; color: var(--text-dim); }
@@ -78,12 +80,11 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; font-size: 14px; ba
   transition: all 0.15s; border-left: 3px solid transparent;
   margin-bottom: 2px;
 }
-.nav-item:hover { color: var(--purple); background: rgba(108,99,255,0.07); }
+.nav-item:hover { color: var(--color-ember); background: var(--color-ember-soft); }
 .nav-item.active {
-  color: var(--purple);
-  background: linear-gradient(135deg, #6C63FF22, #6C63FF11);
-  border-left: 3px solid var(--purple);
-  box-shadow: var(--shadow-inset);
+  color: var(--color-ember);
+  background: var(--color-ember-soft);
+  border-left: 3px solid var(--color-ember);
 }
 .nav-icon { font-size: 15px; width: 18px; text-align: center; flex-shrink: 0; }
 .sidebar-bottom {
@@ -101,7 +102,7 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; font-size: 14px; ba
   display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--border);
 }
-.topbar-title { font-size: 18px; font-weight: 700; color: var(--text); }
+.topbar-title { font-size: 18px; font-weight: 700; color: var(--text); font-family: 'Source Serif 4', Georgia, serif; }
 .content { flex: 1; overflow-y: auto; padding: 24px; }
 
 /* Cards */
@@ -142,26 +143,26 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; font-size: 14px; ba
 }
 .btn-sm:hover { color: var(--text); }
 .btn-sm.primary {
-  background: linear-gradient(135deg, #6C63FF, #8B83FF);
+  background: #ff4d00;
   color: white; box-shadow: var(--shadow-sm);
 }
-.btn-sm.primary:hover { opacity: 0.9; }
+.btn-sm.primary:hover { filter: brightness(1.1); }
 .btn-sm.danger {
-  background: linear-gradient(135deg, #F87171, #fc9c9c);
+  background: #F87171;
   color: white;
 }
-.btn-sm.danger:hover { opacity: 0.9; }
+.btn-sm.danger:hover { filter: brightness(1.1); }
 .btn-sm.success {
-  background: linear-gradient(135deg, #34D399, #6ee7b7);
+  background: #34D399;
   color: white;
 }
 .btn-lg {
-  padding: 10px 24px; border-radius: 10px; border: none; cursor: pointer;
+  padding: 10px 24px; border-radius: 8px; border: none; cursor: pointer;
   font-size: 14px; font-weight: 600; font-family: inherit;
-  background: linear-gradient(135deg, #6C63FF, #8B83FF);
+  background: #ff4d00;
   color: white; box-shadow: var(--shadow-sm); transition: all 0.15s;
 }
-.btn-lg:hover { opacity: 0.9; }
+.btn-lg:hover { filter: brightness(1.1); }
 
 /* Inputs */
 .input-sm {
@@ -171,7 +172,7 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; font-size: 14px; ba
   color: var(--text); width: 100%; outline: none;
   transition: box-shadow 0.15s;
 }
-.input-sm:focus { box-shadow: var(--shadow-inset), 0 0 0 2px rgba(108,99,255,0.2); }
+.input-sm:focus { box-shadow: var(--shadow-inset), 0 0 0 2px rgba(255,77,0,0.15); }
 select.input-sm option { background: white; color: #2D3748; }
 textarea.input-sm { resize: vertical; min-height: 80px; }
 label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px; }
@@ -180,7 +181,7 @@ label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: bl
 /* Toggle */
 .toggle {
   width: 40px; height: 22px; border-radius: 11px; cursor: pointer;
-  background: rgba(163,177,198,0.4); box-shadow: var(--shadow-inset);
+  background: #D1D5DB; box-shadow: var(--shadow-inset);
   position: relative; flex-shrink: 0; transition: background 0.2s;
 }
 .toggle::after {
@@ -189,7 +190,7 @@ label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: bl
   background: white; box-shadow: 1px 1px 4px rgba(0,0,0,0.15);
   transition: left 0.2s;
 }
-.toggle.on { background: linear-gradient(135deg, var(--purple), var(--cyan)); }
+.toggle.on { background: #ff4d00; }
 .toggle.on::after { left: 21px; }
 
 /* Badges */
@@ -216,7 +217,7 @@ td {
   padding: 10px 12px; font-size: 13px; color: var(--text);
   border-bottom: 1px solid var(--border); vertical-align: middle;
 }
-tr:hover td { background: rgba(108,99,255,0.04); }
+tr:hover td { background: var(--color-ember-soft); }
 .table-wrap { overflow-x: auto; border-radius: 12px; }
 
 /* Typography helpers */
@@ -234,7 +235,7 @@ tr:hover td { background: rgba(108,99,255,0.04); }
 /* Stat card */
 .stat-card { display: flex; flex-direction: column; gap: 6px; }
 .stat-label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
-.stat-value { font-size: 32px; font-weight: 700; color: var(--purple); line-height: 1; }
+.stat-value { font-size: 32px; font-weight: 700; color: var(--color-ember); line-height: 1; }
 .stat-sub { font-size: 12px; color: var(--text-muted); }
 
 /* Section header */
@@ -242,7 +243,7 @@ tr:hover td { background: rgba(108,99,255,0.04); }
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 16px;
 }
-.section-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.section-title { font-size: 16px; font-weight: 700; color: var(--text); font-family: 'Source Serif 4', Georgia, serif; }
 
 /* Pagination */
 .pagination { display: flex; align-items: center; gap: 8px; padding-top: 12px; }
@@ -255,14 +256,14 @@ tr:hover td { background: rgba(108,99,255,0.04); }
 /* Loading overlay */
 .loading-overlay {
   position: fixed; inset: 0; z-index: 1000;
-  background: rgba(232,237,245,0.85);
+  background: rgba(243,244,246,0.85);
   backdrop-filter: blur(6px);
   display: flex; align-items: center; justify-content: center;
 }
 .spinner {
   width: 40px; height: 40px; border-radius: 50%;
-  border: 3px solid rgba(163,177,198,0.3);
-  border-top-color: var(--purple);
+  border: 3px solid rgba(0,0,0,0.08);
+  border-top-color: var(--color-ember);
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -282,10 +283,9 @@ tr:hover td { background: rgba(108,99,255,0.04); }
 }
 .login-icon {
   width: 52px; height: 52px; border-radius: 14px;
-  background: linear-gradient(135deg, #6C63FF, #38BDF8);
   display: flex; align-items: center; justify-content: center;
-  color: white; font-weight: 700; font-size: 22px;
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 .login-title { font-size: 20px; font-weight: 700; color: var(--text); }
 .login-sub { font-size: 13px; color: var(--text-dim); }
@@ -324,8 +324,8 @@ tr:hover td { background: rgba(108,99,255,0.04); }
   cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
   transition: all 0.15s;
 }
-.subtab:hover { color: var(--purple); }
-.subtab.active { color: var(--purple); border-bottom-color: var(--purple); }
+.subtab:hover { color: var(--color-ember); }
+.subtab.active { color: var(--color-ember); border-bottom-color: var(--color-ember); }
 
 /* Chart container */
 .chart-wrap { position: relative; height: 200px; }
@@ -345,7 +345,7 @@ tr:hover td { background: rgba(108,99,255,0.04); }
 .ud-info-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; margin-bottom: 16px; }
 .ud-stat { background: var(--surface-inset); border-radius: 12px; box-shadow: var(--shadow-inset); padding: 12px 14px; }
 .ud-stat-label { font-size: 11px; color: var(--text-dim); font-weight: 500; }
-.ud-stat-value { font-size: 18px; font-weight: 700; color: var(--purple); margin-top: 2px; }
+.ud-stat-value { font-size: 18px; font-weight: 700; color: var(--color-ember); margin-top: 2px; }
 
 /* Error text */
 .error-text { color: var(--red); font-size: 12px; margin-top: 6px; }
@@ -368,7 +368,7 @@ tr:hover td { background: rgba(108,99,255,0.04); }
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo">
-      <div class="login-icon">R</div>
+      <div class="login-icon"><img src="/static/favicon-32.png" width="40" height="40" style="border-radius:10px" alt="RouteBox"/></div>
       <div style="text-align:center">
         <div class="login-title">RouteBox Admin</div>
         <div class="login-sub">Sign in to your admin panel</div>
@@ -396,7 +396,7 @@ tr:hover td { background: rgba(108,99,255,0.04); }
   <nav class="sidebar">
     <div class="sidebar-logo">
       <div class="sidebar-logo-inner">
-        <div class="logo-icon">R</div>
+        <div class="logo-icon"><img src="/static/favicon-32.png" width="28" height="28" style="border-radius:6px" alt="RouteBox"/></div>
         <div>
           <div class="logo-text">RouteBox Admin</div>
           <div class="logo-sub">Control Panel</div>
@@ -408,65 +408,68 @@ tr:hover td { background: rgba(108,99,255,0.04); }
     <div class="nav-group">
       <div class="nav-group-label">Overview</div>
       <div class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
-        <span class="nav-icon">📊</span> Dashboard
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Dashboard
       </div>
     </div>
 
     <div class="nav-group">
       <div class="nav-group-label">Users</div>
       <div class="nav-item" data-tab="users" onclick="switchTab('users')">
-        <span class="nav-icon">👥</span> Users
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> Users
       </div>
       <div class="nav-item" data-tab="transactions" onclick="switchTab('transactions')">
-        <span class="nav-icon">💳</span> Transactions
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span> Transactions
       </div>
     </div>
 
     <div class="nav-group">
       <div class="nav-group-label">Models</div>
       <div class="nav-item" data-tab="models" onclick="switchTab('models')">
-        <span class="nav-icon">📈</span> Usage
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span> Usage
       </div>
       <div class="nav-item" data-tab="registry" onclick="switchTab('registry')">
-        <span class="nav-icon">🗂️</span> Registry
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span> Registry
       </div>
       <div class="nav-item" data-tab="providers-manage" onclick="switchTab('providers-manage')">
-        <span class="nav-icon">⚙️</span> Providers &amp; Models
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Providers &amp; Models
       </div>
     </div>
 
     <div class="nav-group">
       <div class="nav-group-label">Infrastructure</div>
       <div class="nav-item" data-tab="providers" onclick="switchTab('providers')">
-        <span class="nav-icon">🔌</span> Providers
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Providers
       </div>
       <div class="nav-item" data-tab="keys" onclick="switchTab('keys')">
-        <span class="nav-icon">🔑</span> Keys
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></span> Keys
       </div>
       <div class="nav-item" data-tab="access" onclick="switchTab('access')">
-        <span class="nav-icon">🛡️</span> Access
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span> Access
       </div>
     </div>
 
     <div class="nav-group">
       <div class="nav-group-label">Billing</div>
       <div class="nav-item" data-tab="packages" onclick="switchTab('packages')">
-        <span class="nav-icon">📦</span> Packages
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span> Packages
       </div>
       <div class="nav-item" data-tab="referrals" onclick="switchTab('referrals')">
-        <span class="nav-icon">🤝</span> Referrals
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></span> Referrals
       </div>
     </div>
 
     <div class="nav-group">
       <div class="nav-group-label">System</div>
       <div class="nav-item" data-tab="announcements" onclick="switchTab('announcements')">
-        <span class="nav-icon">📢</span> Announcements
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span> Announcements
+      </div>
+      <div class="nav-item" data-tab="quota" onclick="switchTab('quota')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></span> Quota Usage
       </div>
     </div>
 
     <div class="sidebar-bottom">
-      <button class="btn-sm" onclick="loadDashboard()">🔄 Refresh</button>
+      <button class="btn-sm" onclick="loadDashboard()" style="display:flex;align-items:center;gap:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
       <button class="btn-sm danger" onclick="logout()">Logout</button>
     </div>
   </nav>
@@ -482,7 +485,8 @@ tr:hover td { background: rgba(108,99,255,0.04); }
       <!-- DASHBOARD TAB -->
       <div id="tab-dashboard" class="tab-panel">
         <div id="stat-cards" class="grid grid-stat mb-4"></div>
-        <div class="grid grid-2 mb-4">
+        <div id="plan-stat-cards" class="grid grid-stat mb-4"></div>
+        <div class="grid grid-3 mb-4">
           <div class="card">
             <div class="section-header"><div class="section-title">Usage Trend (30d)</div></div>
             <div class="chart-wrap"><canvas id="usage-chart"></canvas></div>
@@ -490,6 +494,10 @@ tr:hover td { background: rgba(108,99,255,0.04); }
           <div class="card">
             <div class="section-header"><div class="section-title">Revenue Trend (30d)</div></div>
             <div class="chart-wrap"><canvas id="revenue-chart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="section-header"><div class="section-title">Registrations (30d)</div></div>
+            <div class="chart-wrap"><canvas id="reg-chart"></canvas></div>
           </div>
         </div>
       </div>
@@ -555,6 +563,18 @@ tr:hover td { background: rgba(108,99,255,0.04); }
             </div>
           </div>
         </div>
+        <div class="card">
+          <div class="section-header"><div class="section-title">Revenue Margin Analysis</div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Model</th><th>Provider</th><th>User In $/M</th><th>User Out $/M</th>
+                <th>Cost In $/M</th><th>Cost Out $/M</th><th>Margin In %</th><th>Margin Out %</th><th>Profit Bonus</th>
+              </tr></thead>
+              <tbody id="margin-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <!-- REGISTRY TAB -->
@@ -562,7 +582,10 @@ tr:hover td { background: rgba(108,99,255,0.04); }
         <div class="card">
           <div class="section-header">
             <div class="section-title">Model Registry</div>
-            <button class="btn-sm primary" onclick="showModelForm()">+ Add Model</button>
+            <div class="flex gap-2">
+              <button class="btn-sm" onclick="reloadRegistry()">Reload Registry</button>
+              <button class="btn-sm primary" onclick="showModelForm()">+ Add Model</button>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
@@ -660,6 +683,10 @@ tr:hover td { background: rgba(108,99,255,0.04); }
 
       <!-- REFERRALS TAB -->
       <div id="tab-referrals" class="tab-panel hidden">
+        <div class="section-header" style="margin-bottom:16px">
+          <div class="section-title">Referrals</div>
+          <button class="btn-sm primary" onclick="processReferralEarnings()">Process Monthly Earnings</button>
+        </div>
         <div class="grid grid-stat mb-4" id="referral-stat-cards"></div>
         <div class="grid grid-2 mb-4">
           <div class="card">
@@ -683,6 +710,27 @@ tr:hover td { background: rgba(108,99,255,0.04); }
         </div>
       </div>
 
+      <!-- QUOTA USAGE TAB -->
+      <div id="tab-quota" class="tab-panel hidden">
+        <div class="card">
+          <div class="section-header">
+            <div class="section-title">Starter Quota Usage</div>
+            <div class="flex gap-2 items-center">
+              <input type="date" id="quota-date" class="input-sm" style="max-width:180px"/>
+              <button class="btn-sm primary" onclick="loadQuotaUsage()">Load</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>User</th><th>Model</th><th>Used Count</th><th>Date</th>
+              </tr></thead>
+              <tbody id="quota-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </div><!-- end .content -->
   </div><!-- end .main -->
 </div><!-- end #app-shell -->
@@ -697,9 +745,11 @@ tr:hover td { background: rgba(108,99,255,0.04); }
       <button class="modal-close" onclick="closeModal('adjust-modal')">✕</button>
     </div>
     <div class="modal-body">
+      <input type="hidden" id="adj-user-id"/>
       <div class="form-group">
-        <label>User Email or UID</label>
-        <input type="text" id="adj-user" class="input-sm" placeholder="user@example.com"/>
+        <label>User</label>
+        <input type="text" id="adj-user" class="input-sm" placeholder="user@example.com" readonly style="background:var(--surface-inset);color:var(--text-muted)"/>
+        <div class="text-xs text-dim" style="margin-top:4px">Use the Adjust button from a user row or user detail to select a user.</div>
       </div>
       <div class="form-group">
         <label>Amount (USD, negative to deduct)</label>
@@ -769,7 +819,6 @@ tr:hover td { background: rgba(108,99,255,0.04); }
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn-sm danger" onclick="deleteUser()">Delete User</button>
       <button class="btn-sm primary" onclick="showAdjustForUser()">Adjust Balance</button>
       <button class="btn-sm" onclick="closeModal('user-detail-modal')">Close</button>
     </div>
@@ -846,6 +895,53 @@ tr:hover td { background: rgba(108,99,255,0.04); }
         <label>Description</label>
         <textarea id="mf-description" class="input-sm"></textarea>
       </div>
+      <div class="divider"></div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px">Scoring (0 - 1)</div>
+      <div class="grid grid-4">
+        <div class="form-group">
+          <label>Quality</label>
+          <input type="number" id="mf-quality" class="input-sm" step="0.05" min="0" max="1" placeholder="0.8"/>
+        </div>
+        <div class="form-group">
+          <label>Speed</label>
+          <input type="number" id="mf-speed" class="input-sm" step="0.05" min="0" max="1" placeholder="0.7"/>
+        </div>
+        <div class="form-group">
+          <label>Cost Efficiency</label>
+          <input type="number" id="mf-costEfficiency" class="input-sm" step="0.05" min="0" max="1" placeholder="0.6"/>
+        </div>
+        <div class="form-group">
+          <label>Code Strength</label>
+          <input type="number" id="mf-codeStrength" class="input-sm" step="0.05" min="0" max="1" placeholder="0.7"/>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <details id="mf-pricing-section" style="margin-bottom:14px">
+        <summary style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer;margin-bottom:12px">Pricing (per million tokens)</summary>
+        <div class="grid grid-2" style="margin-top:8px">
+          <div class="form-group">
+            <label>User Price Input ($/M)</label>
+            <input type="number" id="mf-userPriceInput" class="input-sm" step="0.0001" placeholder=""/>
+          </div>
+          <div class="form-group">
+            <label>User Price Output ($/M)</label>
+            <input type="number" id="mf-userPriceOutput" class="input-sm" step="0.0001" placeholder=""/>
+          </div>
+          <div class="form-group">
+            <label>Purchase Price Input ($/M)</label>
+            <input type="number" id="mf-purchasePriceInput" class="input-sm" step="0.0001" placeholder=""/>
+          </div>
+          <div class="form-group">
+            <label>Purchase Price Output ($/M)</label>
+            <input type="number" id="mf-purchasePriceOutput" class="input-sm" step="0.0001" placeholder=""/>
+          </div>
+          <div class="form-group">
+            <label>Profit Bonus</label>
+            <input type="number" id="mf-profitBonus" class="input-sm" step="0.01" placeholder="0"/>
+          </div>
+        </div>
+        <div class="text-xs text-dim">These override legacy cost/markup fields. Leave empty to use legacy pricing.</div>
+      </details>
     </div>
     <div class="modal-footer">
       <button class="btn-sm" onclick="closeModal('model-form-modal')">Cancel</button>
@@ -874,6 +970,11 @@ tr:hover td { background: rgba(108,99,255,0.04); }
       <div class="form-group">
         <label>API Key</label>
         <input type="text" id="kf-key" class="input-sm" placeholder="sk-..."/>
+        <div class="text-xs text-dim" id="kf-key-hint" style="margin-top:4px;display:none">Leave blank to keep current key</div>
+      </div>
+      <div class="form-group">
+        <label>Base URL (optional)</label>
+        <input type="text" id="kf-baseUrl" class="input-sm" placeholder="https://api.openai.com/v1"/>
       </div>
       <div class="form-group">
         <label>Weight (1-100)</label>
@@ -927,36 +1028,37 @@ tr:hover td { background: rgba(108,99,255,0.04); }
       <button class="modal-close" onclick="closeModal('pkg-form-modal')">✕</button>
     </div>
     <div class="modal-body">
-      <input type="hidden" id="pf-id"/>
-      <div class="form-group">
-        <label>Name</label>
-        <input type="text" id="pf-name" class="input-sm" placeholder="Starter"/>
+      <div class="form-group" id="pf-id-group">
+        <label>Package ID (unique, e.g. "starter-500")</label>
+        <input type="text" id="pf-id" class="input-sm" placeholder="starter-500"/>
       </div>
       <div class="form-group">
-        <label>Credits ($)</label>
-        <input type="number" id="pf-credits" class="input-sm" step="0.01" placeholder="10.00"/>
+        <label>Label</label>
+        <input type="text" id="pf-label" class="input-sm" placeholder="Starter Pack"/>
       </div>
       <div class="form-group">
-        <label>Price ($)</label>
-        <input type="number" id="pf-price" class="input-sm" step="0.01" placeholder="10.00"/>
+        <label>Credits (cents)</label>
+        <input type="number" id="pf-creditsCents" class="input-sm" step="1" placeholder="500"/>
       </div>
       <div class="form-group">
-        <label>Bonus Credits ($)</label>
-        <input type="number" id="pf-bonus" class="input-sm" step="0.01" placeholder="0.00"/>
+        <label>Price (cents)</label>
+        <input type="number" id="pf-amountCents" class="input-sm" step="1" placeholder="500"/>
       </div>
       <div class="form-group">
-        <label>Stripe Price ID</label>
-        <input type="text" id="pf-stripe" class="input-sm" placeholder="price_..."/>
+        <label>Bonus (text label, e.g. "+10%")</label>
+        <input type="text" id="pf-bonus" class="input-sm" placeholder=""/>
       </div>
-      <div class="form-group" style="display:flex;gap:16px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="toggle" id="pf-popular-toggle" onclick="this.classList.toggle('on')"></div>
-          <label style="margin:0">Popular</label>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="toggle on" id="pf-active-toggle" onclick="this.classList.toggle('on')"></div>
-          <label style="margin:0">Active</label>
-        </div>
+      <div class="form-group">
+        <label>Polar Product ID</label>
+        <input type="text" id="pf-polarProductId" class="input-sm" placeholder=""/>
+      </div>
+      <div class="form-group">
+        <label>Sort Order</label>
+        <input type="number" id="pf-sortOrder" class="input-sm" step="1" placeholder="0" value="0"/>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <div class="toggle on" id="pf-active-toggle" onclick="this.classList.toggle('on')"></div>
+        <label style="margin:0">Active</label>
       </div>
     </div>
     <div class="modal-footer">
@@ -988,13 +1090,16 @@ tr:hover td { background: rgba(108,99,255,0.04); }
         <select id="anf-type" class="input-sm">
           <option value="info">Info</option>
           <option value="warning">Warning</option>
-          <option value="success">Success</option>
-          <option value="danger">Danger</option>
+          <option value="error">Error</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Expires At (optional)</label>
-        <input type="datetime-local" id="anf-expires" class="input-sm"/>
+        <label>Starts At (optional)</label>
+        <input type="datetime-local" id="anf-starts" class="input-sm"/>
+      </div>
+      <div class="form-group">
+        <label>Ends At (optional)</label>
+        <input type="datetime-local" id="anf-ends" class="input-sm"/>
       </div>
       <div class="form-group" style="display:flex;align-items:center;gap:8px">
         <div class="toggle on" id="anf-active-toggle" onclick="this.classList.toggle('on')"></div>
@@ -1082,12 +1187,12 @@ function decodeJwtEmail(t) {
 
 function renderPanelError(containerId, msg) {
   const el = document.getElementById(containerId);
-  if (el) el.innerHTML = `<div style="padding:16px;color:var(--red);font-size:13px">⚠ ${msg}</div>`;
+  if (el) el.innerHTML = `<div style="padding:16px;color:var(--red);font-size:13px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px;margin-right:4px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>${msg}</div>`;
 }
 
 function renderTableError(tbodyId, cols, msg) {
   const el = document.getElementById(tbodyId);
-  if (el) el.innerHTML = `<tr><td colspan="${cols}" style="padding:16px;text-align:center;color:var(--red)">⚠ ${msg}</td></tr>`;
+  if (el) el.innerHTML = `<tr><td colspan="${cols}" style="padding:16px;text-align:center;color:var(--red)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px;margin-right:4px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>${msg}</td></tr>`;
 }
 
 // ============================================================
@@ -1186,15 +1291,24 @@ function switchTab(name) {
     access: 'Access Control',
     packages: 'Credit Packages',
     announcements: 'Announcements',
-    referrals: 'Referrals'
+    referrals: 'Referrals',
+    quota: 'Quota Usage'
   };
   document.getElementById('topbar-title').textContent = tabTitles[name] || name;
 
-  const allTabs = ['dashboard','users','transactions','models','registry','providers-manage','providers','keys','access','packages','announcements','referrals'];
+  const allTabs = ['dashboard','users','transactions','models','registry','providers-manage','providers','keys','access','packages','announcements','referrals','quota'];
   allTabs.forEach(t => {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.classList.toggle('hidden', t !== name);
   });
+  // Initialize quota date picker
+  if (name === 'quota') {
+    const dateInput = document.getElementById('quota-date');
+    if (dateInput && !dateInput.value) {
+      dateInput.value = new Date().toISOString().slice(0, 10);
+      loadQuotaUsage();
+    }
+  }
 }
 
 // ============================================================
@@ -1205,7 +1319,7 @@ async function loadDashboard() {
   const safe = p => p.catch(err => { if (err?.message === 'Unauthorized') throw err; return null; });
   try {
     const s = pageState.users, t = pageState.txn;
-    const [stats, usersRes, txnRes, models, providers, usageTrend, revTrend, keys, access, refStats, topRef, refClaims, registry, packagesRes, announcementsRes] = await Promise.all([
+    const [stats, usersRes, txnRes, models, providers, usageTrend, revTrend, regTrend, planStats, keys, access, refStats, topRef, refClaims, registry, packagesRes, announcementsRes, marginRes] = await Promise.all([
       safe(api('/admin/stats')),
       safe(api(`/admin/users?limit=${s.limit}&offset=${s.offset}&search=${encodeURIComponent(s.search)}`)),
       safe(api(`/admin/transactions?limit=${t.limit}&offset=${t.offset}`)),
@@ -1213,6 +1327,8 @@ async function loadDashboard() {
       safe(api('/admin/usage/providers?days=7')),
       safe(api('/admin/usage/trend?days=30')),
       safe(api('/admin/revenue/trend?days=30')),
+      safe(api('/admin/registrations/trend?days=30')),
+      safe(api('/admin/plans/stats')),
       safe(api('/admin/provider-keys')),
       safe(api('/admin/provider-access')),
       safe(api('/admin/referrals/stats')),
@@ -1221,6 +1337,7 @@ async function loadDashboard() {
       safe(api('/admin/models/registry')),
       safe(api('/admin/packages')),
       safe(api('/admin/announcements')),
+      safe(api('/admin/revenue/margin')),
     ]);
     if (usersRes) { s.total = usersRes.total; }
     if (txnRes) { t.total = txnRes.total; }
@@ -1231,6 +1348,8 @@ async function loadDashboard() {
     if (providers) renderProviders(providers.providers); else renderTableError('providers-tbody', 4, 'Failed to load provider usage');
     if (usageTrend) renderUsageChart(usageTrend.trend);
     if (revTrend) renderRevenueChart(revTrend.trend);
+    if (regTrend) renderRegChart(regTrend.trend);
+    if (planStats) renderPlanStats(planStats.plans);
     if (keys) renderKeys(keys.keys); else renderTableError('keys-tbody', 7, 'Failed to load keys');
     if (access) renderAccess(access.providers); else renderTableError('access-tbody', 4, 'Failed to load access');
     if (refStats) renderReferralStats(refStats);
@@ -1239,6 +1358,7 @@ async function loadDashboard() {
     if (registry) renderRegistry(registry.models); else renderTableError('registry-tbody', 11, 'Failed to load registry');
     if (packagesRes) renderPackages(packagesRes.packages); else renderTableError('packages-tbody', 7, 'Failed to load packages');
     if (announcementsRes) renderAnnouncements(announcementsRes.announcements); else renderTableError('announcements-tbody', 7, 'Failed to load announcements');
+    if (marginRes) renderMargin(marginRes.models); else renderTableError('margin-tbody', 9, 'Failed to load margin data');
     // Providers manage panel
     _providersManageData = { providers: access?.providers || [], models: registry?.models || [], keys: keys?.keys || [] };
     renderProvidersManage();
@@ -1284,12 +1404,12 @@ function renderUsers(users) {
     <tr>
       <td>
         <div class="font-medium">${esc(u.email)}</div>
-        <div class="text-xs text-dim">${u.plan || 'free'}</div>
+        <div class="text-xs text-dim">${u.plan || 'starter'}</div>
       </td>
       <td>
-        <span class="font-mono text-xs" style="color:var(--purple);background:rgba(108,99,255,0.1);padding:2px 6px;border-radius:4px">${esc(u.uid||'-')}</span>
+        <span class="font-mono text-xs" style="color:var(--color-ember);background:var(--color-ember-soft);padding:2px 6px;border-radius:4px">${esc(u.uid||'-')}</span>
       </td>
-      <td><span class="badge badge-${u.plan === 'pro' ? 'pro' : 'free'}">${esc(u.plan||'free')}</span></td>
+      <td><span class="badge badge-${u.plan === 'max' ? 'info' : u.plan === 'pro' ? 'pro' : 'free'}">${esc(u.plan||'starter')}</span></td>
       <td class="font-medium">${fmtCents(u.balanceCents)}</td>
       <td>${fmtCents(u.totalDepositedCents)}</td>
       <td>${fmtCents(u.totalUsedCents)}</td>
@@ -1414,8 +1534,8 @@ function renderProviders(providers) {
 // ============================================================
 // CHARTS (light theme)
 // ============================================================
-Chart.defaults.color = '#718096';
-Chart.defaults.borderColor = 'rgba(163,177,198,0.3)';
+Chart.defaults.color = '#6B7280';
+Chart.defaults.borderColor = '#E5E7EB';
 
 function renderUsageChart(trend) {
   const ctx = document.getElementById('usage-chart');
@@ -1430,8 +1550,8 @@ function renderUsageChart(trend) {
       datasets: [{
         label: 'Requests',
         data,
-        borderColor: '#6C63FF',
-        backgroundColor: 'rgba(108,99,255,0.08)',
+        borderColor: '#ff4d00',
+        backgroundColor: 'rgba(255,77,0,0.08)',
         fill: true,
         tension: 0.4,
         pointRadius: 2,
@@ -1462,8 +1582,8 @@ function renderRevenueChart(trend) {
       datasets: [{
         label: 'Revenue ($)',
         data,
-        backgroundColor: 'rgba(56,189,248,0.5)',
-        borderColor: '#38BDF8',
+        backgroundColor: 'rgba(255,106,42,0.4)',
+        borderColor: '#ff6a2a',
         borderWidth: 1,
         borderRadius: 4,
       }]
@@ -1477,6 +1597,97 @@ function renderRevenueChart(trend) {
       }
     }
   });
+}
+
+function renderRegChart(trend) {
+  const ctx = document.getElementById('reg-chart');
+  if (!ctx) return;
+  if (charts.reg) charts.reg.destroy();
+  const labels = (trend||[]).map(d => d.date);
+  const data = (trend||[]).map(d => d.registrations || d.count || 0);
+  charts.reg = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Registrations',
+        data,
+        borderColor: '#34D399',
+        backgroundColor: 'rgba(52,211,153,0.08)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 2,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderPlanStats(plans) {
+  if (!plans || plans.length === 0) {
+    document.getElementById('plan-stat-cards').innerHTML = '';
+    return;
+  }
+  document.getElementById('plan-stat-cards').innerHTML = plans.map(p => `
+    <div class="card stat-card">
+      <div class="stat-label">${esc((p.plan||'starter').charAt(0).toUpperCase()+(p.plan||'starter').slice(1))} Users</div>
+      <div class="stat-value">${fmtNum(p.user_count)}</div>
+      <div class="stat-sub">Deposited: ${fmtCents(p.total_deposited_cents)} · Used: ${fmtCents(p.total_api_spend_cents)}</div>
+    </div>
+  `).join('');
+}
+
+function renderMargin(models) {
+  if (!models || models.length === 0) {
+    document.getElementById('margin-tbody').innerHTML = '<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--text-dim)">No margin data</td></tr>';
+    return;
+  }
+  document.getElementById('margin-tbody').innerHTML = models.map(m => {
+    const marginInClass = m.margin_input_pct != null ? (m.margin_input_pct >= 0 ? 'text-green' : 'text-red') : '';
+    const marginOutClass = m.margin_output_pct != null ? (m.margin_output_pct >= 0 ? 'text-green' : 'text-red') : '';
+    return `<tr>
+      <td class="font-mono text-xs">${esc(m.model_id)}</td>
+      <td class="text-xs text-muted">${esc(m.provider)}</td>
+      <td class="text-xs">${m.user_price_input != null ? '$'+Number(m.user_price_input).toFixed(4) : '-'}</td>
+      <td class="text-xs">${m.user_price_output != null ? '$'+Number(m.user_price_output).toFixed(4) : '-'}</td>
+      <td class="text-xs">${m.purchase_price_input != null ? '$'+Number(m.purchase_price_input).toFixed(4) : '-'}</td>
+      <td class="text-xs">${m.purchase_price_output != null ? '$'+Number(m.purchase_price_output).toFixed(4) : '-'}</td>
+      <td class="text-xs font-medium ${marginInClass}">${m.margin_input_pct != null ? m.margin_input_pct+'%' : '-'}</td>
+      <td class="text-xs font-medium ${marginOutClass}">${m.margin_output_pct != null ? m.margin_output_pct+'%' : '-'}</td>
+      <td class="text-xs">${m.profit_bonus != null ? m.profit_bonus : '-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadQuotaUsage() {
+  const dateInput = document.getElementById('quota-date');
+  const date = dateInput.value || new Date().toISOString().slice(0, 10);
+  const tbody = document.getElementById('quota-tbody');
+  tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-dim)">Loading...</td></tr>';
+  try {
+    const res = await api(`/admin/quota/usage?date=${encodeURIComponent(date)}`);
+    const usage = res.usage || [];
+    if (usage.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-dim)">No quota usage for this date</td></tr>';
+      return;
+    }
+    tbody.innerHTML = usage.map(u => `<tr>
+      <td class="text-xs">${esc(u.email)}</td>
+      <td class="font-mono text-xs">${esc(u.model_id)}</td>
+      <td class="font-medium">${fmtNum(u.used_count)}</td>
+      <td class="text-xs text-dim">${esc(u.quota_date)}</td>
+    </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--red)">Failed to load quota usage</td></tr>';
+  }
 }
 
 // ============================================================
@@ -1612,9 +1823,10 @@ function renderAnnouncements(anns) {
           <div class="ann-title">${esc(a.title)} <span class="badge badge-${a.type}">${esc(a.type)}</span></div>
           <div class="ann-msg">${esc(a.message)}</div>
           <div class="ann-meta">
-            ${a.isActive ? '<span class="badge badge-pro">Active</span>' : '<span class="badge badge-free">Inactive</span>'}
-            ${a.expiresAt ? ` · Expires ${fmtDate(a.expiresAt)}` : ''}
-            &nbsp;· Created ${fmtDate(a.createdAt)}
+            ${a.is_active ? '<span class="badge badge-pro">Active</span>' : '<span class="badge badge-free">Inactive</span>'}
+            ${a.starts_at ? ` · Starts ${fmtDate(a.starts_at)}` : ''}
+            ${a.ends_at ? ` · Ends ${fmtDate(a.ends_at)}` : ''}
+            &nbsp;· Created ${fmtDate(a.created_at)}
           </div>
         </div>
         <div class="flex gap-1">
@@ -1683,6 +1895,15 @@ function renderReferralClaims(claims) {
       <td class="text-xs text-dim">${fmtDate(c.createdAt)}</td>
     </tr>
   `).join('');
+}
+
+async function processReferralEarnings() {
+  if (!confirm('Process monthly referral earnings for the current month?')) return;
+  try {
+    const result = await apiMutate('POST', '/admin/referrals/process', {});
+    alert('Referral earnings processed: ' + JSON.stringify(result));
+    await loadDashboard();
+  } catch (err) { alert('Failed to process referral earnings'); }
 }
 
 </script>
@@ -1840,13 +2061,24 @@ async function openUserDetail(userId) {
       document.getElementById('ud-email').textContent = user.email || 'Unknown';
       if (user.uid) {
         document.getElementById('ud-uid-badge').innerHTML = `
-          <span class="font-mono text-xs" style="color:var(--purple);background:rgba(108,99,255,0.1);padding:2px 8px;border-radius:4px">${esc(user.uid)}</span>`;
+          <span class="font-mono text-xs" style="color:var(--color-ember);background:var(--color-ember-soft);padding:2px 8px;border-radius:4px">${esc(user.uid)}</span>`;
       }
       document.getElementById('ud-info-grid').innerHTML = `
         <div class="ud-stat"><div class="ud-stat-label">Balance</div><div class="ud-stat-value">${fmtCents(user.balanceCents)}</div></div>
         <div class="ud-stat"><div class="ud-stat-label">Deposited</div><div class="ud-stat-value">${fmtCents(user.totalDepositedCents)}</div></div>
         <div class="ud-stat"><div class="ud-stat-label">Used</div><div class="ud-stat-value">${fmtCents(user.totalUsedCents)}</div></div>
         <div class="ud-stat"><div class="ud-stat-label">Requests</div><div class="ud-stat-value">${fmtNum(user.requestCount)}</div></div>
+        <div class="ud-stat" style="grid-column:span 2">
+          <div class="ud-stat-label">Plan</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+            <select id="ud-plan-select" class="input-sm" style="max-width:160px">
+              <option value="starter" ${(user.plan||'starter')==='starter'?'selected':''}>Starter</option>
+              <option value="pro" ${user.plan==='pro'?'selected':''}>Pro</option>
+              <option value="max" ${user.plan==='max'?'selected':''}>Max</option>
+            </select>
+            <button class="btn-sm primary" onclick="updateUserPlan('${user.id}')">Save Plan</button>
+          </div>
+        </div>
       `;
     }
 
@@ -1919,7 +2151,7 @@ async function loadUserApiKeys(userId) {
     tbody.innerHTML = keys.map(k => `
       <tr>
         <td class="font-medium">${esc(k.name)}</td>
-        <td class="font-mono text-xs" style="color:var(--purple)">${esc(k.keyPrefix)}...</td>
+        <td class="font-mono text-xs" style="color:var(--color-ember)">${esc(k.keyPrefix)}...</td>
         <td class="text-xs" style="color:var(--text-dim)">${k.lastUsedAt ? fmtDateTime(k.lastUsedAt) : 'Never'}</td>
         <td><span class="badge ${k.isActive ? 'badge-pro' : 'badge-free'}">${k.isActive ? 'Active' : 'Revoked'}</span></td>
         <td class="text-xs" style="color:var(--text-dim)">${fmtDate(k.createdAt)}</td>
@@ -1931,6 +2163,15 @@ async function loadUserApiKeys(userId) {
   }
 }
 
+async function updateUserPlan(userId) {
+  const plan = document.getElementById('ud-plan-select').value;
+  try {
+    await apiMutate('PATCH', `/admin/users/${userId}`, { plan });
+    alert('Plan updated to ' + plan);
+    await openUserDetail(userId);
+  } catch (err) { alert('Failed to update plan'); }
+}
+
 async function revokeApiKey(keyId, userId) {
   if (!confirm('Revoke this API key?')) return;
   try {
@@ -1939,27 +2180,27 @@ async function revokeApiKey(keyId, userId) {
   } catch (err) { alert('Failed to revoke key'); }
 }
 
-async function deleteUser() {
-  if (!_currentUserId) return;
-  if (!confirm('Permanently delete this user? This cannot be undone.')) return;
-  try {
-    await apiMutate('DELETE', `/admin/users/${_currentUserId}`);
-    closeModal('user-detail-modal');
-    await loadDashboard();
-  } catch (err) { alert('Failed to delete user: ' + (err?.message || 'Unknown error')); }
-}
-
 function showAdjustForUser() {
+  // Called from user detail modal — use _currentUserId
+  const email = document.getElementById('ud-email').textContent || '';
+  document.getElementById('adj-user-id').value = _currentUserId || '';
+  document.getElementById('adj-user').value = email;
+  document.getElementById('adj-amount').value = '';
+  document.getElementById('adj-reason').value = '';
   closeModal('user-detail-modal');
   openModal('adjust-modal');
 }
 
 function showAdjustForUserId(id, email) {
+  document.getElementById('adj-user-id').value = id;
   document.getElementById('adj-user').value = email || id;
+  document.getElementById('adj-amount').value = '';
+  document.getElementById('adj-reason').value = '';
   openModal('adjust-modal');
 }
 
 function showAdjustModal() {
+  document.getElementById('adj-user-id').value = '';
   document.getElementById('adj-user').value = '';
   document.getElementById('adj-amount').value = '';
   document.getElementById('adj-reason').value = '';
@@ -1967,12 +2208,14 @@ function showAdjustModal() {
 }
 
 async function submitAdjust() {
-  const user = document.getElementById('adj-user').value.trim();
+  const userId = document.getElementById('adj-user-id').value.trim();
   const amount = parseFloat(document.getElementById('adj-amount').value);
   const reason = document.getElementById('adj-reason').value.trim();
-  if (!user || isNaN(amount)) { alert('Please fill in user and amount'); return; }
+  if (!userId) { alert('Please select a user first (use Adjust from a user row)'); return; }
+  if (isNaN(amount) || amount === 0) { alert('Please enter a non-zero amount'); return; }
+  const amountCents = Math.round(amount * 100);
   try {
-    await apiMutate('POST', '/admin/users/adjust-balance', { userIdentifier: user, amount, reason });
+    await apiMutate('POST', `/admin/users/${userId}/adjust`, { amountCents, reason: reason || 'Admin adjustment' });
     closeModal('adjust-modal');
     await loadDashboard();
   } catch (err) { alert('Failed to adjust balance'); }
@@ -1997,6 +2240,28 @@ function showModelForm(m) {
   document.getElementById('mf-freeReqs').value = m?.freeTierRequests || 0;
   document.getElementById('mf-description').value = m?.description || '';
   document.getElementById('mf-vision-toggle').classList.toggle('on', !!(m?.supportsVision));
+  // Scoring fields
+  document.getElementById('mf-quality').value = m?.quality ?? '';
+  document.getElementById('mf-speed').value = m?.speed ?? '';
+  document.getElementById('mf-costEfficiency').value = m?.costEfficiency ?? '';
+  document.getElementById('mf-codeStrength').value = m?.codeStrength ?? '';
+  // Pricing fields — load from pricing endpoint if editing
+  document.getElementById('mf-userPriceInput').value = '';
+  document.getElementById('mf-userPriceOutput').value = '';
+  document.getElementById('mf-purchasePriceInput').value = '';
+  document.getElementById('mf-purchasePriceOutput').value = '';
+  document.getElementById('mf-profitBonus').value = '';
+  if (m?.id) {
+    api(`/admin/models/registry/${m.id}/pricing`).then(p => {
+      if (p) {
+        document.getElementById('mf-userPriceInput').value = p.user_price_input ?? '';
+        document.getElementById('mf-userPriceOutput').value = p.user_price_output ?? '';
+        document.getElementById('mf-purchasePriceInput').value = p.purchase_price_input ?? '';
+        document.getElementById('mf-purchasePriceOutput').value = p.purchase_price_output ?? '';
+        document.getElementById('mf-profitBonus').value = p.profit_bonus ?? '';
+      }
+    }).catch(() => {});
+  }
   openModal('model-form-modal');
 }
 
@@ -2017,15 +2282,41 @@ async function submitModelForm() {
     description: document.getElementById('mf-description').value.trim(),
     supportsVision: document.getElementById('mf-vision-toggle').classList.contains('on'),
   };
+  // Scoring fields
+  const qv = document.getElementById('mf-quality').value;
+  const sv = document.getElementById('mf-speed').value;
+  const cev = document.getElementById('mf-costEfficiency').value;
+  const csv = document.getElementById('mf-codeStrength').value;
+  if (qv !== '') payload.quality = parseFloat(qv);
+  if (sv !== '') payload.speed = parseFloat(sv);
+  if (cev !== '') payload.costEfficiency = parseFloat(cev);
+  if (csv !== '') payload.codeStrength = parseFloat(csv);
+
   try {
     if (id) {
       await apiMutate('PATCH', `/admin/models/registry/${id}`, payload);
     } else {
       await apiMutate('POST', '/admin/models/registry', payload);
     }
+    // Save pricing if any pricing field is filled
+    const pricingPayload = {};
+    const upi = document.getElementById('mf-userPriceInput').value;
+    const upo = document.getElementById('mf-userPriceOutput').value;
+    const ppi = document.getElementById('mf-purchasePriceInput').value;
+    const ppo = document.getElementById('mf-purchasePriceOutput').value;
+    const pb = document.getElementById('mf-profitBonus').value;
+    if (upi !== '') pricingPayload.userPriceInput = parseFloat(upi);
+    if (upo !== '') pricingPayload.userPriceOutput = parseFloat(upo);
+    if (ppi !== '') pricingPayload.purchasePriceInput = parseFloat(ppi);
+    if (ppo !== '') pricingPayload.purchasePriceOutput = parseFloat(ppo);
+    if (pb !== '') pricingPayload.profitBonus = parseFloat(pb);
+    const modelId = id || (await api('/admin/models/registry')).models?.find(m => m.modelId === payload.modelId)?.id;
+    if (modelId && Object.keys(pricingPayload).length > 0) {
+      await apiMutate('PATCH', `/admin/models/registry/${modelId}/pricing`, pricingPayload);
+    }
     closeModal('model-form-modal');
     await loadDashboard();
-  } catch (err) { alert('Failed to save model'); }
+  } catch (err) { alert('Failed to save model: ' + (err?.message || '')); }
 }
 
 async function deleteModel(id) {
@@ -2036,15 +2327,27 @@ async function deleteModel(id) {
   } catch (err) { alert('Failed to delete model'); }
 }
 
+async function reloadRegistry() {
+  try {
+    await apiMutate('POST', '/admin/models/registry/reload', {});
+    alert('Registry reloaded successfully');
+    await loadDashboard();
+  } catch (err) { alert('Failed to reload registry'); }
+}
+
 // ============================================================
 // KEY FORM
 // ============================================================
 function showKeyForm(k) {
-  document.getElementById('kf-title').textContent = k ? 'Edit Key' : 'Add Provider Key';
+  const isEdit = !!k;
+  document.getElementById('kf-title').textContent = isEdit ? 'Edit Key' : 'Add Provider Key';
   document.getElementById('kf-id').value = k?.id || '';
   document.getElementById('kf-provider').value = k?.providerName || '';
   document.getElementById('kf-label').value = k?.label || '';
   document.getElementById('kf-key').value = '';
+  document.getElementById('kf-key').placeholder = isEdit ? '(unchanged)' : 'sk-...';
+  document.getElementById('kf-key-hint').style.display = isEdit ? '' : 'none';
+  document.getElementById('kf-baseUrl').value = k?.baseUrl || '';
   document.getElementById('kf-weight').value = k?.weight || 1;
   document.getElementById('kf-active-toggle').classList.toggle('on', k ? !!k.isActive : true);
   openModal('key-form-modal');
@@ -2060,16 +2363,19 @@ function editKey(id) {
 
 async function submitKeyForm() {
   const id = document.getElementById('kf-id').value;
+  const apiKey = document.getElementById('kf-key').value.trim();
+  const baseUrl = document.getElementById('kf-baseUrl').value.trim();
   const payload = {
     providerName: document.getElementById('kf-provider').value.trim(),
     label: document.getElementById('kf-label').value.trim(),
-    apiKey: document.getElementById('kf-key').value.trim(),
     weight: parseInt(document.getElementById('kf-weight').value) || 1,
     isActive: document.getElementById('kf-active-toggle').classList.contains('on'),
   };
+  if (apiKey) payload.apiKey = apiKey;
+  if (baseUrl) payload.baseUrl = baseUrl;
   try {
     if (id) {
-      await apiMutate('PUT', `/admin/provider-keys/${id}`, payload);
+      await apiMutate('PATCH', `/admin/provider-keys/${id}`, payload);
     } else {
       await apiMutate('POST', '/admin/provider-keys', payload);
     }
@@ -2115,33 +2421,39 @@ async function submitAccessForm() {
 // PACKAGE FORM
 // ============================================================
 function showPkgForm(p) {
-  document.getElementById('pkg-form-title').textContent = p ? 'Edit Package' : 'Add Package';
+  const isEdit = !!p;
+  document.getElementById('pkg-form-title').textContent = isEdit ? 'Edit Package' : 'Add Package';
   document.getElementById('pf-id').value = p?.id || '';
-  document.getElementById('pf-name').value = p?.name || '';
-  document.getElementById('pf-credits').value = p?.credits || '';
-  document.getElementById('pf-price').value = p?.price || '';
-  document.getElementById('pf-bonus').value = p?.bonusCredits || 0;
-  document.getElementById('pf-stripe').value = p?.stripePriceId || '';
-  document.getElementById('pf-popular-toggle').classList.toggle('on', !!(p?.isPopular));
+  // Hide ID field when editing (can't change)
+  document.getElementById('pf-id-group').style.display = isEdit ? 'none' : '';
+  document.getElementById('pf-label').value = p?.label || '';
+  document.getElementById('pf-creditsCents').value = p?.creditsCents ?? '';
+  document.getElementById('pf-amountCents').value = p?.amountCents ?? '';
+  document.getElementById('pf-bonus').value = p?.bonus || '';
+  document.getElementById('pf-polarProductId').value = p?.polarProductId || '';
+  document.getElementById('pf-sortOrder').value = p?.sortOrder ?? 0;
   document.getElementById('pf-active-toggle').classList.toggle('on', p ? !!p.isActive : true);
   openModal('pkg-form-modal');
 }
 
 async function submitPkgForm() {
-  const id = document.getElementById('pf-id').value;
+  const id = document.getElementById('pf-id').value.trim();
+  const isEdit = document.getElementById('pf-id-group').style.display === 'none';
   const payload = {
-    name: document.getElementById('pf-name').value.trim(),
-    credits: parseFloat(document.getElementById('pf-credits').value) || 0,
-    price: parseFloat(document.getElementById('pf-price').value) || 0,
-    bonusCredits: parseFloat(document.getElementById('pf-bonus').value) || 0,
-    stripePriceId: document.getElementById('pf-stripe').value.trim(),
-    isPopular: document.getElementById('pf-popular-toggle').classList.contains('on'),
+    label: document.getElementById('pf-label').value.trim(),
+    creditsCents: parseInt(document.getElementById('pf-creditsCents').value) || 0,
+    amountCents: parseInt(document.getElementById('pf-amountCents').value) || 0,
+    bonus: document.getElementById('pf-bonus').value.trim() || null,
+    polarProductId: document.getElementById('pf-polarProductId').value.trim(),
+    sortOrder: parseInt(document.getElementById('pf-sortOrder').value) || 0,
     isActive: document.getElementById('pf-active-toggle').classList.contains('on'),
   };
   try {
-    if (id) {
-      await apiMutate('PUT', `/admin/packages/${id}`, payload);
+    if (isEdit) {
+      await apiMutate('PATCH', `/admin/packages/${id}`, payload);
     } else {
+      if (!id) { alert('Package ID is required'); return; }
+      payload.id = id;
       await apiMutate('POST', '/admin/packages', payload);
     }
     closeModal('pkg-form-modal');
@@ -2166,24 +2478,27 @@ function showAnnForm(a) {
   document.getElementById('anf-title').value = a?.title || '';
   document.getElementById('anf-message').value = a?.message || '';
   document.getElementById('anf-type').value = a?.type || 'info';
-  document.getElementById('anf-expires').value = a?.expiresAt ? new Date(a.expiresAt).toISOString().slice(0,16) : '';
-  document.getElementById('anf-active-toggle').classList.toggle('on', a ? !!a.isActive : true);
+  document.getElementById('anf-starts').value = a?.starts_at ? new Date(a.starts_at).toISOString().slice(0,16) : '';
+  document.getElementById('anf-ends').value = a?.ends_at ? new Date(a.ends_at).toISOString().slice(0,16) : '';
+  document.getElementById('anf-active-toggle').classList.toggle('on', a ? !!a.is_active : true);
   openModal('ann-form-modal');
 }
 
 async function submitAnnForm() {
   const id = document.getElementById('anf-id').value;
-  const expiresVal = document.getElementById('anf-expires').value;
+  const startsVal = document.getElementById('anf-starts').value;
+  const endsVal = document.getElementById('anf-ends').value;
   const payload = {
     title: document.getElementById('anf-title').value.trim(),
     message: document.getElementById('anf-message').value.trim(),
     type: document.getElementById('anf-type').value,
-    expiresAt: expiresVal ? new Date(expiresVal).toISOString() : null,
+    startsAt: startsVal ? new Date(startsVal).toISOString() : undefined,
+    endsAt: endsVal ? new Date(endsVal).toISOString() : null,
     isActive: document.getElementById('anf-active-toggle').classList.contains('on'),
   };
   try {
     if (id) {
-      await apiMutate('PUT', `/admin/announcements/${id}`, payload);
+      await apiMutate('PATCH', `/admin/announcements/${id}`, payload);
     } else {
       await apiMutate('POST', '/admin/announcements', payload);
     }

@@ -182,4 +182,50 @@ app.delete("/api-keys/:id", async (c) => {
   return c.json({ success: true });
 });
 
+// ── GET /requests — recent request log (cursor-based pagination) ────────────
+
+app.get("/requests", async (c) => {
+  const userId = c.get("userId") as string;
+  const afterId = c.req.query("after");
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50) || 50, 1), 100);
+
+  let rows;
+  if (afterId) {
+    rows = await sql`
+      SELECT id, model, provider, input_tokens, output_tokens, cost_cents,
+             latency_ms, status, created_at
+      FROM requests
+      WHERE user_id = ${userId}
+        AND created_at > (SELECT created_at FROM requests WHERE id = ${afterId})
+      ORDER BY created_at ASC
+      LIMIT ${limit}
+    `;
+  } else {
+    rows = await sql`
+      SELECT id, model, provider, input_tokens, output_tokens, cost_cents,
+             latency_ms, status, created_at
+      FROM requests
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `;
+    rows = [...rows].reverse();
+  }
+
+  return c.json({
+    requests: rows.map((r) => ({
+      id: r.id,
+      timestamp: new Date(r.created_at).getTime(),
+      provider: r.provider,
+      model: r.model,
+      tokens: (r.input_tokens ?? 0) + (r.output_tokens ?? 0),
+      inputTokens: r.input_tokens ?? 0,
+      outputTokens: r.output_tokens ?? 0,
+      cost: r.cost_cents / 100,
+      latencyMs: r.latency_ms ?? 0,
+      status: r.status === "ok" ? "success" : r.status === "fallback" ? "fallback" : "error",
+    })),
+  });
+});
+
 export default app;

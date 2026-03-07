@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { RouteBoxWebSocket } from "@/lib/ws";
-import { getWsUrl } from "@/lib/constants";
+import { getWsUrl, getGatewayMode } from "@/lib/constants";
+import { api } from "@/lib/api";
 import type { RealtimeStats, TrafficPoint, RequestLogEntry } from "@/types/stats";
 
 const MAX_HISTORY = 30;
 const MAX_LOG_ENTRIES = 100;
 const CACHE_KEY = "cachedStats";
+const CLOUD_POLL_INTERVAL = 3000;
 
 export interface AlertInfo {
   id: string;
@@ -57,8 +59,49 @@ export function useRealtimeStats(ready = true) {
     });
   }, []);
 
+  // ── Cloud mode: REST polling ─────────────────────────────────────────────
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || getGatewayMode() !== "cloud") return;
+
+    let cancelled = false;
+    let lastId: string | undefined;
+
+    // Mark as connected immediately for cloud mode
+    setConnected(true);
+
+    async function poll() {
+      if (cancelled) return;
+      try {
+        const res = await api.cloudGetRequests(lastId);
+        if (cancelled) return;
+        if (res.requests.length > 0) {
+          lastId = res.requests[res.requests.length - 1].id;
+          setRequestLog((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const newEntries = res.requests.filter((e) => !existingIds.has(e.id));
+            if (newEntries.length === 0) return prev;
+            const next = [...prev, ...newEntries];
+            return next.length > MAX_LOG_ENTRIES ? next.slice(-MAX_LOG_ENTRIES) : next;
+          });
+        }
+      } catch {
+        // Silent — best-effort polling
+      }
+    }
+
+    // Initial fetch
+    poll();
+    const timer = setInterval(poll, CLOUD_POLL_INTERVAL);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [ready]);
+
+  // ── Local mode: WebSocket ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!ready || getGatewayMode() === "cloud") return;
 
     // Pass a function so each connect/reconnect gets the latest token URL
     const ws = new RouteBoxWebSocket(() => getWsUrl());

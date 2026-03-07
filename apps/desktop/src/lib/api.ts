@@ -312,6 +312,28 @@ export interface CloudPlansResponse {
   plans: CloudSubscriptionPlan[];
 }
 
+export interface CloudApiKey {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  lastUsedAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CloudApiKeysResponse {
+  apiKeys: CloudApiKey[];
+}
+
+export interface CloudApiKeyCreatedResponse {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  key: string; // full key, shown only once
+  isActive: boolean;
+  createdAt: string;
+}
+
 export interface CloudReferralResponse {
   code: string;
   uses: number;
@@ -329,6 +351,10 @@ export interface CloudAnnouncement {
 
 export interface CloudAnnouncementResponse {
   announcement: CloudAnnouncement | null;
+}
+
+export interface CloudRequestsResponse {
+  requests: import("@/types/stats").RequestLogEntry[];
 }
 
 export const api = {
@@ -554,6 +580,21 @@ export const api = {
       retries: 0,
     }),
 
+  // ── Cloud API Keys ─────────────────────────────────────────────────────
+  cloudGetApiKeys: () =>
+    request<CloudApiKeysResponse>("/account/api-keys"),
+  cloudCreateApiKey: (name?: string) =>
+    request<CloudApiKeyCreatedResponse>("/account/api-keys", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+      retries: 0,
+    }),
+  cloudDeleteApiKey: (id: string) =>
+    request<{ success: boolean }>(`/account/api-keys/${id}`, {
+      method: "DELETE",
+      retries: 0,
+    }),
+
   // ── Cloud Referral ──────────────────────────────────────────────────────
   cloudGetReferral: () =>
     request<CloudReferralResponse>("/account/referral"),
@@ -561,6 +602,14 @@ export const api = {
   // ── Cloud Announcement ──────────────────────────────────────────────────
   cloudGetAnnouncement: () =>
     request<CloudAnnouncementResponse>("/account/announcement"),
+
+  // ── Cloud Request Log ─────────────────────────────────────────────────
+  cloudGetRequests: (afterId?: string, limit = 50) => {
+    const params = new URLSearchParams();
+    if (afterId) params.set("after", afterId);
+    params.set("limit", String(limit));
+    return request<CloudRequestsResponse>(`/account/requests?${params}`);
+  },
 };
 
 // V2 response types

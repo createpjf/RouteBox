@@ -458,17 +458,17 @@ function openaiStreamPassthrough(
 
 app.get("/models", (c) => {
   const userPlan = c.get("userPlan") ?? "starter";
-  const modelIds = new Set<string>();
+  const modelOwner = new Map<string, string>();
   for (const p of cloudProviders) {
     if (!isProviderAllowed(p.name, userPlan)) continue;
     for (const modelId of Object.keys(MODEL_PRICING)) {
-      if (p.prefixes.some((pfx) => modelId.startsWith(pfx))) {
-        modelIds.add(modelId);
+      if (!modelOwner.has(modelId) && p.prefixes.some((pfx) => modelId.startsWith(pfx))) {
+        modelOwner.set(modelId, p.name);
       }
     }
   }
-  const data = [...modelIds].map((id) => ({
-    id, object: "model" as const, created: 0, owned_by: "routebox",
+  const data = [...modelOwner.entries()].map(([id, owner]) => ({
+    id, object: "model" as const, created: 0, owned_by: owner,
   }));
   return c.json({ object: "list", data });
 });

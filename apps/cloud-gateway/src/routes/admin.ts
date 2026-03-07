@@ -423,6 +423,8 @@ app.patch("/packages/:id", async (c) => {
     bonus?: string | null;
     isActive?: boolean;
     sortOrder?: number;
+    amountCents?: number;
+    creditsCents?: number;
   }>();
 
   const setObj: Record<string, unknown> = {};
@@ -431,6 +433,8 @@ app.patch("/packages/:id", async (c) => {
   if ("bonus" in body) setObj.bonus = body.bonus;
   if (body.isActive !== undefined) setObj.is_active = body.isActive;
   if (body.sortOrder !== undefined) setObj.sort_order = body.sortOrder;
+  if (body.amountCents !== undefined) setObj.amount_cents = body.amountCents;
+  if (body.creditsCents !== undefined) setObj.credits_cents = body.creditsCents;
 
   if (Object.keys(setObj).length === 0) {
     return c.json({ error: { message: "No fields to update", type: "validation_error" } }, 400);

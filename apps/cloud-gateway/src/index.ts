@@ -59,7 +59,8 @@ app.use(
 app.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
-  c.header("X-Frame-Options", "DENY");
+  // Allow landing page to be framed (e.g. link previews)
+  c.header("X-Frame-Options", c.req.path === "/" ? "SAMEORIGIN" : "DENY");
   c.header("X-XSS-Protection", "0");
   c.header("Referrer-Policy", "strict-origin-when-cross-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
@@ -121,6 +122,36 @@ app.route("/billing", billingRoutes);
 
 // ── Admin routes (own auth — checks ADMIN_EMAILS) ───────────────────────────
 app.route("/admin", adminRoutes);
+
+// ── Landing page + static assets ─────────────────────────────────────────────
+import { landingHtml } from "./lib/landing";
+import { serveStaticFile } from "./lib/static";
+
+app.get("/", (c) => {
+  c.header("X-Frame-Options", "SAMEORIGIN");
+  c.header("Cache-Control", "public, max-age=300");
+  return c.html(landingHtml);
+});
+
+app.get("/static/*", async (c) => {
+  const fileName = c.req.path.replace("/static/", "");
+  const result = serveStaticFile(fileName);
+  if (!result) return c.notFound();
+  return new Response(result.data, {
+    status: 200,
+    headers: { "Content-Type": result.contentType, "Cache-Control": "public, max-age=86400, immutable" },
+  });
+});
+
+// Shortcut: /favicon.ico
+app.get("/favicon.ico", async (c) => {
+  const result = serveStaticFile("favicon.ico");
+  if (!result) return c.notFound();
+  return new Response(result.data, {
+    status: 200,
+    headers: { "Content-Type": result.contentType, "Cache-Control": "public, max-age=86400, immutable" },
+  });
+});
 
 // ── Unauthenticated utility routes ──────────────────────────────────────────
 app.route("/metrics", metricsRoutes);
