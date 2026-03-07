@@ -28,7 +28,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           style={{
             marginBottom: 8,
             borderRadius: 8,
-            border: "1px solid rgba(255,255,255,0.06)",
+            border: "1px solid var(--color-border)",
             overflow: "hidden",
           }}
         >
@@ -40,9 +40,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               gap: 4,
               width: "100%",
               padding: "6px 10px",
-              background: "rgba(255,255,255,0.03)",
+              background: "var(--color-bg-row-hover)",
               border: "none",
-              color: "rgba(255,255,255,0.4)",
+              color: "var(--color-text-tertiary)",
               fontSize: 11,
               fontWeight: 500,
               cursor: "pointer",
@@ -65,11 +65,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                 padding: "8px 10px",
                 fontSize: 11,
                 lineHeight: 1.5,
-                color: "rgba(255,255,255,0.35)",
+                color: "var(--color-text-tertiary)",
                 whiteSpace: "pre-wrap",
                 maxHeight: 200,
                 overflow: "auto",
-                borderTop: "1px solid rgba(255,255,255,0.04)",
+                borderTop: "1px solid var(--color-border-light)",
               }}
             >
               {thinking}
@@ -89,7 +89,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               return (
                 <code
                   style={{
-                    background: "rgba(245, 245, 247, 0.12)",
+                    background: "var(--color-md-inline-code-bg, rgba(245, 245, 247, 0.12))",
                     padding: "2px 6px",
                     borderRadius: 4,
                     fontSize: "0.875em",
@@ -110,7 +110,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             return (
               <pre
                 style={{
-                  background: "#1D1D1F",
+                  background: "var(--color-md-code-bg, #0a0a0a)",
                   borderRadius: 8,
                   padding: 12,
                   fontSize: 12,

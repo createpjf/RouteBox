@@ -17,7 +17,7 @@ export function RoutingStrategy({ current, onChange }: RoutingStrategyProps) {
             "flex flex-col items-start p-2.5 rounded-xl text-left transition-all duration-150",
             strategy.id === current
               ? "bg-accent-cyan/8 ring-1 ring-accent-cyan/30"
-              : "hover:bg-[#F2F2F7]"
+              : "hover:bg-hover-overlay"
           )}
         >
           <div className="flex items-center gap-1.5">

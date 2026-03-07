@@ -21,23 +21,23 @@ export function BalanceCard({ budget = 0, monthSpend = 0 }: BalanceCardProps) {
     <div className="glass-card-static p-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#F5F5F7]">
-            <Wallet size={14} strokeWidth={1.8} className="text-[#86868B]" />
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-bg-elevated">
+            <Wallet size={14} strokeWidth={1.8} className="text-text-secondary" />
           </div>
           <div>
-            <span className="text-[11px] text-[#86868B] block font-medium">Total Cost</span>
+            <span className="text-[11px] text-text-secondary block font-medium">Total Cost</span>
             {hasUsage ? (
-              <span className="text-[20px] font-bold tabular-nums tracking-[-0.03em] text-[#1D1D1F]" style={{ fontFamily: "SF Pro Rounded, -apple-system, system-ui, sans-serif" }}>
+              <span className="text-[20px] font-bold tabular-nums tracking-[-0.03em] text-text-primary">
                 ${monthSpend.toFixed(2)}
               </span>
             ) : (
-              <span className="text-[14px] font-medium text-[#86868B]">
+              <span className="text-[14px] font-medium text-text-secondary">
                 No usage yet
               </span>
             )}
           </div>
         </div>
-        <span className="text-[10px] text-[#86868B] font-medium px-2 py-1 rounded-lg bg-[#F5F5F7]">
+        <span className="text-[10px] text-text-secondary font-medium px-2 py-1 rounded-lg bg-bg-elevated">
           BYOK
         </span>
       </div>
@@ -45,12 +45,12 @@ export function BalanceCard({ budget = 0, monthSpend = 0 }: BalanceCardProps) {
       {hasBudget && (
         <div className="mt-3 pt-3 border-t border-border-light">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-[#86868B]">Monthly Budget</span>
-            <span className="text-[10px] tabular-nums text-[#86868B]">
+            <span className="text-[10px] font-medium text-text-secondary">Monthly Budget</span>
+            <span className="text-[10px] tabular-nums text-text-secondary">
               ${monthSpend.toFixed(2)} / ${budget.toFixed(2)}
             </span>
           </div>
-          <div className="h-1.5 rounded-full bg-[#F2F2F7] overflow-hidden">
+          <div className="h-1.5 rounded-full bg-progress-track overflow-hidden">
             <div
               className={clsx(
                 "h-full rounded-full transition-all duration-500",

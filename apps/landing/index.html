@@ -5,273 +5,895 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RouteBox — One API, All AI Models</title>
   <meta name="description" content="RouteBox is a lightweight desktop app that routes your AI requests to the best model at the lowest cost. One unified API for OpenAI, Claude, Gemini, DeepSeek and more." />
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Segoe UI', 'Roboto', 'sans-serif'] },
-          colors: {
-            apple: { bg: '#f5f5f7', text: '#1d1d1f', sub: '#86868b', muted: '#aeaeb2' },
-            accent: { DEFAULT: '#34C759', light: '#e8f5e9' },
-          },
-        },
-      },
-    };
-  </script>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ff4d00' stroke-width='2'><circle cx='12' cy='12' r='3'/><path d='M3 12h6m6 0h6M12 3v6m0 6v6'/></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #080808;
+      --surface: #111111;
+      --raised: #1a1a1a;
+      --ember: #ff4d00;
+      --text-primary: #e0e0e0;
+      --text-secondary: #666666;
+      --card-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 20px rgba(0,0,0,0.6);
+      --card-border: 1px solid rgba(255,255,255,0.03);
+      --ember-glow: 0 0 15px rgba(255,77,0,0.4), 0 0 5px rgba(255,77,0,0.8);
+      --radius: 24px;
+    }
+
     html { scroll-behavior: smooth; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; color: #1d1d1f; }
-    .gradient-text { background: linear-gradient(135deg, #34C759 0%, #007AFF 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .glass { background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.5); }
-    .feature-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: transform 0.2s, box-shadow 0.2s; }
-    .feature-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-    .hero-bg { background: linear-gradient(180deg, #f5f5f7 0%, #ffffff 50%, #f5f5f7 100%); }
-    .pricing-card { border: 1px solid #e5e5e5; border-radius: 20px; background: #fff; }
-    .pricing-card.pro { border: 2px solid #34C759; background: linear-gradient(180deg, #f8fff9 0%, #fff 100%); }
-    .check { color: #34C759; font-weight: 600; }
-    .download-btn { background: linear-gradient(135deg, #1d1d1f 0%, #424245 100%); color: #fff; border-radius: 12px; padding: 14px 32px; font-weight: 600; font-size: 16px; display: inline-flex; align-items: center; gap: 8px; transition: transform 0.15s, box-shadow 0.15s; }
-    .download-btn:hover { transform: scale(1.02); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
-    .download-btn:active { transform: scale(0.98); }
-    .pro-btn { background: linear-gradient(135deg, #34C759 0%, #30D158 100%); color: #fff; border-radius: 12px; padding: 14px 32px; font-weight: 600; font-size: 16px; transition: transform 0.15s; }
-    .pro-btn:hover { transform: scale(1.02); }
-    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
-    .float { animation: float 6s ease-in-out infinite; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ─── Utilities ─── */
+    .container    { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    .container-sm { max-width: 860px;  margin: 0 auto; padding: 0 24px; }
+
+    .text-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+
+    .ember-text {
+      background: linear-gradient(135deg, #ff4d00 0%, #ff8c42 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ─── Card ─── */
+    .card {
+      background: var(--surface);
+      border: var(--card-border);
+      border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .card:hover {
+      transform: scale(1.01);
+      border-color: rgba(255,77,0,0.2);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 30px rgba(0,0,0,0.7), 0 0 20px rgba(255,77,0,0.08);
+    }
+
+    /* ─── Buttons ─── */
+    .btn-ember {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      background: var(--ember);
+      color: #fff;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: 0.04em;
+      padding: 14px 32px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 0 20px rgba(255,77,0,0.3);
+    }
+    .btn-ember:hover  { transform: scale(1.02); box-shadow: 0 0 32px rgba(255,77,0,0.5); }
+    .btn-ember:active { transform: scale(0.98); }
+
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 14px 28px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,77,0,0.3);
+      cursor: pointer;
+      text-decoration: none;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .btn-ghost:hover { color: var(--text-primary); border-color: rgba(255,77,0,0.6); }
+
+    .btn-outline {
+      display: block;
+      text-align: center;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 12px 24px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      text-decoration: none;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .btn-outline:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.22); }
+
+    /* ─── Animations ─── */
+    @keyframes pulse-glow {
+      from { box-shadow: 0 0 10px rgba(255,77,0,0.3); }
+      to   { box-shadow: 0 0 20px rgba(255,77,0,0.6); }
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1);   opacity: 0.12; }
+      50%       { transform: scale(1.3); opacity: 0.22; }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px)  rotate(-90deg); }
+      50%       { transform: translateY(-8px) rotate(-90deg); }
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       NAV
+    ═══════════════════════════════════════════════════════════ */
+    nav {
+      position: fixed;
+      top: 0; width: 100%;
+      z-index: 50;
+      background: rgba(8,8,8,0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .nav-logo-icon { position: relative; width: 28px; height: 28px; }
+    .nav-logo-dot {
+      position: absolute;
+      top: 0; right: 0;
+      width: 7px; height: 7px;
+      background: var(--ember);
+      border-radius: 50%;
+      box-shadow: var(--ember-glow);
+      animation: pulse-glow 2s ease-in-out infinite alternate;
+    }
+    .nav-logo-text {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.05em;
+      color: var(--text-primary);
+    }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text-primary); }
+    .nav-cta {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--ember);
+      text-decoration: none;
+      border: 1px solid rgba(255,77,0,0.4);
+      padding: 7px 18px;
+      border-radius: 8px;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .nav-cta:hover { background: rgba(255,77,0,0.1); box-shadow: 0 0 14px rgba(255,77,0,0.2); }
+
+    /* ═══════════════════════════════════════════════════════════
+       HERO
+    ═══════════════════════════════════════════════════════════ */
+    .hero {
+      position: relative;
+      background: var(--bg);
+      padding: 148px 24px 108px;
+      overflow: hidden;
+    }
+    .hero-blob {
+      position: absolute;
+      top: -80px; right: -120px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(255,77,0,0.2) 0%, transparent 70%);
+      border-radius: 50%;
+      filter: blur(60px);
+      animation: breathe 8s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .hero-ring {
+      position: absolute;
+      top: 64px; right: 48px;
+      opacity: 0.2;
+      z-index: 1;
+      animation: float 9s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 680px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: var(--raised);
+      border: 1px solid rgba(255,77,0,0.35);
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ember);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+    .hero-badge-dot {
+      width: 6px; height: 6px;
+      background: var(--ember);
+      border-radius: 50%;
+      box-shadow: 0 0 6px rgba(255,77,0,0.9);
+    }
+    .hero-h1 {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(52px, 8vw, 80px);
+      font-weight: 700;
+      line-height: 1.05;
+      color: var(--text-primary);
+      letter-spacing: 0.01em;
+    }
+    .ref-glow-line {
+      width: 60px;
+      height: 3px;
+      background: var(--ember);
+      border-radius: 2px;
+      margin: 18px auto 22px;
+      box-shadow: 0 0 12px rgba(255,77,0,0.7), 0 0 4px rgba(255,77,0,1);
+    }
+    .hero-sub {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 18px;
+      font-weight: 400;
+      color: var(--text-secondary);
+      max-width: 500px;
+      margin: 0 auto 36px;
+      letter-spacing: 0.5px;
+      line-height: 1.65;
+    }
+    .hero-ctas {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       PROVIDERS
+    ═══════════════════════════════════════════════════════════ */
+    .providers {
+      padding: 48px 24px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .providers-inner { max-width: 860px; margin: 0 auto; text-align: center; }
+    .providers-list {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .provider-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--raised);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .provider-badge:hover { border-color: rgba(255,255,255,0.16); color: var(--text-primary); }
+    .provider-icon {
+      width: 24px; height: 24px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       FEATURES
+    ═══════════════════════════════════════════════════════════ */
+    .features { padding: 96px 24px; }
+    .section-header { text-align: center; margin-bottom: 56px; }
+    .section-header h2 {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.15;
+      margin-top: 10px;
+    }
+    .section-header p {
+      font-size: 16px;
+      color: var(--text-secondary);
+      max-width: 480px;
+      margin: 14px auto 0;
+      line-height: 1.7;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+    .feature-card { padding: 28px 30px; }
+    .feature-icon {
+      width: 44px; height: 44px;
+      border-radius: 14px;
+      background: rgba(255,77,0,0.07);
+      border: 1px solid rgba(255,77,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
+    }
+    .feature-icon svg { filter: drop-shadow(0 0 6px rgba(255,77,0,0.6)); }
+    .feature-card h3 {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      letter-spacing: 0.02em;
+    }
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       HOW IT WORKS
+    ═══════════════════════════════════════════════════════════ */
+    .how-it-works { background: #0d0d0d; padding: 96px 24px; }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;
+      position: relative;
+    }
+    .steps-grid::before {
+      content: '';
+      position: absolute;
+      top: 22px;
+      left: calc(16.66% + 23px);
+      width: calc(66.67% - 46px);
+      height: 1px;
+      border-top: 1px dashed rgba(255,77,0,0.25);
+      pointer-events: none;
+    }
+    .step { text-align: center; }
+    .step-num {
+      width: 46px; height: 46px;
+      background: rgba(255,77,0,0.1);
+      border: 2px solid var(--ember);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--ember);
+      margin: 0 auto 20px;
+      box-shadow: 0 0 16px rgba(255,77,0,0.25);
+    }
+    .step h3 {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--text-primary);
+      margin-bottom: 10px;
+    }
+    .step p { font-size: 14px; color: var(--text-secondary); line-height: 1.7; }
+    .code-block {
+      display: inline-block;
+      background: var(--raised);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 2px 9px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 12px;
+      color: var(--ember);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       PRICING
+    ═══════════════════════════════════════════════════════════ */
+    .pricing { padding: 96px 24px; }
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .pricing-card { padding: 36px; }
+    .pricing-card.pro {
+      border: 1px solid rgba(255,77,0,0.5) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 20px rgba(0,0,0,0.6), 0 0 30px rgba(255,77,0,0.12) !important;
+    }
+    .pricing-card.pro:hover {
+      border-color: rgba(255,77,0,0.7) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 30px rgba(0,0,0,0.7), 0 0 40px rgba(255,77,0,0.2) !important;
+    }
+    .plan-name {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    .plan-name.ember { color: var(--ember); }
+    .plan-price {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 48px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .plan-price span { font-size: 20px; font-weight: 400; color: var(--text-secondary); }
+    .plan-period { font-size: 13px; color: var(--text-secondary); margin-bottom: 28px; }
+    .feature-list { list-style: none; margin-bottom: 32px; }
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      padding: 6px 0;
+    }
+    .check-icon { color: var(--ember); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+    .pro-wrapper { position: relative; }
+    .popular-badge {
+      position: absolute;
+      top: -14px; right: 24px;
+      background: var(--ember);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      padding: 4px 14px;
+      border-radius: 100px;
+      z-index: 1;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       DOWNLOAD CTA
+    ═══════════════════════════════════════════════════════════ */
+    .download-section {
+      background: #0d0d0d;
+      padding: 96px 24px;
+      text-align: center;
+    }
+    .download-section h2 {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+    }
+    .download-section p {
+      color: var(--text-secondary);
+      font-size: 16px;
+      max-width: 440px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+    .specs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 20px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       FOOTER
+    ═══════════════════════════════════════════════════════════ */
+    footer { border-top: 1px solid rgba(255,255,255,0.05); padding: 40px 24px; }
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .footer-logo { display: flex; align-items: center; gap: 8px; }
+    .footer-logo-text {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+    .footer-copy { font-size: 12px; color: var(--text-secondary); opacity: 0.45; margin-left: 6px; }
+    .footer-links { display: flex; align-items: center; gap: 24px; }
+    .footer-links a {
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .footer-links a:hover { color: var(--text-primary); }
+
+    /* ═══════════════════════════════════════════════════════════
+       RESPONSIVE
+    ═══════════════════════════════════════════════════════════ */
+    @media (max-width: 720px) {
+      .nav-links { display: none; }
+      .hero { padding: 120px 20px 80px; }
+      .hero-ring { display: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .steps-grid { grid-template-columns: 1fr; }
+      .steps-grid::before { display: none; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .specs { flex-direction: column; gap: 10px; }
+    }
   </style>
 </head>
-<body class="bg-apple-bg">
+<body>
 
   <!-- ── Nav ──────────────────────────────────────────────────────────────── -->
-  <nav class="fixed top-0 w-full z-50 glass">
-    <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
-      <a href="#" class="flex items-center gap-2">
-        <span class="text-xl">📦</span>
-        <span class="font-bold text-lg text-apple-text">RouteBox</span>
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <div class="nav-logo-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#c0c0c0" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="12" cy="12" r="3"/>
+            <line x1="3"  y1="12" x2="9"  y2="12"/>
+            <line x1="15" y1="12" x2="21" y2="12"/>
+            <line x1="12" y1="3"  x2="12" y2="9"/>
+            <line x1="12" y1="15" x2="12" y2="21"/>
+            <circle cx="3"  cy="12" r="1.5" fill="#ff4d00" stroke="#ff4d00"/>
+            <circle cx="21" cy="12" r="1.5"/>
+            <circle cx="12" cy="3"  r="1.5"/>
+            <circle cx="12" cy="21" r="1.5"/>
+          </svg>
+          <div class="nav-logo-dot"></div>
+        </div>
+        <span class="nav-logo-text">RouteBox</span>
       </a>
-      <div class="hidden sm:flex items-center gap-8 text-sm text-apple-sub">
-        <a href="#features" class="hover:text-apple-text transition">Features</a>
-        <a href="#pricing" class="hover:text-apple-text transition">Pricing</a>
-        <a href="#download" class="hover:text-apple-text transition">Download</a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#download">Download</a>
       </div>
-      <a href="#download" class="text-sm font-medium text-accent hover:underline">Get Started</a>
+      <a href="#download" class="nav-cta">Get Started</a>
     </div>
   </nav>
 
   <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
-  <section class="hero-bg pt-32 pb-24 px-6">
-    <div class="max-w-3xl mx-auto text-center">
-      <div class="inline-block px-4 py-1.5 rounded-full text-xs font-medium bg-accent/10 text-accent mb-6">
-        Now available for macOS
+  <section class="hero">
+    <div class="hero-blob"></div>
+
+    <!-- Decorative SVG ring -->
+    <svg class="hero-ring" width="300" height="300" viewBox="0 0 300 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="150" cy="150" r="130" stroke="#ff4d00" stroke-width="1.5"
+              stroke-dasharray="816" stroke-dashoffset="204"/>
+      <circle cx="150" cy="150" r="100" stroke="rgba(255,77,0,0.4)" stroke-width="1"
+              stroke-dasharray="628" stroke-dashoffset="157"/>
+      <circle cx="150" cy="150" r="65"  stroke="rgba(255,77,0,0.2)" stroke-width="0.8"/>
+      <circle cx="150" cy="20"  r="5"   fill="#ff4d00">
+        <animate attributeName="opacity" values="0.6;1;0.6" dur="3s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="280" cy="150" r="3.5" fill="rgba(255,77,0,0.5)"/>
+      <circle cx="150" cy="280" r="3"   fill="rgba(255,77,0,0.3)"/>
+    </svg>
+
+    <div class="hero-content">
+      <div class="hero-badge">
+        <div class="hero-badge-dot"></div>
+        v3.0 — macOS
       </div>
-      <h1 class="text-5xl sm:text-6xl font-bold tracking-tight leading-tight mb-6">
-        One API.<br /><span class="gradient-text">All AI Models.</span>
+      <h1 class="hero-h1">
+        One API.<br/><span class="ember-text">All AI Models.</span>
       </h1>
-      <p class="text-lg sm:text-xl text-apple-sub max-w-xl mx-auto mb-10 leading-relaxed">
+      <div class="ref-glow-line"></div>
+      <p class="hero-sub">
         RouteBox is a lightweight desktop app that intelligently routes your AI requests
         to the best model — saving you money while keeping things simple.
       </p>
-      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="#download" class="download-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+      <div class="hero-ctas">
+        <a href="#download" class="btn-ember">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
           Download for macOS
         </a>
-        <a href="https://github.com/nicepkg/routebox" target="_blank" class="text-sm font-medium text-apple-sub hover:text-apple-text transition flex items-center gap-1.5">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        <a href="https://github.com/nicepkg/routebox" target="_blank" class="btn-ghost">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
           View on GitHub
         </a>
       </div>
     </div>
   </section>
 
-  <!-- ── Logos / Models ───────────────────────────────────────────────────── -->
-  <section class="py-12 px-6">
-    <div class="max-w-3xl mx-auto text-center">
-      <p class="text-xs font-medium text-apple-muted uppercase tracking-widest mb-6">Works with all major providers</p>
-      <div class="flex flex-wrap items-center justify-center gap-8 text-apple-sub text-sm font-medium">
-        <span class="flex items-center gap-2">
-          <span class="w-6 h-6 rounded-lg bg-black flex items-center justify-center text-white text-xs font-bold">O</span>
+  <!-- ── Providers ───────────────────────────────────────────────────────── -->
+  <section class="providers">
+    <div class="providers-inner">
+      <p class="text-label">Works with all major providers</p>
+      <div class="providers-list">
+        <div class="provider-badge">
+          <div class="provider-icon" style="background:#1a1a1a; border:1px solid rgba(255,255,255,0.15);">O</div>
           OpenAI
-        </span>
-        <span class="flex items-center gap-2">
-          <span class="w-6 h-6 rounded-lg bg-orange-600 flex items-center justify-center text-white text-xs font-bold">A</span>
+        </div>
+        <div class="provider-badge">
+          <div class="provider-icon" style="background:#7c2d12;">A</div>
           Anthropic
-        </span>
-        <span class="flex items-center gap-2">
-          <span class="w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center text-white text-xs font-bold">G</span>
+        </div>
+        <div class="provider-badge">
+          <div class="provider-icon" style="background:#1e3a8a;">G</div>
           Google
-        </span>
-        <span class="flex items-center gap-2">
-          <span class="w-6 h-6 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">D</span>
+        </div>
+        <div class="provider-badge">
+          <div class="provider-icon" style="background:#312e81;">D</div>
           DeepSeek
-        </span>
-        <span class="flex items-center gap-2">
-          <span class="w-6 h-6 rounded-lg bg-purple-500 flex items-center justify-center text-white text-xs font-bold">M</span>
+        </div>
+        <div class="provider-badge">
+          <div class="provider-icon" style="background:#4a1d96;">M</div>
           MiniMax
-        </span>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- ── Features ─────────────────────────────────────────────────────────── -->
-  <section id="features" class="py-20 px-6">
-    <div class="max-w-5xl mx-auto">
-      <div class="text-center mb-16">
-        <h2 class="text-3xl sm:text-4xl font-bold mb-4">Everything you need.<br />Nothing you don't.</h2>
-        <p class="text-apple-sub text-lg max-w-lg mx-auto">A single app replaces multiple API dashboards, SDKs, and billing accounts.</p>
+  <section id="features" class="features">
+    <div class="container">
+      <div class="section-header">
+        <p class="text-label">Capabilities</p>
+        <h2>Everything you need.<br/>Nothing you don't.</h2>
+        <p>A single app replaces multiple API dashboards, SDKs, and billing accounts.</p>
       </div>
 
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- Feature 1 -->
-        <div class="feature-card p-6">
-          <div class="w-10 h-10 rounded-2xl bg-green-50 flex items-center justify-center text-xl mb-4">🔀</div>
-          <h3 class="font-semibold text-base mb-2">Smart Routing</h3>
-          <p class="text-sm text-apple-sub leading-relaxed">Automatically routes each request to the best model based on quality, speed, and cost. One endpoint, many models.</p>
+      <div class="features-grid">
+        <!-- Smart Routing -->
+        <div class="card feature-card">
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4d00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 3 21 3 21 8"/>
+              <line x1="4" y1="20" x2="21" y2="3"/>
+              <polyline points="21 16 21 21 16 21"/>
+              <line x1="15" y1="15" x2="21" y2="21"/>
+            </svg>
+          </div>
+          <h3>Smart Routing</h3>
+          <p>Automatically routes each request to the best model based on quality, speed, and cost. One endpoint, many models.</p>
         </div>
-        <!-- Feature 2 -->
-        <div class="feature-card p-6">
-          <div class="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-xl mb-4">💰</div>
-          <h3 class="font-semibold text-base mb-2">Cost Tracking</h3>
-          <p class="text-sm text-apple-sub leading-relaxed">Real-time usage dashboard with per-model breakdowns, daily trends, and savings reports. Know exactly where your money goes.</p>
+
+        <!-- Cost Tracking -->
+        <div class="card feature-card">
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4d00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23"/>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <h3>Cost Tracking</h3>
+          <p>Real-time usage dashboard with per-model breakdowns, daily trends, and savings reports. Know exactly where your money goes.</p>
         </div>
-        <!-- Feature 3 -->
-        <div class="feature-card p-6">
-          <div class="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center text-xl mb-4">🔌</div>
-          <h3 class="font-semibold text-base mb-2">OpenAI-Compatible API</h3>
-          <p class="text-sm text-apple-sub leading-relaxed">Drop-in replacement for OpenAI. Change one URL and instantly access GPT-4o, Claude, Gemini, DeepSeek and more.</p>
+
+        <!-- OpenAI-Compatible API -->
+        <div class="card feature-card">
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4d00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </div>
+          <h3>OpenAI-Compatible API</h3>
+          <p>Drop-in replacement for OpenAI. Change one URL and instantly access GPT-4o, Claude, Gemini, DeepSeek and more.</p>
         </div>
-        <!-- Feature 4 -->
-        <div class="feature-card p-6">
-          <div class="w-10 h-10 rounded-2xl bg-orange-50 flex items-center justify-center text-xl mb-4">🖥️</div>
-          <h3 class="font-semibold text-base mb-2">Native Desktop App</h3>
-          <p class="text-sm text-apple-sub leading-relaxed">Built with Tauri for macOS. Runs a local gateway on your machine — your API keys never leave your device.</p>
+
+        <!-- Native Desktop App -->
+        <div class="card feature-card">
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4d00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8"  y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+          </div>
+          <h3>Native Desktop App</h3>
+          <p>Built with Tauri for macOS. Runs a local gateway on your machine — your API keys never leave your device.</p>
         </div>
-        <!-- Feature 5 -->
-        <div class="feature-card p-6">
-          <div class="w-10 h-10 rounded-2xl bg-red-50 flex items-center justify-center text-xl mb-4">☁️</div>
-          <h3 class="font-semibold text-base mb-2">Cloud Mode</h3>
-          <p class="text-sm text-apple-sub leading-relaxed">No API keys? Use RouteBox Cloud. Pre-pay credits, access all models instantly. Perfect for getting started fast.</p>
+
+        <!-- Cloud Mode -->
+        <div class="card feature-card">
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4d00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+            </svg>
+          </div>
+          <h3>Cloud Mode</h3>
+          <p>No API keys? Use RouteBox Cloud. Pre-pay credits, access all models instantly. Perfect for getting started fast.</p>
         </div>
-        <!-- Feature 6 -->
-        <div class="feature-card p-6">
-          <div class="w-10 h-10 rounded-2xl bg-yellow-50 flex items-center justify-center text-xl mb-4">📊</div>
-          <h3 class="font-semibold text-base mb-2">Analytics & Insights</h3>
-          <p class="text-sm text-apple-sub leading-relaxed">7-day trends, model comparisons, provider breakdowns. See what works and optimize your AI spending.</p>
+
+        <!-- Analytics -->
+        <div class="card feature-card">
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4d00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10"/>
+              <line x1="12" y1="20" x2="12" y2="4"/>
+              <line x1="6"  y1="20" x2="6"  y2="14"/>
+            </svg>
+          </div>
+          <h3>Analytics &amp; Insights</h3>
+          <p>7-day trends, model comparisons, provider breakdowns. See what works and optimize your AI spending.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- ── How it works ─────────────────────────────────────────────────────── -->
-  <section class="py-20 px-6 bg-white">
-    <div class="max-w-4xl mx-auto">
-      <div class="text-center mb-16">
-        <h2 class="text-3xl sm:text-4xl font-bold mb-4">Three steps. That's it.</h2>
+  <section class="how-it-works">
+    <div class="container-sm">
+      <div class="section-header">
+        <p class="text-label">Setup</p>
+        <h2>Three steps. That's it.</h2>
       </div>
-
-      <div class="grid sm:grid-cols-3 gap-8">
-        <div class="text-center">
-          <div class="w-12 h-12 rounded-full bg-apple-bg flex items-center justify-center text-lg font-bold text-accent mx-auto mb-4">1</div>
-          <h3 class="font-semibold mb-2">Download & Install</h3>
-          <p class="text-sm text-apple-sub">Install the macOS app. It sets up a local API gateway automatically.</p>
+      <div class="steps-grid">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Download &amp; Install</h3>
+          <p>Install the macOS app. It sets up a local API gateway automatically.</p>
         </div>
-        <div class="text-center">
-          <div class="w-12 h-12 rounded-full bg-apple-bg flex items-center justify-center text-lg font-bold text-accent mx-auto mb-4">2</div>
-          <h3 class="font-semibold mb-2">Add Your API Keys</h3>
-          <p class="text-sm text-apple-sub">Paste your OpenAI, Anthropic, or Google keys. Or use Cloud mode with pre-paid credits.</p>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Add Your API Keys</h3>
+          <p>Paste your OpenAI, Anthropic, or Google keys. Or use Cloud mode with pre-paid credits.</p>
         </div>
-        <div class="text-center">
-          <div class="w-12 h-12 rounded-full bg-apple-bg flex items-center justify-center text-lg font-bold text-accent mx-auto mb-4">3</div>
-          <h3 class="font-semibold mb-2">Use One API Endpoint</h3>
-          <p class="text-sm text-apple-sub">Point your code to <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">localhost:3001/v1</code>. RouteBox handles the rest.</p>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Use One API Endpoint</h3>
+          <p>Point your code to <span class="code-block">localhost:3001/v1</span>. RouteBox handles the rest.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- ── Pricing ──────────────────────────────────────────────────────────── -->
-  <section id="pricing" class="py-20 px-6">
-    <div class="max-w-4xl mx-auto">
-      <div class="text-center mb-16">
-        <h2 class="text-3xl sm:text-4xl font-bold mb-4">Simple, transparent pricing</h2>
-        <p class="text-apple-sub text-lg">Use your own keys for free, or let us handle it with Cloud mode.</p>
+  <section id="pricing" class="pricing">
+    <div class="container">
+      <div class="section-header">
+        <p class="text-label">Pricing</p>
+        <h2>Simple, transparent pricing</h2>
+        <p>Use your own keys for free, or let us handle it with Cloud mode.</p>
       </div>
 
-      <div class="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-        <!-- Free -->
-        <div class="pricing-card p-8">
-          <div class="text-sm font-medium text-apple-sub mb-2">Free</div>
-          <div class="text-4xl font-bold mb-1">$0</div>
-          <div class="text-sm text-apple-muted mb-6">forever</div>
-          <ul class="space-y-3 text-sm mb-8">
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Use your own API keys</li>
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Smart routing engine</li>
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Real-time cost tracking</li>
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> All supported models</li>
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Analytics dashboard</li>
+      <div class="pricing-grid">
+        <!-- Free / Starter -->
+        <div class="card pricing-card">
+          <div class="plan-name">Free</div>
+          <div class="plan-price">$0</div>
+          <div class="plan-period">forever</div>
+          <ul class="feature-list">
+            <li><span class="check-icon">&#10003;</span> Use your own API keys</li>
+            <li><span class="check-icon">&#10003;</span> Smart routing engine</li>
+            <li><span class="check-icon">&#10003;</span> Real-time cost tracking</li>
+            <li><span class="check-icon">&#10003;</span> All supported models</li>
+            <li><span class="check-icon">&#10003;</span> Analytics dashboard</li>
           </ul>
-          <a href="#download" class="block text-center py-3 px-6 rounded-xl border border-gray-200 text-sm font-medium hover:bg-gray-50 transition">
-            Download Free
-          </a>
+          <a href="#download" class="btn-outline">Download Free</a>
         </div>
 
         <!-- Pro (Cloud) -->
-        <div class="pricing-card pro p-8 relative">
-          <div class="absolute -top-3 right-6 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">Popular</div>
-          <div class="text-sm font-medium text-accent mb-2">Pro (Cloud)</div>
-          <div class="text-4xl font-bold mb-1">$9.90<span class="text-lg font-normal text-apple-sub">/mo</span></div>
-          <div class="text-sm text-apple-muted mb-6">+ pay-as-you-go credits</div>
-          <ul class="space-y-3 text-sm mb-8">
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> No API keys needed</li>
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> <strong>Only 10% markup</strong> (vs 25% Free Cloud)</li>
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> All Free features included</li>
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Priority routing & speed</li>
-            <li class="flex items-start gap-2"><span class="check">&#10003;</span> Pre-paid credit balance</li>
-          </ul>
-          <a href="https://api.routebox.dev" class="pro-btn block text-center">
-            Get Pro
-          </a>
+        <div class="pro-wrapper">
+          <span class="popular-badge">Popular</span>
+          <div class="card pricing-card pro">
+            <div class="plan-name ember">Pro (Cloud)</div>
+            <div class="plan-price">$9.90<span>/mo</span></div>
+            <div class="plan-period">+ pay-as-you-go credits</div>
+            <ul class="feature-list">
+              <li><span class="check-icon">&#10003;</span> No API keys needed</li>
+              <li><span class="check-icon">&#10003;</span> <strong style="color:var(--text-primary)">Only 10% markup</strong> (vs 25% Free Cloud)</li>
+              <li><span class="check-icon">&#10003;</span> All Free features included</li>
+              <li><span class="check-icon">&#10003;</span> Priority routing &amp; speed</li>
+              <li><span class="check-icon">&#10003;</span> Pre-paid credit balance</li>
+            </ul>
+            <a href="https://api.routebox.dev" class="btn-ember" style="display:block;">Get Pro</a>
+          </div>
         </div>
       </div>
 
-      <div class="text-center mt-8">
-        <p class="text-xs text-apple-muted">Cloud mode: top-up credits ($5, $20, or custom). Pay only for what you use. No monthly minimums on Free tier.</p>
-      </div>
+      <p style="text-align:center; margin-top:28px; font-size:12px; color:var(--text-secondary); opacity:0.65;">
+        Cloud mode: top-up credits ($5, $20, or custom). Pay only for what you use. No monthly minimums on Free tier.
+      </p>
     </div>
   </section>
 
   <!-- ── Download ─────────────────────────────────────────────────────────── -->
-  <section id="download" class="py-20 px-6 bg-white">
-    <div class="max-w-3xl mx-auto text-center">
-      <h2 class="text-3xl sm:text-4xl font-bold mb-4">Ready to simplify your AI stack?</h2>
-      <p class="text-apple-sub text-lg mb-10 max-w-lg mx-auto">Download RouteBox for macOS and start routing AI requests in under a minute.</p>
-
-      <div class="flex flex-col items-center gap-4">
-        <a href="https://github.com/nicepkg/routebox/releases/latest" target="_blank" class="download-btn text-lg">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 0-3.16 19.5c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.1.39-2 1.03-2.7-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.56 9.56 0 0 1 5 0c1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.7 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></svg>
-          Download .dmg (macOS)
-        </a>
-        <div class="flex items-center gap-6 text-xs text-apple-muted">
-          <span>macOS 11+ (Apple Silicon & Intel)</span>
-          <span>~3 MB</span>
-          <span>Code-signed</span>
-        </div>
+  <section id="download" class="download-section">
+    <div class="container-sm">
+      <h2>Ready to simplify your AI stack?</h2>
+      <p>Download RouteBox for macOS and start routing AI requests in under a minute.</p>
+      <a href="https://github.com/nicepkg/routebox/releases/latest" target="_blank" class="btn-ember" style="font-size:18px; padding:16px 44px;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download .dmg (macOS)
+      </a>
+      <div class="specs">
+        <span class="text-label">macOS 11+ (Apple Silicon &amp; Intel)</span>
+        <span class="text-label">~3 MB</span>
+        <span class="text-label">Code-signed</span>
       </div>
     </div>
   </section>
 
   <!-- ── Footer ───────────────────────────────────────────────────────────── -->
-  <footer class="py-12 px-6 border-t border-gray-100">
-    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-      <div class="flex items-center gap-2">
-        <span class="text-lg">📦</span>
-        <span class="font-semibold text-sm text-apple-text">RouteBox</span>
-        <span class="text-xs text-apple-muted ml-2">&copy; 2025</span>
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff4d00" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3"/>
+          <line x1="3"  y1="12" x2="9"  y2="12"/>
+          <line x1="15" y1="12" x2="21" y2="12"/>
+          <line x1="12" y1="3"  x2="12" y2="9"/>
+          <line x1="12" y1="15" x2="12" y2="21"/>
+        </svg>
+        <span class="footer-logo-text">RouteBox</span>
+        <span class="footer-copy">&copy; 2025</span>
       </div>
-      <div class="flex items-center gap-6 text-xs text-apple-sub">
-        <a href="https://github.com/nicepkg/routebox" target="_blank" class="hover:text-apple-text transition">GitHub</a>
-        <a href="https://api.routebox.dev" class="hover:text-apple-text transition">API</a>
-        <a href="mailto:support@routebox.dev" class="hover:text-apple-text transition">Contact</a>
+      <div class="footer-links">
+        <a href="https://github.com/nicepkg/routebox" target="_blank">GitHub</a>
+        <a href="https://api.routebox.dev">API</a>
+        <a href="mailto:support@routebox.dev">Contact</a>
       </div>
     </div>
   </footer>

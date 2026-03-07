@@ -49,7 +49,6 @@ vi.mock("@/lib/constants", () => ({
 
 import { HeroSection } from "../components/HeroSection";
 import { ProviderStatus } from "../components/ProviderStatus";
-import { RequestLogPage } from "../components/RequestLogPage";
 import { ToastContainer } from "../components/ToastContainer";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { StatCard } from "../components/StatCard";
@@ -144,45 +143,17 @@ describe("ProviderStatus", () => {
   });
 });
 
-describe("RequestLogPage", () => {
-  test("renders empty state", () => {
-    render(<RequestLogPage entries={[]} />);
-    expect(screen.getByText("Waiting for requests...")).toBeDefined();
-  });
-
-  test("renders entries with status badges", () => {
-    render(
-      <RequestLogPage
-        entries={[
-          { id: "1", timestamp: Date.now(), provider: "OpenAI", model: "gpt-4o", tokens: 100, cost: 0.001, latencyMs: 120, status: "success" },
-          { id: "2", timestamp: Date.now(), provider: "Anthropic", model: "claude-sonnet-4-20250514", tokens: 200, cost: 0.003, latencyMs: 350, status: "error" },
-        ]}
-      />
-    );
-    expect(screen.getByText("gpt-4o")).toBeDefined();
-    expect(screen.getByText("OK")).toBeDefined();
-    expect(screen.getByText("ERR")).toBeDefined();
-  });
-
-  test("renders search input", () => {
-    render(<RequestLogPage entries={[]} />);
-    expect(screen.getByPlaceholderText("Filter requests...")).toBeDefined();
-  });
-});
-
 describe("TabBar", () => {
-  test("renders five tabs", () => {
-    render(<TabBar activeTab="dashboard" onTabChange={() => {}} />);
-    expect(screen.getByText("Dashboard")).toBeDefined();
-    expect(screen.getByText("My Usage")).toBeDefined();
+  test("renders three tabs", () => {
+    render(<TabBar activeTab="home" onTabChange={() => {}} />);
+    expect(screen.getByText("Home")).toBeDefined();
     expect(screen.getByText("Routing")).toBeDefined();
-    expect(screen.getByText("Logs")).toBeDefined();
-    expect(screen.getByText("Account")).toBeDefined();
+    expect(screen.getByText("Activity")).toBeDefined();
   });
 
   test("calls onTabChange when tab clicked", () => {
     const onTabChange = vi.fn();
-    render(<TabBar activeTab="dashboard" onTabChange={onTabChange} />);
+    render(<TabBar activeTab="home" onTabChange={onTabChange} />);
     fireEvent.click(screen.getByText("Routing"));
     expect(onTabChange).toHaveBeenCalledWith("routing");
   });

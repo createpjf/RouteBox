@@ -45,13 +45,11 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
     const currentEnabled = toggles.get(key) ?? true;
     const newEnabled = !currentEnabled;
 
-    // Optimistic update
     setToggles((prev) => new Map(prev).set(key, newEnabled));
 
     try {
       await api.setModelToggle(modelId, provider, newEnabled);
     } catch {
-      // Revert on error
       setToggles((prev) => new Map(prev).set(key, currentEnabled));
     }
   }, [toggles]);
@@ -69,7 +67,7 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
           const pm = modelsMap[p.name];
           const isExpanded = expanded[p.name] ?? false;
           const modelCount = pm?.models.length ?? 0;
-          const color = PROVIDER_COLORS[p.name] ?? "#86868B";
+          const color = PROVIDER_COLORS[p.name] ?? "#666666";
 
           return (
             <div
@@ -80,7 +78,7 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
             >
               {/* Header row */}
               <div
-                className="flex items-center justify-between py-3 px-4 cursor-pointer hover:bg-[#FAFAFA] transition-colors"
+                className="flex items-center justify-between py-3 px-4 cursor-pointer hover:bg-hover-overlay transition-colors"
                 onClick={() => toggle(p.name)}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -94,7 +92,7 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
                   />
                   <div
                     className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: p.isUp ? color : "#C7C7CC" }}
+                    style={{ backgroundColor: p.isUp ? color : "var(--color-dot-offline)" }}
                   />
                   <span className={clsx("text-[13px] font-medium", p.isUp ? "text-text-primary" : "text-text-tertiary")}>
                     {p.name}
@@ -111,7 +109,7 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
                   </span>
                   <div
                     className="h-1.5 w-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: p.isUp ? "#34C759" : "#C7C7CC" }}
+                    style={{ backgroundColor: p.isUp ? "#34C759" : "var(--color-dot-offline)" }}
                   />
                 </div>
               </div>
@@ -148,7 +146,7 @@ export function ProviderStatus({ providers }: ProviderStatusProps) {
                                 }}
                                 className={clsx(
                                   "relative w-7 h-4 rounded-full transition-colors duration-200",
-                                  enabled ? "bg-[#34C759]" : "bg-[#C7C7CC]"
+                                  enabled ? "bg-[#34C759]" : "bg-toggle-off"
                                 )}
                               >
                                 <div className={clsx(

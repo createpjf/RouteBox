@@ -123,13 +123,13 @@ function CloudConfirmation({ onDismiss }: { onDismiss: () => void }) {
       </div>
 
       <p className="text-[12px] text-text-tertiary leading-relaxed">
-        Open <span className="font-medium text-text-secondary">Settings → Gateway Mode</span> to sign in to your cloud account.
+        Go to the <span className="font-medium text-text-secondary">Activity</span> tab to sign in to your cloud account.
       </p>
 
       <p className="text-[11px] text-text-tertiary leading-relaxed text-center">
         Your gateway endpoint and API key are shown in the{" "}
-        <span className="font-medium text-text-secondary">Account tab</span>{" "}
-        after signing in.
+        <span className="font-medium text-text-secondary">Activity</span>{" "}
+        tab after signing in.
       </p>
 
       <button

@@ -1,7 +1,7 @@
-import { LayoutDashboard, Route, ScrollText, UserCircle, PieChart } from "lucide-react";
+import { LayoutDashboard, Route, ScrollText } from "lucide-react";
 import clsx from "clsx";
 
-export type TabId = "dashboard" | "usage" | "routing" | "logs" | "account";
+export type TabId = "home" | "routing" | "activity";
 
 interface TabBarProps {
   activeTab: TabId;
@@ -9,11 +9,9 @@ interface TabBarProps {
 }
 
 const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "usage", label: "My Usage", icon: PieChart },
-  { id: "routing", label: "Routing", icon: Route },
-  { id: "logs", label: "Logs", icon: ScrollText },
-  { id: "account", label: "Account", icon: UserCircle },
+  { id: "home",     label: "Home",     icon: LayoutDashboard },
+  { id: "routing",  label: "Routing",  icon: Route },
+  { id: "activity", label: "Activity", icon: ScrollText },
 ];
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
@@ -21,10 +19,8 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
     <div
       className="flex items-center justify-around h-14 shrink-0"
       style={{
-        background: "rgba(242,242,247,0.92)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        borderTop: "0.5px solid rgba(0,0,0,0.08)",
+        background: "var(--color-bg-panel)",
+        borderTop: "1px solid var(--color-border)",
       }}
     >
       {TABS.map(({ id, label, icon: Icon }) => {
@@ -34,12 +30,18 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
             key={id}
             onClick={() => onTabChange(id)}
             className={clsx(
-              "flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors",
+              "relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors",
               active
-                ? "text-[#1D1D1F]"
-                : "text-[#AEAEB2] hover:text-[#86868B]"
+                ? "text-text-primary"
+                : "text-text-tertiary hover:text-text-secondary"
             )}
           >
+            {active && (
+              <div
+                className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-b-full"
+                style={{ backgroundColor: "#ff4d00" }}
+              />
+            )}
             <Icon size={20} strokeWidth={1.4} />
             <span
               className="text-[9px]"

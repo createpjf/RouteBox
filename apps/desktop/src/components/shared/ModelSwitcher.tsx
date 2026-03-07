@@ -80,10 +80,10 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
           alignItems: "center",
           gap: 6,
           padding: compact ? "4px 10px" : "5px 12px",
-          background: "rgba(255,255,255,0.05)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "var(--color-bg-elevated)",
+          border: "1px solid var(--color-border)",
           borderRadius: 8,
-          color: "rgba(255,255,255,0.9)",
+          color: "var(--color-text-primary)",
           fontSize: compact ? 11 : 12,
           fontWeight: 500,
           cursor: "pointer",
@@ -98,7 +98,7 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
               borderRadius: "50%",
               background: selected.active
                 ? (PROVIDER_COLORS[selected.provider] ?? "#888")
-                : "rgba(255,255,255,0.2)",
+                : "var(--color-dot-offline)",
             }}
           />
         )}
@@ -121,33 +121,33 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
             position: "absolute",
             top: "calc(100% + 4px)",
             left: 0,
-            background: "rgba(28,28,30,0.98)",
+            background: "var(--color-bg-card)",
             backdropFilter: "blur(24px)",
             WebkitBackdropFilter: "blur(24px)",
-            border: "1px solid rgba(255,255,255,0.1)",
+            border: "1px solid var(--color-border)",
             borderRadius: 12,
             zIndex: 200,
             width: 280,
             maxHeight: 360,
             display: "flex",
             flexDirection: "column",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+            boxShadow: "var(--shadow-elevated)",
             overflow: "hidden",
           }}
         >
           {/* Search */}
-          <div style={{ padding: "8px 8px 4px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={{ padding: "8px 8px 4px", borderBottom: "1px solid var(--color-border)" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
                 padding: "5px 8px",
-                background: "rgba(255,255,255,0.05)",
+                background: "var(--color-bg-input)",
                 borderRadius: 7,
               }}
             >
-              <Search size={12} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+              <Search size={12} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
               <input
                 ref={searchRef}
                 value={search}
@@ -158,7 +158,7 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
                   background: "transparent",
                   border: "none",
                   outline: "none",
-                  color: "rgba(255,255,255,0.85)",
+                  color: "var(--color-text-primary)",
                   fontSize: 12,
                   fontFamily: "inherit",
                 }}
@@ -169,7 +169,7 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
           {/* Model list */}
           <div style={{ flex: 1, overflow: "auto", padding: "4px" }}>
             {filteredProviders.length === 0 && (
-              <div style={{ padding: "12px", textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
+              <div style={{ padding: "12px", textAlign: "center", fontSize: 11, color: "var(--color-text-tertiary)" }}>
                 No models found
               </div>
             )}
@@ -188,7 +188,7 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
                       padding: "6px 8px 3px",
                       fontSize: 10,
                       fontWeight: 600,
-                      color: "rgba(255,255,255,0.45)",
+                      color: "var(--color-text-secondary)",
                       textTransform: "uppercase",
                       letterSpacing: 0.6,
                     }}
@@ -219,10 +219,10 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
                         width: "100%",
                         textAlign: "left",
                         padding: "5px 8px 5px 20px",
-                        background: m.id === value ? "rgba(255,255,255,0.08)" : "transparent",
+                        background: m.id === value ? "var(--color-hover-overlay)" : "transparent",
                         border: "none",
                         borderRadius: 6,
-                        color: "rgba(255,255,255,0.85)",
+                        color: "var(--color-text-primary)",
                         fontSize: 12,
                         fontFamily: "'SF Mono', Menlo, monospace",
                         letterSpacing: -0.3,
@@ -230,7 +230,7 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
                         transition: "background 0.1s ease",
                       }}
                       onMouseEnter={(e) => {
-                        if (m.id !== value) (e.target as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+                        if (m.id !== value) (e.target as HTMLElement).style.background = "var(--color-bg-row-hover)";
                       }}
                       onMouseLeave={(e) => {
                         if (m.id !== value) (e.target as HTMLElement).style.background = "transparent";

@@ -54,7 +54,7 @@ export function RequestDetail({ entry, onClose }: RequestDetailProps) {
       {/* Backdrop */}
       <div
         className="flex-1 min-h-[35%]"
-        style={{ background: "rgba(0,0,0,0.2)" }}
+        style={{ background: "rgba(0,0,0,0.3)" }}
         onClick={onClose}
       />
 

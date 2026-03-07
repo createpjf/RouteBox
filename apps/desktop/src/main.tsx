@@ -24,6 +24,19 @@ function Root() {
       .finally(() => setTokenReady(true));
   }, []);
 
+  // Load saved theme preference
+  useEffect(() => {
+    import("@tauri-apps/plugin-store")
+      .then(({ load }) => load("settings.json", { defaults: {}, autoSave: true }))
+      .then(async (store) => {
+        const t = await store.get<string>("theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.dataset.theme = t;
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Main panel doesn't need to wait — App.tsx has its own token loading
   if (!hash || hash === "#/") {
     return <App />;

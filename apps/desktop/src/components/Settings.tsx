@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Check, Loader2, Trash2, ChevronRight, X, Play, Square, Download, RefreshCw, Globe, Server, Wifi } from "lucide-react";
+import { Check, Loader2, Trash2, ChevronRight, X, Play, Square, Download, RefreshCw, Globe, Server, Wifi, Sun, Moon, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 import {
   getGatewayUrl,
@@ -15,7 +15,6 @@ import {
 } from "@/lib/constants";
 import { checkGatewayHealth } from "@/lib/gateway-health";
 import { api } from "@/lib/api";
-import { ProviderKeyManager } from "./ProviderKeyManager";
 
 async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
@@ -55,16 +54,22 @@ export function Settings({ onClose }: SettingsProps) {
   const [searchHasKey, setSearchHasKey] = useState(false);
   const [searchSaving, setSearchSaving] = useState(false);
   const [searchSaved, setSearchSaved] = useState(false);
-  // Cloud account state
-  const [cloudMode, setCloudMode] = useState<"login" | "register">("login");
-  const [cloudEmail, setCloudEmail] = useState("");
-  const [cloudPassword, setCloudPassword] = useState("");
-  const [cloudName, setCloudName] = useState("");
-  const [cloudReferralCode, setCloudReferralCode] = useState("");
-  const [cloudUser, setCloudUser] = useState<{ email: string; balanceCents: number; plan: string } | null>(null);
-  const [cloudLoading, setCloudLoading] = useState(false);
-  const [cloudError, setCloudError] = useState<string | null>(null);
-  const [hasCloudToken, setHasCloudToken] = useState(false);
+  // Cloud read-only info
+  const [cloudUser, setCloudUser] = useState<{ email: string; plan: string } | null>(null);
+
+  // Theme state
+  const [theme, setTheme] = useState<"dark" | "light">(
+    () => (document.documentElement.dataset.theme as "dark" | "light") || "dark"
+  );
+
+  const handleSetTheme = useCallback(async (t: "dark" | "light") => {
+    setTheme(t);
+    document.documentElement.dataset.theme = t;
+    try {
+      const store = await loadStore();
+      await store.set("theme", t);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     tauriInvoke<string>("get_token")
@@ -76,14 +81,19 @@ export function Settings({ onClose }: SettingsProps) {
       })
       .catch(() => {});
 
-    tauriInvoke<string>("get_cloud_token")
-      .then((t) => {
-        if (t) {
-          setCloudAuthToken(t);
-          setHasCloudToken(true);
-        }
-      })
-      .catch(() => {});
+    // Load cloud user info for read-only display
+    if (getGatewayMode() === "cloud") {
+      tauriInvoke<string>("get_cloud_token")
+        .then((t) => {
+          if (t) {
+            setCloudAuthToken(t);
+            api.cloudGetMe()
+              .then((res) => setCloudUser({ email: res.user.email, plan: res.user.plan }))
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
 
     loadStore()
       .then(async (store) => {
@@ -112,13 +122,13 @@ export function Settings({ onClose }: SettingsProps) {
       .catch(() => {});
   }, []);
 
-  // Load cloud user when in cloud mode and has token
+  // Load cloud user when switching to cloud mode
   useEffect(() => {
-    if (activeMode !== "cloud" || !hasCloudToken) return;
+    if (activeMode !== "cloud") return;
     api.cloudGetMe()
-      .then((res) => setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan }))
-      .catch(() => {});
-  }, [activeMode, hasCloudToken]);
+      .then((res) => setCloudUser({ email: res.user.email, plan: res.user.plan }))
+      .catch(() => setCloudUser(null));
+  }, [activeMode]);
 
   const handleSwitchMode = useCallback(async (mode: GatewayMode) => {
     setActiveMode(mode);
@@ -298,65 +308,11 @@ export function Settings({ onClose }: SettingsProps) {
     }
   }, []);
 
-  const handleCloudLogin = useCallback(async () => {
-    if (!cloudEmail.trim() || !cloudPassword.trim()) return;
-    setCloudLoading(true);
-    setCloudError(null);
-    try {
-      const res = await api.cloudLogin(cloudEmail.trim(), cloudPassword);
-      await tauriInvoke("store_cloud_token", { token: res.token });
-      setCloudAuthToken(res.token);
-      setHasCloudToken(true);
-      setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan });
-      setCloudEmail("");
-      setCloudPassword("");
-    } catch (err) {
-      setCloudError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setCloudLoading(false);
-    }
-  }, [cloudEmail, cloudPassword]);
-
-  const handleCloudRegister = useCallback(async () => {
-    if (!cloudEmail.trim() || !cloudPassword.trim()) return;
-    setCloudLoading(true);
-    setCloudError(null);
-    try {
-      const res = await api.cloudRegister(
-        cloudEmail.trim(),
-        cloudPassword,
-        cloudName.trim() || undefined,
-        cloudReferralCode.trim() || undefined,
-      );
-      await tauriInvoke("store_cloud_token", { token: res.token });
-      setCloudAuthToken(res.token);
-      setHasCloudToken(true);
-      setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan });
-      setCloudEmail("");
-      setCloudPassword("");
-      setCloudName("");
-      setCloudReferralCode("");
-    } catch (err) {
-      setCloudError(err instanceof Error ? err.message : "Registration failed");
-    } finally {
-      setCloudLoading(false);
-    }
-  }, [cloudEmail, cloudPassword, cloudName, cloudReferralCode]);
-
-  const handleCloudLogout = useCallback(async () => {
-    setCloudUser(null);
-    setHasCloudToken(false);
-    try {
-      await tauriInvoke("delete_cloud_token");
-    } catch {}
-    setCloudAuthToken("");
-  }, []);
-
   return (
     <div className="absolute inset-0 z-40 flex flex-col">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
 
@@ -367,7 +323,7 @@ export function Settings({ onClose }: SettingsProps) {
           <h2 className="text-[14px] font-semibold text-text-primary">Settings</h2>
           <button
             onClick={onClose}
-            className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg-card transition-colors"
+            className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-hover-overlay transition-colors"
           >
             <X size={14} strokeWidth={1.75} className="text-text-tertiary" />
           </button>
@@ -375,6 +331,37 @@ export function Settings({ onClose }: SettingsProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+
+          {/* Appearance */}
+          <div>
+            <h3 className="section-header">Appearance</h3>
+            <div className="flex gap-1.5 p-1 bg-bg-input rounded-xl">
+              <button
+                onClick={() => handleSetTheme("dark")}
+                className={clsx(
+                  "flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-medium transition-colors",
+                  theme === "dark"
+                    ? "bg-bg-elevated shadow-sm text-text-primary"
+                    : "text-text-secondary hover:text-text-primary"
+                )}
+              >
+                <Moon size={13} strokeWidth={1.75} />
+                Dark
+              </button>
+              <button
+                onClick={() => handleSetTheme("light")}
+                className={clsx(
+                  "flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-medium transition-colors",
+                  theme === "light"
+                    ? "bg-bg-elevated shadow-sm text-text-primary"
+                    : "text-text-secondary hover:text-text-primary"
+                )}
+              >
+                <Sun size={13} strokeWidth={1.75} />
+                Light
+              </button>
+            </div>
+          </div>
 
           {/* Gateway Mode Switcher */}
           <div>
@@ -385,7 +372,7 @@ export function Settings({ onClose }: SettingsProps) {
                 className={clsx(
                   "flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-medium transition-colors",
                   activeMode === "local"
-                    ? "bg-white shadow-sm text-text-primary"
+                    ? "bg-bg-elevated shadow-sm text-text-primary"
                     : "text-text-secondary hover:text-text-primary"
                 )}
               >
@@ -397,7 +384,7 @@ export function Settings({ onClose }: SettingsProps) {
                 className={clsx(
                   "flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-medium transition-colors",
                   activeMode === "cloud"
-                    ? "bg-white shadow-sm text-text-primary"
+                    ? "bg-bg-elevated shadow-sm text-text-primary"
                     : "text-text-secondary hover:text-text-primary"
                 )}
               >
@@ -421,7 +408,7 @@ export function Settings({ onClose }: SettingsProps) {
                       onClick={() => handleToggleAutoStart(!autoStartGateway)}
                       className={clsx(
                         "relative w-10 h-[22px] rounded-full transition-colors",
-                        autoStartGateway ? "bg-accent-green" : "bg-[#D1D1D6]"
+                        autoStartGateway ? "bg-accent-green" : "bg-toggle-off"
                       )}
                     >
                       <div
@@ -438,10 +425,10 @@ export function Settings({ onClose }: SettingsProps) {
                     <div className="flex items-center gap-1.5">
                       <div className={clsx(
                         "h-2 w-2 rounded-full",
-                        gwRunning ? "bg-accent-green" : gwError ? "bg-accent-red" : "bg-[#C7C7CC]"
+                        gwRunning ? "bg-accent-green" : gwError ? "bg-accent-red" : "bg-dot-offline"
                       )} />
                       <span className="text-[11px] text-text-secondary">
-                        {gwLoading ? "Connecting…" : gwRunning ? "Running" : "Stopped"}
+                        {gwLoading ? "Connecting\u2026" : gwRunning ? "Running" : "Stopped"}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -478,12 +465,6 @@ export function Settings({ onClose }: SettingsProps) {
                     <p className="text-[10px] text-accent-red">{gwError}</p>
                   )}
                 </div>
-              </div>
-
-              {/* Local Providers & API Keys */}
-              <div>
-                <h3 className="section-header">Providers & API Keys</h3>
-                <ProviderKeyManager />
               </div>
 
               {/* Authentication */}
@@ -546,113 +527,36 @@ export function Settings({ onClose }: SettingsProps) {
             </>
           )}
 
-          {/* CLOUD MODE PANEL */}
+          {/* CLOUD MODE — read-only info */}
           {activeMode === "cloud" && (
             <div>
               <h3 className="section-header">Cloud Account</h3>
               <div className="glass-card-static p-3">
                 {cloudUser ? (
-                  <>
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="text-[13px] text-text-primary font-medium">{cloudUser.email}</p>
-                        <p className="text-[10px] text-text-tertiary capitalize">{cloudUser.plan} plan · ${(cloudUser.balanceCents / 100).toFixed(2)} credits</p>
-                      </div>
-                      <button
-                        onClick={handleCloudLogout}
-                        className="flex items-center gap-1 text-[11px] text-text-tertiary hover:text-accent-red h-7 px-2 rounded-lg hover:bg-accent-red/10 transition-colors"
-                      >
-                        <X size={12} strokeWidth={1.75} />
-                        Logout
-                      </button>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[13px] text-text-primary font-medium">{cloudUser.email}</p>
+                      <p className="text-[10px] text-text-tertiary capitalize">{cloudUser.plan} plan</p>
                     </div>
-                    {cloudError && <p className="text-[10px] text-accent-red">{cloudError}</p>}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex gap-1.5 mb-3">
-                      <button
-                        onClick={() => { setCloudMode("login"); setCloudError(null); }}
-                        className={clsx(
-                          "flex-1 h-7 rounded-lg text-[11px] font-medium transition-colors",
-                          cloudMode === "login" ? "bg-accent-cyan/10 text-accent-cyan" : "text-text-secondary hover:text-text-primary"
-                        )}
-                      >Sign In</button>
-                      <button
-                        onClick={() => { setCloudMode("register"); setCloudError(null); }}
-                        className={clsx(
-                          "flex-1 h-7 rounded-lg text-[11px] font-medium transition-colors",
-                          cloudMode === "register" ? "bg-accent-cyan/10 text-accent-cyan" : "text-text-secondary hover:text-text-primary"
-                        )}
-                      >Create Account</button>
-                    </div>
-
-                    {cloudMode === "register" && (
-                      <div className="mb-2">
-                        <label className="block text-[11px] text-text-tertiary font-medium mb-1">Name</label>
-                        <input
-                          type="text"
-                          value={cloudName}
-                          onChange={(e) => setCloudName(e.target.value)}
-                          placeholder="Your name (optional)"
-                          className="input"
-                        />
-                      </div>
-                    )}
-
-                    <div className="mb-2">
-                      <label className="block text-[11px] text-text-tertiary font-medium mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={cloudEmail}
-                        onChange={(e) => { setCloudEmail(e.target.value); setCloudError(null); }}
-                        placeholder="you@example.com"
-                        className="input"
-                        onKeyDown={(e) => e.key === "Enter" && (cloudMode === "login" ? handleCloudLogin() : handleCloudRegister())}
-                      />
-                    </div>
-
-                    <div className="mb-2.5">
-                      <label className="block text-[11px] text-text-tertiary font-medium mb-1">Password</label>
-                      <input
-                        type="password"
-                        value={cloudPassword}
-                        onChange={(e) => { setCloudPassword(e.target.value); setCloudError(null); }}
-                        placeholder="••••••••"
-                        className="input"
-                        onKeyDown={(e) => e.key === "Enter" && (cloudMode === "login" ? handleCloudLogin() : handleCloudRegister())}
-                      />
-                    </div>
-
-                    {cloudMode === "register" && (
-                      <div className="mb-2.5">
-                        <label className="block text-[11px] text-text-tertiary font-medium mb-1">Referral Code</label>
-                        <input
-                          type="text"
-                          value={cloudReferralCode}
-                          onChange={(e) => setCloudReferralCode(e.target.value)}
-                          placeholder="Referral code (optional)"
-                          className="input"
-                        />
-                      </div>
-                    )}
-
-                    {cloudError && <p className="mb-2 text-[10px] text-accent-red">{cloudError}</p>}
-
                     <button
-                      onClick={cloudMode === "login" ? handleCloudLogin : handleCloudRegister}
-                      disabled={cloudLoading || !cloudEmail.trim() || !cloudPassword.trim()}
-                      className={clsx(
-                        "w-full h-8 rounded-lg text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5",
-                        cloudLoading || !cloudEmail.trim() || !cloudPassword.trim()
-                          ? "bg-bg-input text-text-tertiary cursor-not-allowed"
-                          : "bg-accent-cyan text-white hover:bg-accent-cyan/90"
-                      )}
+                      onClick={onClose}
+                      className="flex items-center gap-1 text-[11px] text-accent-cyan hover:bg-accent-cyan/10 h-7 px-2 rounded-lg transition-colors"
                     >
-                      {cloudLoading && <Loader2 size={12} strokeWidth={1.75} className="animate-spin" />}
-                      {cloudMode === "login" ? "Sign In" : "Create Account"}
+                      Go to Activity
+                      <ArrowRight size={12} strokeWidth={1.75} />
                     </button>
-                  </>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <p className="text-[13px] text-text-secondary">Not signed in</p>
+                    <button
+                      onClick={onClose}
+                      className="flex items-center gap-1 text-[11px] text-accent-cyan hover:bg-accent-cyan/10 h-7 px-2 rounded-lg transition-colors"
+                    >
+                      Sign in via Activity
+                      <ArrowRight size={12} strokeWidth={1.75} />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -737,7 +641,7 @@ export function Settings({ onClose }: SettingsProps) {
                 type="password"
                 value={searchKey}
                 onChange={(e) => { setSearchKey(e.target.value); setSearchSaved(false); }}
-                placeholder={searchHasKey ? "Key saved • paste new to replace" : "BSA-xxxxxxxxxxxxxxxx"}
+                placeholder={searchHasKey ? "Key saved \u2022 paste new to replace" : "BSA-xxxxxxxxxxxxxxxx"}
                 className="input"
               />
               <div className="flex items-center gap-2 mt-2">
@@ -804,8 +708,8 @@ export function Settings({ onClose }: SettingsProps) {
                   ) : (
                     <Download size={14} strokeWidth={1.75} className="text-text-tertiary" />
                   )}
-                  {updateState === "checking" && "Checking for updates…"}
-                  {updateState === "downloading" && "Downloading update…"}
+                  {updateState === "checking" && "Checking for updates\u2026"}
+                  {updateState === "downloading" && "Downloading update\u2026"}
                   {updateState === "upToDate" && "You're up to date"}
                   {updateState === "available" && "Update available"}
                   {updateState === "ready" && "Restart to update"}

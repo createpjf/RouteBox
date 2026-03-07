@@ -25,13 +25,11 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   const [routingStrategy, setRoutingStrategy] = useState("smart_auto");
   const [copied, setCopied] = useState(false);
 
-  // Model preferences
   const [preferences, setPreferences] = useState<ModelPreference[]>([]);
   const [showAddPref, setShowAddPref] = useState(false);
   const [prefAction, setPrefAction] = useState<"pin" | "exclude">("pin");
   const [prefSaving, setPrefSaving] = useState(false);
 
-  // Routing rules
   const [routingRules, setRoutingRules] = useState<RoutingRule[]>([]);
   const [showAddRule, setShowAddRule] = useState(false);
   const [ruleSaving, setRuleSaving] = useState(false);
@@ -41,7 +39,6 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   const [ruleTargetModel, setRuleTargetModel] = useState("");
   const [ruleSearchQuery, setRuleSearchQuery] = useState("");
 
-  // Structured model+provider selection
   const [modelIndex, setModelIndex] = useState<Map<string, ModelProviderEntry[]>>(new Map());
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [modelsError, setModelsError] = useState(false);
@@ -50,7 +47,6 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("");
 
-  // Fetch initial data (one-time) — local mode only
   useEffect(() => {
     if (isCloud) return;
     api.getTrafficStatus()
@@ -67,12 +63,10 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
       .catch(() => {});
   }, [isCloud]);
 
-  // Fetch models — local mode only, re-fetch when providers come online
   useEffect(() => {
     if (isCloud) return;
     api.getModels()
       .then((res) => {
-        // Build reverse index: modelId → [{provider, pricing}]
         const idx = new Map<string, ModelProviderEntry[]>();
         for (const p of res.providers) {
           for (const m of p.models) {
@@ -88,7 +82,6 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
       .catch(() => { setModelsError(true); setModelsLoaded(true); });
   }, [isCloud, stats.providers.length]);
 
-  // Fetch models — cloud mode
   useEffect(() => {
     if (!isCloud) return;
     api.cloudGetModels()
@@ -100,7 +93,6 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
       .catch(() => setModelsError(true));
   }, [isCloud]);
 
-  // Sorted + filtered model list
   const filteredModels = useMemo(() => {
     const allModels = Array.from(modelIndex.keys()).sort();
     if (!searchQuery.trim()) return allModels;
@@ -108,13 +100,11 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     return allModels.filter((m) => m.toLowerCase().includes(q));
   }, [modelIndex, searchQuery]);
 
-  // Providers available for selected model
   const availableProviders = useMemo(() => {
     if (!selectedModel) return [];
     return modelIndex.get(selectedModel) || [];
   }, [modelIndex, selectedModel]);
 
-  // Auto-select provider when model changes
   useEffect(() => {
     if (availableProviders.length === 1) {
       setSelectedProvider(availableProviders[0].provider);
@@ -145,7 +135,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
   const handleTogglePause = useCallback(async () => {
     const prev = isPaused;
-    setIsPaused(!prev); // optimistic
+    setIsPaused(!prev);
     try {
       if (prev) {
         await api.resumeTraffic();
@@ -153,7 +143,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         await api.pauseTraffic();
       }
     } catch (err) {
-      setIsPaused(prev); // rollback
+      setIsPaused(prev);
       showToast(err instanceof Error ? err.message : "Failed to toggle traffic");
     }
   }, [isPaused, showToast]);
@@ -197,7 +187,6 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     }
   }, [showToast]);
 
-  // Filtered models for rule target selection
   const ruleFilteredModels = useMemo(() => {
     const allModels = Array.from(modelIndex.keys()).sort();
     if (!ruleSearchQuery.trim()) return allModels;
@@ -274,7 +263,6 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     }
   }, [showToast]);
 
-  /** Format pricing for display */
   const fmtPrice = (n: number) => n < 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(1)}`;
 
   return (
@@ -283,7 +271,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
       {isCloud && (
         <div className="m-1 p-4 rounded-xl bg-[#007AFF]/6 border border-[#007AFF]/15">
           <p className="text-[13px] font-semibold text-[#007AFF] mb-1">Cloud Routing</p>
-          <p className="text-[11px] text-[#86868B] leading-relaxed">
+          <p className="text-[11px] text-text-secondary leading-relaxed">
             RouteBox Cloud automatically selects the best model for each request.
             Routing strategy, preferences, and rules are managed server-side.
           </p>
@@ -303,12 +291,12 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                   i < Math.min(cloudModelIds.length, 20) - 1 && "border-b border-border-light"
                 )}
               >
-                <span className="text-[12px] font-mono text-[#1D1D1F] truncate">{modelId}</span>
+                <span className="text-[12px] font-mono text-text-primary truncate">{modelId}</span>
               </div>
             ))}
             {cloudModelIds.length > 20 && (
               <div className="px-3 py-2 text-center border-t border-border-light">
-                <p className="text-[10px] text-[#86868B]">+{cloudModelIds.length - 20} more models</p>
+                <p className="text-[10px] text-text-secondary">+{cloudModelIds.length - 20} more models</p>
               </div>
             )}
           </div>
@@ -351,15 +339,15 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                   ) : (
                     <Ban size={12} strokeWidth={1.75} className="text-[#FF3B30] shrink-0" />
                   )}
-                  <span className="text-[12px] font-mono text-[#1D1D1F] truncate">{pref.modelPattern}</span>
-                  <span className="text-[10px] text-[#86868B]">{"\u2192"}</span>
-                  <span className="text-[12px] text-[#86868B] truncate">{pref.provider}</span>
+                  <span className="text-[12px] font-mono text-text-primary truncate">{pref.modelPattern}</span>
+                  <span className="text-[10px] text-text-secondary">{"\u2192"}</span>
+                  <span className="text-[12px] text-text-secondary truncate">{pref.provider}</span>
                 </div>
                 <button
                   onClick={() => handleRemovePreference(pref.id)}
-                  className="shrink-0 p-1 rounded hover:bg-[#F2F2F7] transition-colors"
+                  className="shrink-0 p-1 rounded hover:bg-hover-overlay transition-colors"
                 >
-                  <X size={12} strokeWidth={1.75} className="text-[#C7C7CC]" />
+                  <X size={12} strokeWidth={1.75} className="text-text-tertiary" />
                 </button>
               </div>
             ))
@@ -368,14 +356,14 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
           {showAddPref ? (
             <div className="p-3 border-t border-border-light space-y-2">
               {/* Pin / Exclude toggle */}
-              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#F2F2F7]">
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-bg-elevated">
                 <button
                   onClick={() => setPrefAction("pin")}
                   className={clsx(
                     "flex-1 flex items-center justify-center gap-1 text-[10px] font-medium py-1 rounded-md transition-all",
                     prefAction === "pin"
                       ? "bg-[#007AFF] text-white shadow-sm"
-                      : "text-[#86868B]"
+                      : "text-text-secondary"
                   )}
                 >
                   <Pin size={10} strokeWidth={2} />
@@ -387,7 +375,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                     "flex-1 flex items-center justify-center gap-1 text-[10px] font-medium py-1 rounded-md transition-all",
                     prefAction === "exclude"
                       ? "bg-[#FF3B30] text-white shadow-sm"
-                      : "text-[#86868B]"
+                      : "text-text-secondary"
                   )}
                 >
                   <Ban size={10} strokeWidth={2} />
@@ -397,7 +385,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
               {/* Model search */}
               <div className="relative">
-                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#86868B]" />
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -429,10 +417,10 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                             setSelectedModel(modelId);
                             setSearchQuery(modelId);
                           }}
-                          className="flex items-center justify-between w-full px-3 py-1.5 text-left hover:bg-[#F2F2F7] transition-colors border-b border-border-light last:border-b-0"
+                          className="flex items-center justify-between w-full px-3 py-1.5 text-left hover:bg-hover-overlay transition-colors border-b border-border-light last:border-b-0"
                         >
-                          <span className="text-[12px] font-mono text-[#1D1D1F] truncate">{modelId}</span>
-                          <span className="text-[10px] text-[#86868B] shrink-0 ml-2">
+                          <span className="text-[12px] font-mono text-text-primary truncate">{modelId}</span>
+                          <span className="text-[10px] text-text-secondary shrink-0 ml-2">
                             {entries.length === 1
                               ? entries[0].provider
                               : `${entries.length} providers`}
@@ -448,7 +436,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
               {selectedModel && (
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5 px-1">
-                    <span className="text-[11px] font-medium text-[#1D1D1F]">
+                    <span className="text-[11px] font-medium text-text-primary">
                       {selectedModel}
                     </span>
                     <button
@@ -457,24 +445,22 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                         setSelectedProvider("");
                         setSearchQuery("");
                       }}
-                      className="p-0.5 rounded hover:bg-[#F2F2F7] transition-colors"
+                      className="p-0.5 rounded hover:bg-hover-overlay transition-colors"
                     >
-                      <X size={10} strokeWidth={2} className="text-[#86868B]" />
+                      <X size={10} strokeWidth={2} className="text-text-secondary" />
                     </button>
                   </div>
 
                   {availableProviders.length <= 1 ? (
-                    // Single provider — auto-selected, just show info
                     availableProviders.length === 1 && (
-                      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#F2F2F7]">
-                        <span className="text-[12px] text-[#1D1D1F]">{availableProviders[0].provider}</span>
-                        <span className="text-[10px] text-[#86868B]">
+                      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-bg-elevated">
+                        <span className="text-[12px] text-text-primary">{availableProviders[0].provider}</span>
+                        <span className="text-[10px] text-text-secondary">
                           {fmtPrice(availableProviders[0].pricing.input)}/{fmtPrice(availableProviders[0].pricing.output)} per 1M
                         </span>
                       </div>
                     )
                   ) : (
-                    // Multiple providers — radio buttons
                     <div className="rounded-lg border border-border-light overflow-hidden">
                       {availableProviders.map((entry, i) => (
                         <button
@@ -483,8 +469,8 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                           className={clsx(
                             "flex items-center justify-between w-full px-2.5 py-1.5 text-left transition-colors",
                             selectedProvider === entry.provider
-                              ? "bg-[#007AFF]/8"
-                              : "hover:bg-[#F2F2F7]",
+                              ? "bg-[#007AFF]/12"
+                              : "hover:bg-hover-overlay",
                             i < availableProviders.length - 1 && "border-b border-border-light"
                           )}
                         >
@@ -493,15 +479,15 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                               "w-3 h-3 rounded-full border-2 flex items-center justify-center",
                               selectedProvider === entry.provider
                                 ? "border-[#007AFF]"
-                                : "border-[#C7C7CC]"
+                                : "border-text-tertiary"
                             )}>
                               {selectedProvider === entry.provider && (
                                 <div className="w-1.5 h-1.5 rounded-full bg-[#007AFF]" />
                               )}
                             </div>
-                            <span className="text-[12px] text-[#1D1D1F]">{entry.provider}</span>
+                            <span className="text-[12px] text-text-primary">{entry.provider}</span>
                           </div>
-                          <span className="text-[10px] text-[#86868B]">
+                          <span className="text-[10px] text-text-secondary">
                             {fmtPrice(entry.pricing.input)}/{fmtPrice(entry.pricing.output)} per 1M
                           </span>
                         </button>
@@ -533,7 +519,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                     setSelectedProvider("");
                     setSearchQuery("");
                   }}
-                  className="text-[11px] text-text-tertiary h-7 px-2 rounded-lg hover:bg-[#F2F2F7] transition-colors"
+                  className="text-[11px] text-text-tertiary h-7 px-2 rounded-lg hover:bg-hover-overlay transition-colors"
                 >
                   Cancel
                 </button>
@@ -542,7 +528,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
           ) : (
             <button
               onClick={() => setShowAddPref(true)}
-              className="flex items-center gap-1.5 w-full h-9 px-3 text-[12px] text-[#007AFF] hover:bg-[#F2F2F7] transition-colors border-t border-border-light"
+              className="flex items-center gap-1.5 w-full h-9 px-3 text-[12px] text-[#007AFF] hover:bg-hover-overlay transition-colors border-t border-border-light"
             >
               <Plus size={13} strokeWidth={2} />
               Add Preference
@@ -575,14 +561,14 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[10px] shrink-0">{meta.icon}</span>
-                    <span className="text-[12px] font-medium text-[#1D1D1F] truncate">{rule.name}</span>
-                    <span className="text-[10px] text-[#86868B]">{"\u2192"}</span>
-                    <span className="text-[11px] font-mono text-[#86868B] truncate">{rule.targetModel}</span>
+                    <span className="text-[12px] font-medium text-text-primary truncate">{rule.name}</span>
+                    <span className="text-[10px] text-text-secondary">{"\u2192"}</span>
+                    <span className="text-[11px] font-mono text-text-secondary truncate">{rule.targetModel}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span
                       className="text-[9px] font-medium px-1.5 py-0.5 rounded-md"
-                      style={{ backgroundColor: meta.color + "15", color: meta.color }}
+                      style={{ backgroundColor: meta.color + "20", color: meta.color }}
                     >
                       {meta.label}
                     </span>
@@ -590,7 +576,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                       onClick={() => handleToggleRule(rule.id, !rule.enabled)}
                       className={clsx(
                         "relative w-7 h-4 rounded-full transition-colors duration-200",
-                        rule.enabled ? "bg-[#34C759]" : "bg-[#C7C7CC]"
+                        rule.enabled ? "bg-[#34C759]" : "bg-toggle-off"
                       )}
                     >
                       <div className={clsx(
@@ -600,9 +586,9 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                     </button>
                     <button
                       onClick={() => handleRemoveRule(rule.id)}
-                      className="p-1 rounded hover:bg-[#F2F2F7] transition-colors"
+                      className="p-1 rounded hover:bg-hover-overlay transition-colors"
                     >
-                      <X size={12} strokeWidth={1.75} className="text-[#C7C7CC]" />
+                      <X size={12} strokeWidth={1.75} className="text-text-tertiary" />
                     </button>
                   </div>
                 </div>
@@ -622,7 +608,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
               />
 
               {/* Match Type selector */}
-              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#F2F2F7]">
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-bg-elevated">
                 {(["model_alias", "content_code", "content_long", "content_general"] as const).map((mt) => {
                   const meta = MATCH_TYPE_META[mt];
                   return (
@@ -633,7 +619,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                         "flex-1 text-[9px] font-medium py-1 rounded-md transition-all text-center",
                         ruleMatchType === mt
                           ? "text-white shadow-sm"
-                          : "text-[#86868B]"
+                          : "text-text-secondary"
                       )}
                       style={ruleMatchType === mt ? { backgroundColor: meta.color } : undefined}
                     >
@@ -643,7 +629,6 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                 })}
               </div>
 
-              {/* Match value for model alias */}
               {ruleMatchType === "model_alias" && (
                 <input
                   type="text"
@@ -654,7 +639,6 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                 />
               )}
 
-              {/* Auto-config hint for content types */}
               {ruleMatchType === "content_long" && (
                 <p className="text-[10px] text-text-tertiary px-0.5">Auto-detect: messages ≥ 8,000 chars</p>
               )}
@@ -665,10 +649,9 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                 <p className="text-[10px] text-text-tertiary px-0.5">Matches all other requests as fallback</p>
               )}
 
-              {/* Target model search */}
               <span className="text-[10px] font-medium text-text-tertiary px-0.5">Target Model</span>
               <div className="relative">
-                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#86868B]" />
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
                   type="text"
                   value={ruleSearchQuery}
@@ -696,9 +679,9 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                           setRuleTargetModel(modelId);
                           setRuleSearchQuery(modelId);
                         }}
-                        className="flex items-center w-full px-3 py-1.5 text-left hover:bg-[#F2F2F7] transition-colors border-b border-border-light last:border-b-0"
+                        className="flex items-center w-full px-3 py-1.5 text-left hover:bg-hover-overlay transition-colors border-b border-border-light last:border-b-0"
                       >
-                        <span className="text-[12px] font-mono text-[#1D1D1F] truncate">{modelId}</span>
+                        <span className="text-[12px] font-mono text-text-primary truncate">{modelId}</span>
                       </button>
                     ))
                   )}
@@ -707,12 +690,12 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
               {ruleTargetModel && (
                 <div className="flex items-center gap-1.5 px-1">
-                  <span className="text-[11px] font-medium text-[#1D1D1F]">{ruleTargetModel}</span>
+                  <span className="text-[11px] font-medium text-text-primary">{ruleTargetModel}</span>
                   <button
                     onClick={() => { setRuleTargetModel(""); setRuleSearchQuery(""); }}
-                    className="p-0.5 rounded hover:bg-[#F2F2F7] transition-colors"
+                    className="p-0.5 rounded hover:bg-hover-overlay transition-colors"
                   >
-                    <X size={10} strokeWidth={2} className="text-[#86868B]" />
+                    <X size={10} strokeWidth={2} className="text-text-secondary" />
                   </button>
                 </div>
               )}
@@ -745,7 +728,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                     setRuleTargetModel("");
                     setRuleSearchQuery("");
                   }}
-                  className="text-[11px] text-text-tertiary h-7 px-2 rounded-lg hover:bg-[#F2F2F7] transition-colors"
+                  className="text-[11px] text-text-tertiary h-7 px-2 rounded-lg hover:bg-hover-overlay transition-colors"
                 >
                   Cancel
                 </button>
@@ -754,7 +737,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
           ) : (
             <button
               onClick={() => setShowAddRule(true)}
-              className="flex items-center gap-1.5 w-full h-9 px-3 text-[12px] text-[#007AFF] hover:bg-[#F2F2F7] transition-colors border-t border-border-light"
+              className="flex items-center gap-1.5 w-full h-9 px-3 text-[12px] text-[#007AFF] hover:bg-hover-overlay transition-colors border-t border-border-light"
             >
               <Plus size={13} strokeWidth={2} />
               Add Rule
@@ -768,7 +751,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
       {/* Models error message */}
       {modelsError && (
-        <p className="text-[11px] text-[#86868B] text-center py-2">
+        <p className="text-[11px] text-text-secondary text-center py-2">
           {isCloud
             ? "Failed to load models. Check your internet connection."
             : "Failed to load models. Check your connection and gateway status."}
@@ -783,10 +766,10 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
             {copied ? (
               <Check size={16} strokeWidth={1.75} className="text-[#34C759]" />
             ) : (
-              <Copy size={16} strokeWidth={1.75} className="text-[#1D1D1F]" />
+              <Copy size={16} strokeWidth={1.75} className="text-text-primary" />
             )}
             <div className="flex flex-col items-start">
-              <span className="text-[12px] font-medium text-[#1D1D1F]">
+              <span className="text-[12px] font-medium text-text-primary">
                 {copied ? "Copied!" : "Copy Key"}
               </span>
               <span className="text-[9px] text-text-tertiary">{"\u2318"}C</span>
@@ -795,12 +778,12 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
           <button className="glass-card p-3 flex items-center gap-2.5" onClick={handleTogglePause}>
             {isPaused ? (
-              <Play size={16} strokeWidth={1.75} className="text-[#1D1D1F]" />
+              <Play size={16} strokeWidth={1.75} className="text-text-primary" />
             ) : (
-              <Pause size={16} strokeWidth={1.75} className="text-[#1D1D1F]" />
+              <Pause size={16} strokeWidth={1.75} className="text-text-primary" />
             )}
             <div className="flex flex-col items-start">
-              <span className="text-[12px] font-medium text-[#1D1D1F]">
+              <span className="text-[12px] font-medium text-text-primary">
                 {isPaused ? "Resume" : "Pause"}
               </span>
               <span className="text-[9px] text-text-tertiary">{"\u2318"}P</span>

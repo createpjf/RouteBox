@@ -15,31 +15,28 @@ interface HeroSectionProps {
 
 export function HeroSection({ connected, stale, gatewayState, gatewayError, onOpenSettings, onOpenChat, onShowOnboarding }: HeroSectionProps) {
   const mode = getGatewayMode();
-  // In cloud mode, consider "online" if WS connected OR gateway health confirmed running
   const effectivelyOnline = connected || (mode === "cloud" && gatewayState === "running");
 
-  // Derive status text & color
   let statusText = effectivelyOnline ? "Online" : "Offline";
-  let statusColor = effectivelyOnline ? "#34C759" : "#C7C7CC";
+  let statusColor = effectivelyOnline ? "#34C759" : "var(--color-dot-offline)";
   let showSpinner = false;
 
   if (gatewayState === "idle") {
     statusText = "Not signed in";
-    statusColor = "#C7C7CC";
+    statusColor = "var(--color-dot-offline)";
   } else if (gatewayState === "checking" || gatewayState === "starting") {
     statusText = gatewayState === "checking" ? "Checking…" : "Starting gateway…";
-    statusColor = "#FF9500"; // amber
+    statusColor = "#FF9500";
     showSpinner = true;
   } else if (gatewayState === "failed") {
     statusText = "Gateway failed";
-    statusColor = "#FF3B30"; // red
+    statusColor = "#FF3B30";
   } else if (connected && stale) {
     statusText = "Reconnecting…";
-    statusColor = "#FF9500"; // amber
+    statusColor = "#FF9500";
     showSpinner = true;
   }
 
-  // Shorten common Tauri/Rust error messages for display
   const shortError = gatewayError
     ?.replace(/^Failed to spawn gateway:\s*/, "")
     .replace(/Cannot read properties of undefined.*/, "Tauri runtime unavailable")
@@ -49,15 +46,13 @@ export function HeroSection({ connected, stale, gatewayState, gatewayError, onOp
     <div
       className="shrink-0"
       style={{
-        background: "rgba(242,242,247,0.92)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        background: "var(--color-bg-panel)",
       }}
       data-tauri-drag-region
     >
       <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
         <div className="flex items-center gap-2.5">
-          <h1 className="text-[17px] font-bold text-[#1D1D1F] tracking-[-0.02em] leading-none">
+          <h1 className="text-[17px] font-bold text-text-primary tracking-[-0.02em] leading-none">
             RouteBox
           </h1>
           <div className="flex items-center gap-1.5">
@@ -82,26 +77,26 @@ export function HeroSection({ connected, stale, gatewayState, gatewayError, onOp
           {onShowOnboarding && (
             <button
               onClick={onShowOnboarding}
-              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[#E8E8ED] transition-colors"
+              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-hover-overlay transition-colors"
               title="Setup Guide"
             >
-              <BookOpen size={15} strokeWidth={1.6} className="text-[#AEAEB2]" />
+              <BookOpen size={15} strokeWidth={1.6} className="text-text-tertiary" />
             </button>
           )}
           {onOpenChat && (
             <button
               onClick={onOpenChat}
-              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[#E8E8ED] transition-colors"
+              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-hover-overlay transition-colors"
               title="Chat"
             >
-              <MessageSquare size={15} strokeWidth={1.6} className="text-[#AEAEB2]" />
+              <MessageSquare size={15} strokeWidth={1.6} className="text-text-tertiary" />
             </button>
           )}
           <button
             onClick={onOpenSettings}
-            className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[#E8E8ED] transition-colors"
+            className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-hover-overlay transition-colors"
           >
-            <Settings size={16} strokeWidth={1.6} className="text-[#AEAEB2]" />
+            <Settings size={16} strokeWidth={1.6} className="text-text-tertiary" />
           </button>
         </div>
       </div>

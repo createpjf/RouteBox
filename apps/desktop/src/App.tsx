@@ -2,16 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Panel } from "@/components/Panel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HeroSection } from "@/components/HeroSection";
-import { DashboardPage } from "@/components/DashboardPage";
+import { HomePage } from "@/components/HomePage";
 import { RoutingPage } from "@/components/RoutingPage";
-import { RequestLogPage } from "@/components/RequestLogPage";
+import { ActivityPage } from "@/components/ActivityPage";
 import { TabBar } from "@/components/TabBar";
 import type { TabId } from "@/components/TabBar";
 import { Settings } from "@/components/Settings";
 import { Onboarding } from "@/components/Onboarding";
 import { RequestDetail } from "@/components/RequestDetail";
-import { AccountPage } from "@/components/AccountPage";
-import { UsagePage } from "@/components/UsagePage";
 import { AlertBanner } from "@/components/AlertBanner";
 import { ToastContainer } from "@/components/ToastContainer";
 import { useRealtimeStats } from "@/hooks/useRealtimeStats";
@@ -32,7 +30,7 @@ const EMPTY_STATS: RealtimeStats = {
 };
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabId>("dashboard");
+  const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(true); // default true to prevent flash
@@ -145,7 +143,6 @@ export function App() {
           }
         } else {
           // Remote gateway: health-check miss is not a hard failure — stay idle
-          // The WS connection or a subsequent check will upgrade to "running" if reachable
           if (!cancelled) setGatewayState("idle");
         }
       } catch (err) {
@@ -171,7 +168,7 @@ export function App() {
     }
   }, [connected, gatewayState]);
 
-  // Track when gateway transitions to running so AccountPage can refetch providers
+  // Track when gateway transitions to running so ActivityPage can refetch providers
   useEffect(() => {
     if (gatewayState === "running") setGatewayRunningAt(Date.now());
   }, [gatewayState]);
@@ -280,18 +277,24 @@ export function App() {
           />
         )}
         <div className="flex flex-1 min-h-0 relative">
-          {(["dashboard", "routing", "logs", "usage", "account"] as const).map((tab) => (
+          {(["home", "routing", "activity"] as const).map((tab) => (
             <div
               key={tab}
               className={tab === activeTab
                 ? "flex flex-1 min-h-0 absolute inset-0 animate-page-in"
                 : "hidden"}
             >
-              {tab === "dashboard" && <DashboardPage stats={currentStats} history={history} />}
-              {tab === "routing"   && <RoutingPage stats={currentStats} showToast={showToast} />}
-              {tab === "logs"      && <RequestLogPage entries={requestLog} onSelectEntry={setSelectedRequest} />}
-              {tab === "usage"     && <UsagePage />}
-              {tab === "account"   && <AccountPage onGoToSettings={() => setShowSettings(true)} onCloudLoginSuccess={handleCloudLoginSuccess} gatewayRunningAt={gatewayRunningAt} />}
+              {tab === "home"     && <HomePage stats={currentStats} history={history} />}
+              {tab === "routing"  && <RoutingPage stats={currentStats} showToast={showToast} />}
+              {tab === "activity" && (
+                <ActivityPage
+                  requestLog={requestLog}
+                  onSelectEntry={setSelectedRequest}
+                  onCloudLoginSuccess={handleCloudLoginSuccess}
+                  gatewayRunningAt={gatewayRunningAt}
+                  onGoToSettings={() => setShowSettings(true)}
+                />
+              )}
             </div>
           ))}
         </div>

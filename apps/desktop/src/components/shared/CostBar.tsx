@@ -33,7 +33,7 @@ export const CostBar: React.FC<CostBarProps> = ({ meta, compact }) => {
         alignItems: "center",
         gap: compact ? 6 : 10,
         fontSize: compact ? 10 : 11,
-        color: "rgba(255,255,255,0.45)",
+        color: "var(--color-text-secondary)",
         padding: compact ? "2px 0" : "4px 0",
         flexWrap: "wrap",
       }}
