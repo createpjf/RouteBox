@@ -141,6 +141,19 @@ export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlan> = {
   },
 };
 
+/** Update Polar product IDs for a subscription plan at runtime */
+export function updatePlanPolarIds(
+  planId: string,
+  polarProductId?: string,
+  polarProductIdPromo?: string,
+): boolean {
+  const plan = SUBSCRIPTION_PLANS[planId];
+  if (!plan) return false;
+  if (polarProductId !== undefined) plan.polarProductId = polarProductId;
+  if (polarProductIdPromo !== undefined) plan.polarProductIdPromo = polarProductIdPromo || undefined;
+  return true;
+}
+
 /** Get markup multiplier for a given plan (for legacy non-registry-priced models) */
 export function getMarkupForPlan(plan: string): number {
   return SUBSCRIPTION_PLANS[plan]?.markup ?? SUBSCRIPTION_PLANS.starter.markup;

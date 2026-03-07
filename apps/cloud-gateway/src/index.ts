@@ -123,6 +123,14 @@ app.route("/billing", billingRoutes);
 // ── Admin routes (own auth — checks ADMIN_EMAILS) ───────────────────────────
 app.route("/admin", adminRoutes);
 
+// ── Admin dashboard (HTML — auth is handled client-side via JWT) ─────────────
+import { adminHtml } from "./lib/admin-page";
+app.get("/admin-panel", (c) => {
+  c.header("X-Frame-Options", "SAMEORIGIN");
+  c.header("Cache-Control", "no-store");
+  return c.html(adminHtml);
+});
+
 // ── Landing page + static assets ─────────────────────────────────────────────
 import { landingHtml } from "./lib/landing";
 import { serveStaticFile } from "./lib/static";

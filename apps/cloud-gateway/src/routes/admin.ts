@@ -701,4 +701,32 @@ app.get("/plans/stats", async (c) => {
   return c.json({ plans: rows });
 });
 
+// ── GET /plans/config — subscription plan Polar IDs ──────────────────────
+
+app.get("/plans/config", async (c) => {
+  const { SUBSCRIPTION_PLANS } = await import("../lib/polar");
+  const plans = Object.values(SUBSCRIPTION_PLANS).map((p: any) => ({
+    id: p.id,
+    label: p.label,
+    monthlyPrice: p.monthlyPrice,
+    polarProductId: p.polarProductId || "",
+    polarProductIdPromo: p.polarProductIdPromo || "",
+  }));
+  return c.json({ plans });
+});
+
+// ── PATCH /plans/config/:planId — update subscription plan Polar IDs ─────
+
+app.patch("/plans/config/:planId", async (c) => {
+  const { updatePlanPolarIds } = await import("../lib/polar");
+  const planId = c.req.param("planId");
+  const body = await c.req.json<{ polarProductId?: string; polarProductIdPromo?: string }>();
+  if (body.polarProductId === undefined && body.polarProductIdPromo === undefined) {
+    return c.json({ error: { message: "No fields to update", type: "validation_error" } }, 400);
+  }
+  const ok = updatePlanPolarIds(planId, body.polarProductId, body.polarProductIdPromo);
+  if (!ok) return c.json({ error: { message: "Plan not found", type: "not_found" } }, 404);
+  return c.json({ success: true });
+});
+
 export default app;

@@ -319,7 +319,7 @@ export async function getAdminTopReferrers(limit = 20) {
 // ── User management ──────────────────────────────────────────────────────
 
 export async function updateUserPlan(userId: string, plan: string): Promise<void> {
-  const validPlans = ["free", "pro"];
+  const validPlans = ["starter", "pro", "max"];
   if (!validPlans.includes(plan)) throw new Error("Invalid plan");
   await sql`UPDATE users SET plan = ${plan}, updated_at = now() WHERE id = ${userId}`;
 }
