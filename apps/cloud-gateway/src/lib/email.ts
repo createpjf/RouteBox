@@ -45,3 +45,42 @@ export async function sendPasswordResetEmail(
 
   log.info("email_sent", { to, type: "password_reset" });
 }
+
+/**
+ * Send an alert email to all admin emails (fire-and-forget).
+ * Reads ADMIN_EMAILS env var (comma-separated).
+ */
+export async function sendAdminAlert(
+  subject: string,
+  html: string,
+): Promise<void> {
+  if (!resend) {
+    log.warn("admin_alert_skip", { reason: "RESEND_API_KEY not configured" });
+    return;
+  }
+
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+
+  if (adminEmails.length === 0) {
+    log.warn("admin_alert_skip", { reason: "ADMIN_EMAILS not configured" });
+    return;
+  }
+
+  for (const to of adminEmails) {
+    const { error } = await resend.emails.send({
+      from: "RouteBox Alerts <alerts@routebox.dev>",
+      to,
+      subject: `[RouteBox] ${subject}`,
+      html,
+    });
+
+    if (error) {
+      log.error("admin_alert_send_failed", { to, error: error.message });
+    } else {
+      log.info("admin_alert_sent", { to, subject });
+    }
+  }
+}

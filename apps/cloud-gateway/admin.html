@@ -132,7 +132,9 @@
     <div class="nav-item" data-page="plans-config">Subscription Plans</div>
     <div class="nav-item" data-page="packages">Credit Packages</div>
     <div class="nav-item" data-page="models">Model Registry</div>
+    <div class="nav-item" data-page="provider-keys">Provider Keys</div>
     <div class="nav-item" data-page="routing">Routing</div>
+    <div class="nav-item" data-page="provider-health">Provider Health</div>
     <div class="nav-section">Analytics</div>
     <div class="nav-item" data-page="transactions">Transactions</div>
     <div class="nav-item" data-page="referrals">Referrals</div>
@@ -141,7 +143,10 @@
   <main class="main">
     <!-- Dashboard -->
     <div id="page-dashboard">
-      <div class="page-title">Dashboard</div>
+      <div class="flex-between">
+        <div class="page-title">Dashboard</div>
+        <button class="btn btn-sm" onclick="exportCSV('usage?days=30','usage')">Export Usage CSV (30d)</button>
+      </div>
       <div id="statsGrid" class="card-grid"></div>
       <div id="noTrafficHint" style="display:none;padding:12px 16px;margin-bottom:16px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:14px;">No API traffic yet — stats will appear here once users start making API calls.</div>
       <div class="card" style="margin-bottom:16px">
@@ -154,6 +159,7 @@
     <div id="page-users" class="hidden">
       <div class="flex-between">
         <div class="page-title">Users</div>
+        <button class="btn btn-sm" onclick="exportCSV('users','users')">Export CSV</button>
       </div>
       <div class="search-bar">
         <input id="userSearch" class="input" placeholder="Search by email..." />
@@ -162,7 +168,7 @@
       <div class="card">
         <table>
           <thead><tr>
-            <th>Email</th><th>Plan</th><th>Balance</th><th>Deposited</th><th>Used</th><th>Requests</th><th>Joined</th><th>Actions</th>
+            <th>Email</th><th>Plan</th><th>Status</th><th>Balance</th><th>Deposited</th><th>Used</th><th>Requests</th><th>Joined</th><th>Actions</th>
           </tr></thead>
           <tbody id="usersBody"></tbody>
         </table>
@@ -181,6 +187,7 @@
       </div>
       <div class="card-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
         <div class="card"><div class="stat-label">Plan</div><div id="detailPlan"></div></div>
+        <div class="card"><div class="stat-label">Status</div><div id="detailStatus"></div></div>
         <div class="card"><div class="stat-label">Balance</div><div id="detailBalance" class="stat-value"></div></div>
         <div class="card"><div class="stat-label">Total Deposited</div><div id="detailDeposited" class="stat-value"></div></div>
         <div class="card"><div class="stat-label">Total Used</div><div id="detailUsed" class="stat-value"></div></div>
@@ -220,6 +227,19 @@
             <button class="btn btn-sm" onclick="setAdjust(2500,'Comp: $25 credit')">+$25</button>
             <button class="btn btn-sm" onclick="setAdjust(-500,'Deduction')">-$5</button>
           </div>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <strong>Account Status</strong>
+          <p class="text-muted" style="font-size:12px;margin:4px 0 12px">Suspend or ban this user. Suspended/banned users cannot access the API. Banning also revokes all API keys.</p>
+          <div id="suspendReasonWrap" style="margin-bottom:8px">
+            <input id="suspendReason" class="input" type="text" placeholder="Reason for suspend/ban" style="width:100%" />
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="btnSuspend" class="btn" style="border-color:var(--yellow);color:var(--yellow)" onclick="suspendUser()">Suspend</button>
+            <button id="btnUnsuspend" class="btn hidden" style="border-color:var(--green);color:var(--green)" onclick="unsuspendUser()">Unsuspend</button>
+            <button id="btnBan" class="btn btn-danger" onclick="banUser()">Ban</button>
+          </div>
+          <div id="suspendInfo" class="hidden" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
         </div>
       </div>
       <!-- Transactions tab -->
@@ -265,18 +285,38 @@
 
     <!-- Model Registry -->
     <div id="page-models" class="hidden">
-      <div class="page-title">Model Registry</div>
+      <div class="flex-between">
+        <div class="page-title">Model Registry</div>
+        <button class="btn btn-accent" onclick="showAddModel()">+ Add Model</button>
+      </div>
       <div class="card">
         <table>
-          <thead><tr><th>Model ID</th><th>Display Name</th><th>Provider</th><th>Status</th><th>User $/M in</th><th>User $/M out</th></tr></thead>
+          <thead><tr><th>Model ID</th><th>Display Name</th><th>Provider</th><th>Status</th><th>Tier</th><th>User $/M in</th><th>User $/M out</th><th>Actions</th></tr></thead>
           <tbody id="modelsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Provider Keys -->
+    <div id="page-provider-keys" class="hidden">
+      <div class="flex-between">
+        <div class="page-title">Provider Keys</div>
+        <button class="btn btn-accent" onclick="showAddProviderKey()">+ Add Key</button>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Provider</th><th>Label</th><th>Key</th><th>Base URL</th><th>Active</th><th>Actions</th></tr></thead>
+          <tbody id="providerKeysBody"></tbody>
         </table>
       </div>
     </div>
 
     <!-- Transactions -->
     <div id="page-transactions" class="hidden">
-      <div class="page-title">Recent Transactions</div>
+      <div class="flex-between">
+        <div class="page-title">Recent Transactions</div>
+        <button class="btn btn-sm" onclick="exportCSV('transactions?days=30','transactions')">Export CSV (30d)</button>
+      </div>
       <div class="card">
         <table>
           <thead><tr><th>User</th><th>Type</th><th>Amount</th><th>After</th><th>Description</th><th>Date</th></tr></thead>
@@ -318,6 +358,9 @@
           <option value="">All Actions</option>
           <option value="update_user_plan">update_user_plan</option>
           <option value="adjust_user_balance">adjust_user_balance</option>
+          <option value="suspend_user">suspend_user</option>
+          <option value="unsuspend_user">unsuspend_user</option>
+          <option value="ban_user">ban_user</option>
           <option value="create_provider_key">create_provider_key</option>
           <option value="update_provider_key">update_provider_key</option>
           <option value="delete_provider_key">delete_provider_key</option>
@@ -401,6 +444,35 @@
         </table>
       </div>
     </div>
+
+    <!-- Provider Health -->
+    <div id="page-provider-health" class="hidden">
+      <div class="flex-between">
+        <div class="page-title">Provider Health</div>
+        <span id="healthAutoRefresh" class="text-muted" style="font-size:12px">Auto-refresh: 10s</span>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <table>
+          <thead><tr><th>Provider</th><th>Instance</th><th>State</th><th>Failures</th><th>Success Rate (CB)</th><th>1h Requests</th><th>1h Success</th><th>Avg Latency</th><th>P99 Latency</th></tr></thead>
+          <tbody id="healthBody"></tbody>
+        </table>
+        <p id="healthEmpty" class="text-muted" style="padding:12px;display:none">No circuit breakers registered yet — providers activate on first request.</p>
+      </div>
+      <div class="card">
+        <strong>Alert Configuration</strong>
+        <p class="text-muted" style="font-size:12px;margin:4px 0 8px">Alerts are sent to admin emails when a circuit breaker opens or error rate exceeds 30% over 5 minutes.</p>
+        <div style="font-size:13px">
+          <span class="text-muted">Admin Emails:</span> <span id="alertEmails" style="color:var(--text)">—</span>
+        </div>
+        <div style="margin-top:12px">
+          <strong style="font-size:13px">Recent Alert Actions</strong>
+          <table style="margin-top:6px">
+            <thead><tr><th>Time</th><th>Action</th><th>Details</th></tr></thead>
+            <tbody id="alertHistory"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -426,6 +498,93 @@
     <div class="actions">
       <button class="btn" onclick="closePkgModal()">Cancel</button>
       <button class="btn btn-accent" onclick="savePkg()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Model Edit Modal -->
+<div id="modelModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="modelModalTitle">Add Model</h3>
+    <input type="hidden" id="modelEditId" />
+    <label>Model ID *</label>
+    <input id="modelModelId" class="input" style="width:100%" placeholder="e.g. gpt-4o" />
+    <label>Display Name *</label>
+    <input id="modelDisplayName" class="input" style="width:100%" placeholder="e.g. GPT-4o" />
+    <label>Provider *</label>
+    <input id="modelProvider" class="input" style="width:100%" placeholder="e.g. openai" />
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label>Status</label>
+        <select id="modelStatus" class="input" style="width:100%">
+          <option value="active">active</option>
+          <option value="beta">beta</option>
+          <option value="deprecated">deprecated</option>
+        </select>
+      </div>
+      <div>
+        <label>Tier</label>
+        <select id="modelTier" class="input" style="width:100%">
+          <option value="flagship">flagship</option>
+          <option value="fast">fast</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label>User $/M Input</label>
+        <input id="modelUserPriceIn" class="input" type="number" step="0.01" style="width:100%" placeholder="0.00" />
+      </div>
+      <div>
+        <label>User $/M Output</label>
+        <input id="modelUserPriceOut" class="input" type="number" step="0.01" style="width:100%" placeholder="0.00" />
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label>Purchase $/M Input</label>
+        <input id="modelPurchasePriceIn" class="input" type="number" step="0.01" style="width:100%" placeholder="0.00" />
+      </div>
+      <div>
+        <label>Purchase $/M Output</label>
+        <input id="modelPurchasePriceOut" class="input" type="number" step="0.01" style="width:100%" placeholder="0.00" />
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" onclick="closeModelModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="saveModel()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Provider Key Modal -->
+<div id="pkeyModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="pkeyModalTitle">Add Provider Key</h3>
+    <input type="hidden" id="pkeyEditId" />
+    <label>Provider *</label>
+    <select id="pkeyProvider" class="input" style="width:100%">
+      <option value="">-- Select --</option>
+      <option value="openai">OpenAI</option>
+      <option value="anthropic">Anthropic</option>
+      <option value="google">Google</option>
+      <option value="deepseek">DeepSeek</option>
+      <option value="minimax">MiniMax</option>
+      <option value="kimi">Kimi</option>
+      <option value="openrouter">OpenRouter</option>
+      <option value="flock">FLock.io</option>
+      <option value="glm">GLM</option>
+      <option value="z.ai">z.ai</option>
+    </select>
+    <label>Label</label>
+    <input id="pkeyLabel" class="input" style="width:100%" placeholder="e.g. Production Key 1" />
+    <label>API Key *</label>
+    <input id="pkeyApiKey" class="input" style="width:100%" placeholder="sk-..." />
+    <label>Base URL</label>
+    <input id="pkeyBaseUrl" class="input" style="width:100%" placeholder="https://api.example.com/v1 (optional)" />
+    <div class="actions">
+      <button class="btn" onclick="closePkeyModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="savePkey()">Save</button>
     </div>
   </div>
 </div>
@@ -488,9 +647,11 @@ function toast(msg, type = 'success') {
 }
 
 // ── Navigation ────────────────────────────────────────────────────
-const pages = ['dashboard','users','user-detail','plans-config','packages','models','routing','transactions','referrals','audit-log'];
+const pages = ['dashboard','users','user-detail','plans-config','packages','models','provider-keys','routing','provider-health','transactions','referrals','audit-log'];
 
 function showPage(name) {
+  // Stop provider health auto-refresh when navigating away
+  if (name !== 'provider-health' && healthInterval) { clearInterval(healthInterval); healthInterval = null; }
   pages.forEach(p => {
     const el = document.getElementById(`page-${p}`);
     if (el) el.classList.toggle('hidden', p !== name);
@@ -503,9 +664,11 @@ function showPage(name) {
   else if (name === 'plans-config') loadPlansConfig();
   else if (name === 'packages') loadPackages();
   else if (name === 'models') loadModels();
+  else if (name === 'provider-keys') loadProviderKeys();
   else if (name === 'routing') loadRouting();
   else if (name === 'transactions') loadTransactions();
   else if (name === 'referrals') loadReferrals();
+  else if (name === 'provider-health') loadProviderHealth();
   else if (name === 'audit-log') loadAuditLog();
 }
 
@@ -580,6 +743,7 @@ async function loadUsers() {
     <tr class="clickable" onclick="openUser('${u.id}')">
       <td class="truncate">${esc(u.email)}</td>
       <td>${planBadge(u.plan)}</td>
+      <td>${statusBadge(u.status)}</td>
       <td>${cents(u.balanceCents)}</td>
       <td>${cents(u.totalDepositedCents)}</td>
       <td>${cents(u.totalUsedCents)}</td>
@@ -608,12 +772,26 @@ async function openUser(id) {
     ${planBadge(u.plan)}
     <span class="text-muted" style="font-size:12px;margin-left:4px">ID: ${u.id.slice(0,8)}...</span>
   `;
+  document.getElementById('detailStatus').innerHTML = statusBadge(u.status);
   document.getElementById('detailBalance').textContent = cents(u.balanceCents);
   document.getElementById('detailDeposited').textContent = cents(u.totalDepositedCents);
   document.getElementById('detailUsed').textContent = cents(u.totalUsedCents);
   document.getElementById('detailRequests').textContent = u.requestCount;
   document.getElementById('detailJoined').textContent = fmtDateTime(u.createdAt);
   document.getElementById('planSelect').value = u.plan || 'starter';
+
+  // Configure suspend/ban buttons based on current status
+  const isActive = (u.status || 'active') === 'active';
+  document.getElementById('btnSuspend').classList.toggle('hidden', !isActive);
+  document.getElementById('btnBan').classList.toggle('hidden', u.status === 'banned');
+  document.getElementById('btnUnsuspend').classList.toggle('hidden', isActive);
+  const infoEl = document.getElementById('suspendInfo');
+  if (!isActive && u.suspendedReason) {
+    infoEl.classList.remove('hidden');
+    infoEl.textContent = `Reason: ${u.suspendedReason} | Since: ${fmtDateTime(u.suspendedAt)}`;
+  } else {
+    infoEl.classList.add('hidden');
+  }
 
   // Load transactions & requests
   loadUserTxns(id);
@@ -836,16 +1014,202 @@ async function savePkg() {
 async function loadModels() {
   const res = await apiFetch('/admin/models/registry');
   const data = await res.json();
-  document.getElementById('modelsBody').innerHTML = (data.models||[]).map(m => `
-    <tr>
-      <td><code>${esc(m.model_id||m.modelId||'')}</code></td>
-      <td>${esc(m.display_name||m.displayName||'')}</td>
+  document.getElementById('modelsBody').innerHTML = (data.models||[]).map(m => {
+    const uuid = m.id||'';
+    const mid = m.modelId||'';
+    return `<tr>
+      <td><code>${esc(mid)}</code></td>
+      <td>${esc(m.displayName||'')}</td>
       <td>${esc(m.provider||'')}</td>
       <td><span class="badge" style="background:var(--surface2)">${m.status||'active'}</span></td>
-      <td>${m.user_price_input != null ? '$'+Number(m.user_price_input).toFixed(2) : '-'}</td>
-      <td>${m.user_price_output != null ? '$'+Number(m.user_price_output).toFixed(2) : '-'}</td>
+      <td>${esc(m.tier||'flagship')}</td>
+      <td>${m.userPriceInput != null ? '$'+Number(m.userPriceInput).toFixed(2) : '-'}</td>
+      <td>${m.userPriceOutput != null ? '$'+Number(m.userPriceOutput).toFixed(2) : '-'}</td>
+      <td>
+        <button class="btn btn-sm" onclick="testModel('${esc(uuid)}','${esc(mid)}',this)">Test</button>
+        <button class="btn btn-sm" onclick='editModel(${JSON.stringify(m).replace(/'/g,"&#39;")})'>Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteModel('${esc(uuid)}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function showAddModel() {
+  document.getElementById('modelModalTitle').textContent = 'Add Model';
+  document.getElementById('modelEditId').value = '';
+  document.getElementById('modelModelId').value = '';
+  document.getElementById('modelModelId').disabled = false;
+  document.getElementById('modelDisplayName').value = '';
+  document.getElementById('modelProvider').value = '';
+  document.getElementById('modelStatus').value = 'active';
+  document.getElementById('modelTier').value = 'flagship';
+  document.getElementById('modelUserPriceIn').value = '';
+  document.getElementById('modelUserPriceOut').value = '';
+  document.getElementById('modelPurchasePriceIn').value = '';
+  document.getElementById('modelPurchasePriceOut').value = '';
+  document.getElementById('modelModal').classList.remove('hidden');
+}
+
+function editModel(m) {
+  document.getElementById('modelModalTitle').textContent = 'Edit Model';
+  document.getElementById('modelEditId').value = m.id||'';
+  document.getElementById('modelModelId').value = m.modelId||'';
+  document.getElementById('modelModelId').disabled = true;
+  document.getElementById('modelDisplayName').value = m.displayName||'';
+  document.getElementById('modelProvider').value = m.provider||'';
+  document.getElementById('modelStatus').value = m.status||'active';
+  document.getElementById('modelTier').value = m.tier||'flagship';
+  document.getElementById('modelUserPriceIn').value = m.userPriceInput??'';
+  document.getElementById('modelUserPriceOut').value = m.userPriceOutput??'';
+  document.getElementById('modelPurchasePriceIn').value = m.purchasePriceInput??'';
+  document.getElementById('modelPurchasePriceOut').value = m.purchasePriceOutput??'';
+  document.getElementById('modelModal').classList.remove('hidden');
+}
+
+function closeModelModal() { document.getElementById('modelModal').classList.add('hidden'); }
+
+async function saveModel() {
+  const editId = document.getElementById('modelEditId').value;
+  const body = {
+    modelId: document.getElementById('modelModelId').value.trim(),
+    displayName: document.getElementById('modelDisplayName').value.trim(),
+    provider: document.getElementById('modelProvider').value.trim(),
+    status: document.getElementById('modelStatus').value,
+    tier: document.getElementById('modelTier').value,
+    userPriceInput: parseFloat(document.getElementById('modelUserPriceIn').value) || null,
+    userPriceOutput: parseFloat(document.getElementById('modelUserPriceOut').value) || null,
+    purchasePriceInput: parseFloat(document.getElementById('modelPurchasePriceIn').value) || null,
+    purchasePriceOutput: parseFloat(document.getElementById('modelPurchasePriceOut').value) || null,
+  };
+  if (!body.modelId || !body.displayName || !body.provider) {
+    return toast('Model ID, Display Name, and Provider are required', 'error');
+  }
+  let res;
+  if (editId) {
+    res = await apiFetch(`/admin/models/registry/${encodeURIComponent(editId)}`, { method: 'PATCH', body: JSON.stringify(body) });
+  } else {
+    res = await apiFetch('/admin/models/registry', { method: 'POST', body: JSON.stringify(body) });
+  }
+  if (res.ok) {
+    toast(editId ? 'Model updated' : 'Model created');
+    closeModelModal();
+    loadModels();
+  } else {
+    const err = await res.json();
+    toast(err.error?.message || 'Failed', 'error');
+  }
+}
+
+async function testModel(uuid, modelId, btn) {
+  btn.disabled = true; btn.textContent = 'Testing...';
+  try {
+    const res = await apiFetch(`/admin/models/registry/${encodeURIComponent(uuid)}/test`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`${modelId} connected (${data.latencyMs}ms via ${data.provider})`);
+    } else {
+      toast(`${modelId}: ${data.error}`, 'error');
+    }
+  } catch (e) {
+    toast(`${modelId}: Network error`, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Test';
+  }
+}
+
+async function deleteModel(modelId) {
+  if (!confirm(`Delete model "${modelId}"? This cannot be undone.`)) return;
+  const res = await apiFetch(`/admin/models/registry/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+  if (res.ok) { toast('Model deleted'); loadModels(); }
+  else { const err = await res.json(); toast(err.error?.message || 'Failed', 'error'); }
+}
+
+// ── Provider Keys ─────────────────────────────────────────────────
+async function loadProviderKeys() {
+  const res = await apiFetch('/admin/provider-keys');
+  const data = await res.json();
+  document.getElementById('providerKeysBody').innerHTML = (data.keys||[]).map(k => `
+    <tr>
+      <td>${esc(k.providerName||'')}</td>
+      <td>${esc(k.label||'')}</td>
+      <td style="font-family:monospace;font-size:11px">${esc(k.maskedKey||'')}</td>
+      <td class="truncate" style="max-width:200px;font-size:12px">${esc(k.baseUrl||'-')}</td>
+      <td>${k.isActive !== false ? '<span class="text-green">Yes</span>' : '<span class="text-red">No</span>'}</td>
+      <td>
+        <button class="btn btn-sm" onclick='editPkey(${JSON.stringify(k).replace(/'/g,"&#39;")})'>Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deletePkey('${esc(k.id)}')">Delete</button>
+      </td>
     </tr>
-  `).join('');
+  `).join('') || '<tr><td colspan="6" class="text-muted">No provider keys configured</td></tr>';
+}
+
+function maskKey(key) {
+  if (!key || key.length < 8) return '••••••••';
+  return key.slice(0, 4) + '••••••••' + key.slice(-4);
+}
+
+function showAddProviderKey() {
+  document.getElementById('pkeyModalTitle').textContent = 'Add Provider Key';
+  document.getElementById('pkeyEditId').value = '';
+  document.getElementById('pkeyProvider').value = '';
+  document.getElementById('pkeyProvider').disabled = false;
+  document.getElementById('pkeyLabel').value = '';
+  document.getElementById('pkeyApiKey').value = '';
+  document.getElementById('pkeyApiKey').placeholder = 'sk-...';
+  document.getElementById('pkeyBaseUrl').value = '';
+  document.getElementById('pkeyModal').classList.remove('hidden');
+}
+
+function editPkey(k) {
+  document.getElementById('pkeyModalTitle').textContent = 'Edit Provider Key';
+  document.getElementById('pkeyEditId').value = k.id;
+  document.getElementById('pkeyProvider').value = k.providerName||'';
+  document.getElementById('pkeyProvider').disabled = true;
+  document.getElementById('pkeyLabel').value = k.label||'';
+  document.getElementById('pkeyApiKey').value = '';
+  document.getElementById('pkeyApiKey').placeholder = 'Leave blank to keep current key';
+  document.getElementById('pkeyBaseUrl').value = k.baseUrl||'';
+  document.getElementById('pkeyModal').classList.remove('hidden');
+}
+
+function closePkeyModal() {
+  document.getElementById('pkeyModal').classList.add('hidden');
+  document.getElementById('pkeyProvider').disabled = false;
+  document.getElementById('pkeyApiKey').placeholder = 'sk-...';
+}
+
+async function savePkey() {
+  const editId = document.getElementById('pkeyEditId').value;
+  const body = {
+    providerName: document.getElementById('pkeyProvider').value,
+    label: document.getElementById('pkeyLabel').value.trim(),
+    apiKey: document.getElementById('pkeyApiKey').value.trim(),
+    baseUrl: document.getElementById('pkeyBaseUrl').value.trim() || null,
+  };
+  if (!body.providerName) return toast('Select a provider', 'error');
+  if (!editId && !body.apiKey) return toast('API Key is required', 'error');
+  let res;
+  if (editId) {
+    if (!body.apiKey) delete body.apiKey; // don't overwrite with empty
+    res = await apiFetch(`/admin/provider-keys/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
+  } else {
+    res = await apiFetch('/admin/provider-keys', { method: 'POST', body: JSON.stringify(body) });
+  }
+  if (res.ok) {
+    toast(editId ? 'Key updated' : 'Key created');
+    closePkeyModal();
+    loadProviderKeys();
+  } else {
+    const err = await res.json();
+    toast(err.error?.message || 'Failed', 'error');
+  }
+}
+
+async function deletePkey(id) {
+  if (!confirm('Delete this provider key? This cannot be undone.')) return;
+  const res = await apiFetch(`/admin/provider-keys/${id}`, { method: 'DELETE' });
+  if (res.ok) { toast('Key deleted'); loadProviderKeys(); }
+  else { const err = await res.json(); toast(err.error?.message || 'Failed', 'error'); }
 }
 
 // ── Referrals ─────────────────────────────────────────────────────
@@ -963,6 +1327,127 @@ async function loadAuditLog() {
 }
 
 function auditPage(dir) { auditOffset = Math.max(0, auditOffset + dir * AUDIT_LIMIT); loadAuditLog(); }
+
+// ── Status Badge ──────────────────────────────────────────────────
+function statusBadge(status) {
+  const s = status || 'active';
+  const colors = { active: 'var(--green)', suspended: 'var(--yellow)', banned: 'var(--red)' };
+  return `<span class="badge" style="background:${colors[s] || 'var(--surface2)'};color:#000;font-weight:600">${s}</span>`;
+}
+
+// ── Suspend / Ban / Unsuspend ────────────────────────────────────
+async function suspendUser() {
+  const reason = document.getElementById('suspendReason').value.trim();
+  if (!reason) return toast('Reason is required', 'error');
+  if (!confirm(`Suspend this user?\nReason: ${reason}`)) return;
+  const res = await apiFetch(`/admin/users/${currentUserId}/suspend`, {
+    method: 'POST', body: JSON.stringify({ reason })
+  });
+  if (res.ok) { toast('User suspended'); openUser(currentUserId); }
+  else { const err = await res.json(); toast(err.error?.message || 'Failed', 'error'); }
+}
+
+async function unsuspendUser() {
+  if (!confirm('Unsuspend this user? They will regain API access.')) return;
+  const res = await apiFetch(`/admin/users/${currentUserId}/unsuspend`, { method: 'POST' });
+  if (res.ok) { toast('User unsuspended'); openUser(currentUserId); }
+  else { const err = await res.json(); toast(err.error?.message || 'Failed', 'error'); }
+}
+
+async function banUser() {
+  const reason = document.getElementById('suspendReason').value.trim();
+  if (!reason) return toast('Reason is required', 'error');
+  if (!confirm(`BAN this user permanently?\nReason: ${reason}\n\nThis will also revoke all API keys.`)) return;
+  const res = await apiFetch(`/admin/users/${currentUserId}/ban`, {
+    method: 'POST', body: JSON.stringify({ reason })
+  });
+  if (res.ok) { toast('User banned'); openUser(currentUserId); }
+  else { const err = await res.json(); toast(err.error?.message || 'Failed', 'error'); }
+}
+
+// ── Provider Health ──────────────────────────────────────────────
+let healthInterval = null;
+
+async function loadProviderHealth() {
+  clearInterval(healthInterval);
+  await renderProviderHealth();
+  loadAlertInfo();
+  healthInterval = setInterval(renderProviderHealth, 10000);
+}
+
+async function loadAlertInfo() {
+  try {
+    // Show admin emails (from a simple config indicator)
+    document.getElementById('alertEmails').textContent = 'Configured via ADMIN_EMAILS env var';
+    // Load recent alert-related audit log entries
+    const res = await apiFetch('/admin/audit-log?limit=10');
+    const data = await res.json();
+    const alertEntries = (data.entries || []).filter(e =>
+      e.action === 'suspend_user' || e.action === 'ban_user' || e.action === 'unsuspend_user'
+    );
+    document.getElementById('alertHistory').innerHTML = alertEntries.length > 0
+      ? alertEntries.map(e => `<tr>
+          <td>${fmtDateTime(e.createdAt)}</td>
+          <td><span class="badge" style="background:var(--surface2)">${e.action}</span></td>
+          <td class="text-muted" style="font-size:12px">${esc(JSON.stringify(e.details || {}))}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="3" class="text-muted">No recent alert actions</td></tr>';
+  } catch (e) {
+    console.error('Alert info fetch failed', e);
+  }
+}
+
+async function renderProviderHealth() {
+  try {
+    const res = await apiFetch('/admin/providers/health');
+    const data = await res.json();
+    const breakers = data.breakers || [];
+    const emptyEl = document.getElementById('healthEmpty');
+    if (breakers.length === 0) {
+      document.getElementById('healthBody').innerHTML = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+    document.getElementById('healthBody').innerHTML = breakers.map(b => {
+      const stateColors = { closed: 'var(--green)', half_open: 'var(--yellow)', open: 'var(--red)' };
+      const stateColor = stateColors[b.state] || 'var(--muted)';
+      const db = b.db;
+      return `<tr>
+        <td><strong>${esc(b.providerName)}</strong></td>
+        <td class="text-muted" style="font-size:12px">${esc(b.id)}</td>
+        <td><span class="badge" style="background:${stateColor};color:#000;font-weight:600">${b.state}</span></td>
+        <td>${b.consecutiveFailures}</td>
+        <td>${b.recentRequests > 0 ? (b.recentSuccessRate * 100).toFixed(0) + '%' : '-'}</td>
+        <td>${db ? db.total : '-'}</td>
+        <td>${db ? (db.successRate * 100).toFixed(1) + '%' : '-'}</td>
+        <td>${db ? db.avgLatency + 'ms' : '-'}</td>
+        <td>${db ? db.p99Latency + 'ms' : '-'}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('Provider health fetch failed', e);
+    toast('Failed to load provider health', 'error');
+  }
+}
+
+// ── CSV Export ────────────────────────────────────────────────────
+async function exportCSV(endpoint, name) {
+  try {
+    const res = await apiFetch(`/admin/export/${endpoint}`);
+    if (!res.ok) { toast('Export failed', 'error'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('CSV downloaded');
+  } catch (e) {
+    toast('Export failed: ' + e.message, 'error');
+  }
+}
 
 // ── Escape HTML ───────────────────────────────────────────────────
 function esc(s) {

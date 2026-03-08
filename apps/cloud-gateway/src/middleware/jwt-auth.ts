@@ -35,7 +35,7 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
     let key: Record<string, unknown> | undefined;
     try {
       [key] = await sql`
-        SELECT ak.user_id, ak.key_hash, u.plan, u.email
+        SELECT ak.user_id, ak.key_hash, u.plan, u.email, u.status
         FROM api_keys ak
         JOIN users u ON u.id = ak.user_id
         WHERE ak.key_hash = ${hash} AND ak.is_active = true
@@ -52,6 +52,12 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
         { error: { message: "Invalid or revoked API key", type: "auth_error" } },
         401,
       );
+    }
+
+    const keyStatus = (key.status as string) ?? "active";
+    if (keyStatus !== "active") {
+      const msg = keyStatus === "suspended" ? "Account suspended. Contact support." : "Access denied.";
+      return c.json({ error: { message: msg, type: "auth_error" } }, 403);
     }
 
     // Update last_used_at asynchronously (fire-and-forget)
@@ -86,12 +92,18 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
   // Plan lookup in its own try/catch — DB failure → 503, not 401
   let user: Record<string, unknown> | undefined;
   try {
-    [user] = await sql`SELECT plan FROM users WHERE id = ${payload.sub}`;
+    [user] = await sql`SELECT plan, status FROM users WHERE id = ${payload.sub}`;
   } catch {
     return c.json(
       { error: { message: "Service temporarily unavailable", type: "server_error" } },
       503,
     );
+  }
+
+  const userStatus = (user?.status as string) ?? "active";
+  if (userStatus !== "active") {
+    const msg = userStatus === "suspended" ? "Account suspended. Contact support." : "Access denied.";
+    return c.json({ error: { message: msg, type: "auth_error" } }, 403);
   }
 
   c.set("userPlan", (user?.plan as string) ?? "starter");

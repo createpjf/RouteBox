@@ -129,13 +129,30 @@ export async function addCredits(
 }
 
 /** Add bonus credits (referral rewards, subscription welcome, promos).
- *  Bonus credits are consumed before regular balance. */
+ *  Bonus credits are consumed before regular balance.
+ *  Optional idempotencyKey prevents duplicate bonus if the same key is used twice. */
 export async function addBonusCredits(
   userId: string,
   bonusCents: number,
   reason: "referral_welcome" | "referral_earning" | "subscription_welcome" | "promo",
+  idempotencyKey?: string,
 ): Promise<number> {
   const result = await withTx(async (tx) => {
+    // Duplicate prevention: check if this bonus was already applied
+    if (idempotencyKey) {
+      const escapedKey = idempotencyKey.replace(/[%_\\]/g, '\\$&');
+      const [existing] = await tx`
+        SELECT id FROM transactions
+        WHERE user_id = ${userId} AND type = 'bonus' AND description LIKE ${'%[' + escapedKey + ']%'} ESCAPE '\'
+      `;
+      if (existing) {
+        const [current] = await tx`
+          SELECT balance_cents, bonus_cents FROM credits WHERE user_id = ${userId}
+        `;
+        return ((current?.balance_cents as number) ?? 0) + ((current?.bonus_cents as number) ?? 0);
+      }
+    }
+
     const [row] = await tx`
       UPDATE credits
       SET bonus_cents = bonus_cents + ${bonusCents},
@@ -147,10 +164,17 @@ export async function addBonusCredits(
     const newBalance = (row?.balance_cents as number) ?? 0;
     const newBonus = (row?.bonus_cents as number) ?? 0;
 
+    const descriptions: Record<string, string> = {
+      referral_welcome: 'Referral welcome bonus',
+      referral_earning: 'Referral earnings',
+      subscription_welcome: 'Subscription welcome credits',
+      promo: 'Promotional bonus',
+    };
+    const desc = descriptions[reason] + (idempotencyKey ? ` [${idempotencyKey}]` : '');
+
     await tx`
       INSERT INTO transactions (user_id, type, amount_cents, balance_after_cents, description)
-      VALUES (${userId}, 'bonus', ${bonusCents}, ${newBalance + newBonus},
-        ${{ referral_welcome: 'Referral welcome bonus', referral_earning: 'Referral earnings', subscription_welcome: 'Subscription welcome credits', promo: 'Promotional bonus' }[reason]})
+      VALUES (${userId}, 'bonus', ${bonusCents}, ${newBalance + newBonus}, ${desc})
     `;
 
     return newBalance + newBonus;

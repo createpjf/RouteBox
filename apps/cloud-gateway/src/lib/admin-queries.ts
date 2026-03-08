@@ -86,7 +86,7 @@ export async function getAdminStats() {
 export async function getAdminUsers(limit = 100, offset = 0, search = "") {
   const rows = await sql`
     SELECT
-      u.id, u.uid, u.email, u.display_name, u.plan,
+      u.id, u.uid, u.email, u.display_name, u.plan, u.status,
       u.created_at,
       COALESCE(c.balance_cents, 0) AS balance_cents,
       COALESCE(c.total_deposited_cents, 0) AS total_deposited_cents,
@@ -109,6 +109,7 @@ export async function getAdminUsers(limit = 100, offset = 0, search = "") {
       email: r.email,
       displayName: r.display_name,
       plan: r.plan,
+      status: r.status ?? "active",
       createdAt: r.created_at,
       balanceCents: r.balance_cents,
       totalDepositedCents: r.total_deposited_cents,
@@ -340,31 +341,34 @@ export async function adjustUserBalance(
     if (!row) {
       // No credits row yet — create one
       const newBalance = Math.max(0, amountCents);
+      const actualDelta = newBalance; // from 0 to newBalance
       await tx`
         INSERT INTO credits (user_id, balance_cents, total_deposited_cents)
-        VALUES (${userId}, ${newBalance}, ${amountCents > 0 ? amountCents : 0})
+        VALUES (${userId}, ${newBalance}, ${actualDelta > 0 ? actualDelta : 0})
       `;
       await tx`
         INSERT INTO transactions (user_id, type, amount_cents, balance_after_cents, description)
-        VALUES (${userId}, 'admin_adjustment', ${amountCents}, ${newBalance}, ${reason})
+        VALUES (${userId}, 'admin_adjustment', ${actualDelta}, ${newBalance}, ${reason})
       `;
       return { newBalance };
     }
 
-    const newBalance = Math.max(0, (row.balance_cents as number) + amountCents);
+    const currentBalance = row.balance_cents as number;
+    const newBalance = Math.max(0, currentBalance + amountCents);
+    const actualDelta = newBalance - currentBalance;
 
     await tx`
       UPDATE credits
       SET balance_cents = ${newBalance},
-          total_deposited_cents = CASE WHEN ${amountCents} > 0
-            THEN total_deposited_cents + ${amountCents} ELSE total_deposited_cents END,
+          total_deposited_cents = CASE WHEN ${actualDelta} > 0
+            THEN total_deposited_cents + ${actualDelta} ELSE total_deposited_cents END,
           updated_at = now()
       WHERE user_id = ${userId}
     `;
 
     await tx`
       INSERT INTO transactions (user_id, type, amount_cents, balance_after_cents, description)
-      VALUES (${userId}, 'admin_adjustment', ${amountCents}, ${newBalance}, ${reason})
+      VALUES (${userId}, 'admin_adjustment', ${actualDelta}, ${newBalance}, ${reason})
     `;
 
     return { newBalance };
@@ -378,7 +382,8 @@ export async function adjustUserBalance(
 export async function getAdminUser(userId: string) {
   const [row] = await sql`
     SELECT
-      u.id, u.uid, u.email, u.display_name, u.plan, u.created_at, u.updated_at,
+      u.id, u.uid, u.email, u.display_name, u.plan, u.status,
+      u.suspended_reason, u.suspended_at, u.created_at, u.updated_at,
       COALESCE(c.balance_cents, 0) AS balance_cents,
       COALESCE(c.total_deposited_cents, 0) AS total_deposited_cents,
       COALESCE(c.total_used_cents, 0) AS total_used_cents,
@@ -395,6 +400,9 @@ export async function getAdminUser(userId: string) {
     email: row.email,
     displayName: row.display_name,
     plan: row.plan,
+    status: row.status ?? "active",
+    suspendedReason: row.suspended_reason,
+    suspendedAt: row.suspended_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     balanceCents: row.balance_cents,

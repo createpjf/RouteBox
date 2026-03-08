@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronDown, Search } from "lucide-react";
 import { api } from "../../lib/api";
-import { PROVIDER_COLORS } from "../../lib/constants";
 
 interface ModelSwitcherProps {
   value: string;
@@ -9,14 +8,8 @@ interface ModelSwitcherProps {
   compact?: boolean;
 }
 
-interface ModelEntry {
-  id: string;
-  provider: string;
-  active: boolean;
-}
-
 export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, compact }) => {
-  const [models, setModels] = useState<ModelEntry[]>([]);
+  const [models, setModels] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -24,14 +17,12 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
 
   const fetchModels = useCallback(() => {
     api.getModels().then((res) => {
-      const flat: ModelEntry[] = [];
+      const ids = new Set<string>();
       for (const p of res.providers) {
-        if (!p.active) continue; // Only show usable providers
-        for (const m of p.models) {
-          flat.push({ id: m.id, provider: p.provider, active: p.active });
-        }
+        if (!p.active) continue;
+        for (const m of p.models) ids.add(m.id);
       }
-      setModels(flat);
+      setModels([...ids].sort());
     }).catch(() => {});
   }, []);
 
@@ -61,15 +52,9 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const selected = models.find((m) => m.id === value);
-
   const filtered = search
-    ? models.filter((m) =>
-        m.id.toLowerCase().includes(search.toLowerCase()) ||
-        m.provider.toLowerCase().includes(search.toLowerCase())
-      )
+    ? models.filter((id) => id.toLowerCase().includes(search.toLowerCase()))
     : models;
-  const filteredProviders = Array.from(new Set(filtered.map((m) => m.provider)));
 
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
@@ -90,18 +75,6 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
           transition: "all 0.15s ease",
         }}
       >
-        {selected && (
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: selected.active
-                ? (PROVIDER_COLORS[selected.provider] ?? "#888")
-                : "var(--color-dot-offline)",
-            }}
-          />
-        )}
         <span style={{ fontFamily: "'SF Mono', Menlo, monospace", letterSpacing: -0.3 }}>
           {value || "Select model"}
         </span>
@@ -168,80 +141,44 @@ export const ModelSwitcher: React.FC<ModelSwitcherProps> = ({ value, onChange, c
 
           {/* Model list */}
           <div style={{ flex: 1, overflow: "auto", padding: "4px" }}>
-            {filteredProviders.length === 0 && (
+            {filtered.length === 0 && (
               <div style={{ padding: "12px", textAlign: "center", fontSize: 11, color: "var(--color-text-tertiary)" }}>
                 No models found
               </div>
             )}
-            {filteredProviders.map((provider) => {
-              const providerModels = filtered.filter((m) => m.provider === provider);
-              const color = PROVIDER_COLORS[provider] ?? "#888";
-
-              return (
-                <div key={provider} style={{ marginBottom: 2 }}>
-                  {/* Provider header */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      padding: "6px 8px 3px",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: "var(--color-text-secondary)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.6,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 5,
-                        height: 5,
-                        borderRadius: "50%",
-                        background: color,
-                        flexShrink: 0,
-                      }}
-                    />
-                    {provider}
-                  </div>
-
-                  {/* Models */}
-                  {providerModels.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => {
-                        onChange(m.id);
-                        setOpen(false);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "5px 8px 5px 20px",
-                        background: m.id === value ? "var(--color-hover-overlay)" : "transparent",
-                        border: "none",
-                        borderRadius: 6,
-                        color: "var(--color-text-primary)",
-                        fontSize: 12,
-                        fontFamily: "'SF Mono', Menlo, monospace",
-                        letterSpacing: -0.3,
-                        cursor: "pointer",
-                        transition: "background 0.1s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (m.id !== value) (e.target as HTMLElement).style.background = "var(--color-bg-row-hover)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (m.id !== value) (e.target as HTMLElement).style.background = "transparent";
-                      }}
-                    >
-                      {m.id}
-                    </button>
-                  ))}
-                </div>
-              );
-            })}
+            {filtered.map((id) => (
+              <button
+                key={id}
+                onClick={() => {
+                  onChange(id);
+                  setOpen(false);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "5px 8px",
+                  background: id === value ? "var(--color-hover-overlay)" : "transparent",
+                  border: "none",
+                  borderRadius: 6,
+                  color: "var(--color-text-primary)",
+                  fontSize: 12,
+                  fontFamily: "'SF Mono', Menlo, monospace",
+                  letterSpacing: -0.3,
+                  cursor: "pointer",
+                  transition: "background 0.1s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (id !== value) (e.target as HTMLElement).style.background = "var(--color-bg-row-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  if (id !== value) (e.target as HTMLElement).style.background = "transparent";
+                }}
+              >
+                {id}
+              </button>
+            ))}
           </div>
         </div>
       )}

@@ -361,6 +361,77 @@ app.post("/models/registry/reload", async (c) => {
   return c.json({ success: true });
 });
 
+// POST /models/registry/:id/test — connectivity check
+app.post("/models/registry/:id/test", async (c) => {
+  const { getModel } = await import("../lib/model-registry");
+  const { cloudProvidersForModel } = await import("../lib/key-pool");
+
+  const id = c.req.param("id");
+  const entry = await getModel(id);
+  if (!entry) return c.json({ error: { message: "Model not found" } }, 404);
+
+  const modelId = entry.modelId as string;
+  const providers = cloudProvidersForModel(modelId);
+  if (providers.length === 0) {
+    return c.json({ ok: false, error: "No provider key configured for this model" });
+  }
+
+  const provider = providers[0];
+  const start = Date.now();
+
+  try {
+    // Build request based on provider format
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    let url: string;
+    let body: string;
+
+    if (provider.format === "anthropic") {
+      headers["x-api-key"] = provider.apiKey;
+      headers["anthropic-version"] = "2023-06-01";
+      url = `${provider.baseUrl}/messages`;
+      body = JSON.stringify({
+        model: modelId,
+        messages: [{ role: "user", content: "Hi" }],
+        max_tokens: 1,
+      });
+    } else {
+      if (provider.authHeader) {
+        headers[provider.authHeader] = provider.apiKey;
+      } else {
+        headers["Authorization"] = `Bearer ${provider.apiKey}`;
+      }
+      url = `${provider.baseUrl}/chat/completions`;
+      body = JSON.stringify({
+        model: modelId,
+        messages: [{ role: "user", content: "Hi" }],
+        max_tokens: 1,
+        stream: false,
+      });
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+      signal: AbortSignal.timeout(5000),
+    });
+
+    const latencyMs = Date.now() - start;
+    if (res.ok) {
+      await res.text();
+      return c.json({ ok: true, provider: provider.name, latencyMs });
+    } else {
+      const respBody = await res.text();
+      let errorMsg = `${res.status} ${res.statusText}`;
+      try { errorMsg = JSON.parse(respBody)?.error?.message || errorMsg; } catch {}
+      return c.json({ ok: false, error: errorMsg, provider: provider.name, latencyMs });
+    }
+  } catch (e: any) {
+    const latencyMs = Date.now() - start;
+    return c.json({ ok: false, error: e.message || "Connection failed", provider: provider.name, latencyMs });
+  }
+});
+
 // ── User Detail ─────────────────────────────────────────────────────────
 
 app.get("/users/:id", async (c) => {
@@ -877,8 +948,8 @@ app.get("/audit-log", async (c) => {
     `SELECT id, admin_email, action, target_user_id, details, created_at
      FROM admin_audit_log ${where}
      ORDER BY created_at DESC
-     LIMIT ${limit} OFFSET ${offset}`,
-    params,
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset],
   );
 
   return c.json({
@@ -887,12 +958,178 @@ app.get("/audit-log", async (c) => {
       adminEmail: r.admin_email,
       action: r.action,
       targetUserId: r.target_user_id,
-      details: typeof r.details === "string" ? JSON.parse(r.details) : r.details,
+      details: typeof r.details === "string" ? (() => { try { return JSON.parse(r.details as string); } catch { return r.details; } })() : r.details,
       createdAt: r.created_at,
     })),
     total: countRow.total,
     limit,
     offset,
+  });
+});
+
+// ── User Suspend / Ban ───────────────────────────────────────────────────
+
+app.post("/users/:id/suspend", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{ reason: string }>();
+  if (!body.reason || typeof body.reason !== "string") {
+    return c.json({ error: { message: "reason is required", type: "validation_error" } }, 400);
+  }
+  if (body.reason.length > 500) {
+    return c.json({ error: { message: "Reason too long (max 500 chars)", type: "validation_error" } }, 400);
+  }
+  const [user] = await sql`
+    UPDATE users SET status = 'suspended', suspended_reason = ${body.reason}, suspended_at = now()
+    WHERE id = ${id} AND status = 'active'
+    RETURNING id
+  `;
+  if (!user) return c.json({ error: { message: "User not found or already suspended/banned", type: "not_found" } }, 404);
+  auditLog(c.get("email") as string, "suspend_user", id, { reason: body.reason });
+  return c.json({ success: true });
+});
+
+app.post("/users/:id/unsuspend", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{ reason?: string }>().catch(() => ({ reason: undefined }));
+  const [user] = await sql`
+    UPDATE users SET status = 'active', suspended_reason = NULL, suspended_at = NULL
+    WHERE id = ${id} AND status = 'suspended'
+    RETURNING id
+  `;
+  if (!user) return c.json({ error: { message: "User not found or already active", type: "not_found" } }, 404);
+  auditLog(c.get("email") as string, "unsuspend_user", id, { reason: body.reason });
+  return c.json({ success: true });
+});
+
+app.post("/users/:id/ban", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{ reason: string }>();
+  if (!body.reason || typeof body.reason !== "string") {
+    return c.json({ error: { message: "reason is required", type: "validation_error" } }, 400);
+  }
+  if (body.reason.length > 500) {
+    return c.json({ error: { message: "Reason too long (max 500 chars)", type: "validation_error" } }, 400);
+  }
+  const [user] = await sql`
+    UPDATE users SET status = 'banned', suspended_reason = ${body.reason}, suspended_at = now()
+    WHERE id = ${id} AND status != 'banned'
+    RETURNING id
+  `;
+  if (!user) return c.json({ error: { message: "User not found or already banned", type: "not_found" } }, 404);
+  // Revoke all API keys
+  try {
+    await sql`UPDATE api_keys SET is_active = false WHERE user_id = ${id}`;
+  } catch (err) {
+    log.warn("api_key_revocation_failed", {
+      userId: id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  auditLog(c.get("email") as string, "ban_user", id, { reason: body.reason });
+  return c.json({ success: true });
+});
+
+// ── Provider Health Monitoring ───────────────────────────────────────────
+
+app.get("/providers/health", async (c) => {
+  const { getAllBreakerStates } = await import("../lib/circuit-breaker");
+  const breakers = getAllBreakerStates();
+
+  // DB stats for last 1 hour
+  const dbStats = await sql`
+    SELECT provider,
+      COUNT(*)::int AS total,
+      COUNT(CASE WHEN status = 'ok' THEN 1 END)::int AS success_count,
+      AVG(latency_ms)::int AS avg_latency,
+      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms)::int AS p99_latency
+    FROM requests
+    WHERE created_at > now() - interval '1 hour'
+    GROUP BY provider
+  `;
+
+  const dbMap = new Map(dbStats.map((r) => [r.provider, r]));
+
+  return c.json({
+    breakers: breakers.map((b) => {
+      const providerName = b.id.replace(/:.*$/, "");
+      const db = dbMap.get(providerName);
+      return {
+        ...b,
+        providerName,
+        db: db
+          ? {
+              total: db.total,
+              successCount: db.success_count,
+              successRate: db.total > 0 ? Number((db.success_count / db.total).toFixed(3)) : 1,
+              avgLatency: db.avg_latency,
+              p99Latency: db.p99_latency,
+            }
+          : null,
+      };
+    }),
+  });
+});
+
+// ── CSV Export ────────────────────────────────────────────────────────────
+
+function csvRow(values: unknown[]): string {
+  return values.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
+}
+
+app.get("/export/users", async (c) => {
+  const { users } = await getAdminUsers(50000, 0, "");
+  const header = "Email,Plan,Status,Balance (cents),Deposited (cents),Used (cents),Requests,Joined\n";
+  const rows = users
+    .map((u) =>
+      csvRow([u.email, u.plan, u.status, u.balanceCents, u.totalDepositedCents, u.totalUsedCents, u.requestCount, u.createdAt]),
+    )
+    .join("\n");
+  return c.text(header + rows, 200, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="users-${new Date().toISOString().slice(0, 10)}.csv"`,
+  });
+});
+
+app.get("/export/transactions", async (c) => {
+  const days = Math.min(Math.max(1, parseInt(c.req.query("days") ?? "30", 10) || 30), 365);
+  const rows = await sql`
+    SELECT t.created_at, u.email, t.type, t.amount_cents, t.balance_after_cents, t.description
+    FROM transactions t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.created_at > now() - make_interval(days => ${days})
+    ORDER BY t.created_at DESC
+    LIMIT 50000
+  `;
+  const header = "Date,Email,Type,Amount (cents),Balance After (cents),Description\n";
+  const csv = rows
+    .map((r) => csvRow([r.created_at, r.email, r.type, r.amount_cents, r.balance_after_cents, r.description]))
+    .join("\n");
+  return c.text(header + csv, 200, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="transactions-${days}d-${new Date().toISOString().slice(0, 10)}.csv"`,
+  });
+});
+
+app.get("/export/usage", async (c) => {
+  const days = Math.min(Math.max(1, parseInt(c.req.query("days") ?? "30", 10) || 30), 365);
+  const rows = await sql`
+    SELECT created_at::date AS date, model, provider,
+      COUNT(*)::int AS requests,
+      SUM(input_tokens)::int AS tokens_in,
+      SUM(output_tokens)::int AS tokens_out,
+      SUM(cost_cents)::int AS cost_cents
+    FROM requests
+    WHERE created_at > now() - make_interval(days => ${days})
+    GROUP BY created_at::date, model, provider
+    ORDER BY date DESC, requests DESC
+  `;
+  const header = "Date,Model,Provider,Requests,Tokens In,Tokens Out,Cost (cents)\n";
+  const csv = rows
+    .map((r) => csvRow([r.date, r.model, r.provider, r.requests, r.tokens_in, r.tokens_out, r.cost_cents]))
+    .join("\n");
+  return c.text(header + csv, 200, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="usage-${days}d-${new Date().toISOString().slice(0, 10)}.csv"`,
   });
 });
 

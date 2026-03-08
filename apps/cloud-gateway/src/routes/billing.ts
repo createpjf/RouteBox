@@ -269,28 +269,20 @@ app.post("/webhook", async (c) => {
           WHERE id = ${userId}
         `;
 
-        // Grant included credits for this billing period (deduplicated per period)
+        // Grant included credits for this billing period (deduplicated via idempotency key)
         const plan = SUBSCRIPTION_PLANS[planId];
         if (plan?.includedCreditsCents > 0) {
           const periodStart = sub.current_period_start
             ? new Date(sub.current_period_start)
             : new Date();
-          const [alreadyGranted] = await sql`
-            SELECT id FROM transactions
-            WHERE user_id = ${userId} AND type = 'bonus'
-              AND description = 'Subscription welcome credits'
-              AND created_at >= ${periodStart}
-          `;
-          if (!alreadyGranted) {
-            await addBonusCredits(userId, plan.includedCreditsCents, "subscription_welcome").catch((err) => {
-              log.error("subscription_credits_failed", {
-                userId, planId,
-                error: err instanceof Error ? err.message : String(err),
-              });
+          const periodKey = periodStart.toISOString().slice(0, 7); // "2026-03"
+          const idempotencyKey = `sub_welcome_${planId}_${sub.id}_${periodKey}`;
+          await addBonusCredits(userId, plan.includedCreditsCents, "subscription_welcome", idempotencyKey).catch((err) => {
+            log.error("subscription_credits_failed", {
+              userId, planId,
+              error: err instanceof Error ? err.message : String(err),
             });
-          } else {
-            log.info("subscription_credits_already_granted", { userId, planId, periodStart: periodStart.toISOString() });
-          }
+          });
         }
         log.info(existingBefore ? "subscription_renewed" : "subscription_activated", { userId, planId });
       }

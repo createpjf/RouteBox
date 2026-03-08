@@ -58,6 +58,19 @@ export class CircuitBreaker {
     return this.state;
   }
 
+  /** Snapshot of internal state for monitoring */
+  getSnapshot(): { consecutiveFailures: number; openedAt: number; successRate: number; totalRequests: number } {
+    this.pruneOutcomes();
+    const total = this.outcomes.length;
+    const successes = total > 0 ? this.outcomes.filter((o) => o.success).length : 0;
+    return {
+      consecutiveFailures: this.consecutiveFailures,
+      openedAt: this.openedAt,
+      successRate: total > 0 ? successes / total : 1,
+      totalRequests: total,
+    };
+  }
+
   /** Can we send a request through this breaker? */
   canRequest(): boolean {
     const s = this.getState();
@@ -120,6 +133,9 @@ export class CircuitBreaker {
     if (prevState === newState) return;
     this.state = newState;
 
+    try { onStateChange?.(this.id, prevState, newState); }
+    catch (err) { log.warn("circuit_breaker_hook_error", { provider: this.id, error: err instanceof Error ? err.message : String(err) }); }
+
     if (newState === "open") {
       this.openedAt = Date.now();
       incCounter("circuit_breaker_trips_total", { provider: this.id });
@@ -163,4 +179,40 @@ export function getCircuitBreaker(
     breakers.set(id, cb);
   }
   return cb;
+}
+
+/** Get snapshot of all circuit breaker states (for admin monitoring) */
+export function getAllBreakerStates(): Array<{
+  id: string;
+  state: CircuitState;
+  consecutiveFailures: number;
+  openedAt: number | null;
+  recentSuccessRate: number;
+  recentRequests: number;
+}> {
+  const result: ReturnType<typeof getAllBreakerStates> = [];
+  for (const [, cb] of breakers) {
+    const state = cb.getState();
+    const snapshot = cb.getSnapshot();
+    result.push({
+      id: cb.id,
+      state,
+      consecutiveFailures: snapshot.consecutiveFailures,
+      openedAt: snapshot.openedAt || null,
+      recentSuccessRate: snapshot.successRate,
+      recentRequests: snapshot.totalRequests,
+    });
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// State change hook — for alerting
+// ---------------------------------------------------------------------------
+
+type BreakerHook = (id: string, from: CircuitState, to: CircuitState) => void;
+let onStateChange: BreakerHook | null = null;
+
+export function setCircuitBreakerHook(hook: BreakerHook): void {
+  onStateChange = hook;
 }

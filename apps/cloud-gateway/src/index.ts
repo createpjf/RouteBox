@@ -260,6 +260,17 @@ try {
   });
 }
 
+// Initialize admin alerts (circuit breaker notifications) — separate try-catch
+// so a failure here doesn't mask provider config success
+try {
+  const { initAlerts } = await import("./lib/alerts");
+  initAlerts();
+} catch (err) {
+  log.warn("alerts_init_error", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+}
+
 // ── Graceful shutdown ────────────────────────────────────────────────────────
 let shuttingDown = false;
 
@@ -267,6 +278,12 @@ async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info("shutdown_initiated", { signal });
+
+  // Stop alert timers
+  try {
+    const { stopAlerts } = await import("./lib/alerts");
+    stopAlerts();
+  } catch {}
 
   // Allow in-flight requests 10s to complete
   await new Promise((r) => setTimeout(r, 10_000));

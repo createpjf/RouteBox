@@ -237,7 +237,7 @@ export async function processMonthlyReferralEarnings(periodMonth: string): Promi
     if (!inserted) continue;
 
     // Issue bonus credits to referrer
-    await addBonusCredits(referrerId, earningCents, "referral_earning");
+    await addBonusCredits(referrerId, earningCents, "referral_earning", `ref_earning_${referrerId}_${referredId}_${periodMonth}`);
 
     // Update referral total_earned_cents
     await sql`
