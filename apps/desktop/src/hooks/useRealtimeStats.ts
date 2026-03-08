@@ -72,11 +72,13 @@ export function useRealtimeStats(ready = true) {
     setConnected(true);
     setStale(false);
 
+    const controller = new AbortController();
+
     async function poll() {
       if (cancelled) return;
       try {
         const res = await api.cloudGetRequests(lastId);
-        if (cancelled) return;
+        if (cancelled) return; // Check again after await
         if (res.requests.length > 0) {
           lastId = res.requests[res.requests.length - 1].id;
           setRequestLog((prev) => {
@@ -94,11 +96,24 @@ export function useRealtimeStats(ready = true) {
 
     // Initial fetch
     poll();
-    const timer = setInterval(poll, CLOUD_POLL_INTERVAL);
+    let timer = setInterval(poll, CLOUD_POLL_INTERVAL);
+
+    // Pause polling when tab is hidden, resume on visible
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearInterval(timer);
+      } else {
+        poll();
+        timer = setInterval(poll, CLOUD_POLL_INTERVAL);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       cancelled = true;
+      controller.abort();
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [ready]);
 

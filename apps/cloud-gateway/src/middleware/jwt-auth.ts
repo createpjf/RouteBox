@@ -20,7 +20,7 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
   const authHeader = c.req.header("Authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return c.json(
-      { error: { message: "Missing or invalid Authorization header", type: "auth_error" } },
+      { error: { message: "Missing or invalid Authorization header", type: "invalid_request_error", param: null, code: "invalid_api_key" } },
       401,
     );
   }
@@ -42,14 +42,14 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
       `;
     } catch {
       return c.json(
-        { error: { message: "Service temporarily unavailable", type: "server_error" } },
+        { error: { message: "Service temporarily unavailable", type: "server_error", param: null, code: "service_unavailable" } },
         503,
       );
     }
 
     if (!key) {
       return c.json(
-        { error: { message: "Invalid or revoked API key", type: "auth_error" } },
+        { error: { message: "Invalid or revoked API key", type: "invalid_request_error", param: null, code: "invalid_api_key" } },
         401,
       );
     }
@@ -57,7 +57,7 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
     const keyStatus = (key.status as string) ?? "active";
     if (keyStatus !== "active") {
       const msg = keyStatus === "suspended" ? "Account suspended. Contact support." : "Access denied.";
-      return c.json({ error: { message: msg, type: "auth_error" } }, 403);
+      return c.json({ error: { message: msg, type: "invalid_request_error", param: null, code: "account_suspended" } }, 403);
     }
 
     // Update last_used_at asynchronously (fire-and-forget)
@@ -81,7 +81,7 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
     payload = await verifyToken(token);
   } catch {
     return c.json(
-      { error: { message: "Invalid or expired token", type: "auth_error" } },
+      { error: { message: "Invalid or expired token", type: "invalid_request_error", param: null, code: "invalid_api_key" } },
       401,
     );
   }
@@ -95,7 +95,7 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
     [user] = await sql`SELECT plan, status FROM users WHERE id = ${payload.sub}`;
   } catch {
     return c.json(
-      { error: { message: "Service temporarily unavailable", type: "server_error" } },
+      { error: { message: "Service temporarily unavailable", type: "server_error", param: null, code: "service_unavailable" } },
       503,
     );
   }
@@ -103,7 +103,7 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
   const userStatus = (user?.status as string) ?? "active";
   if (userStatus !== "active") {
     const msg = userStatus === "suspended" ? "Account suspended. Contact support." : "Access denied.";
-    return c.json({ error: { message: msg, type: "auth_error" } }, 403);
+    return c.json({ error: { message: msg, type: "invalid_request_error", param: null, code: "account_suspended" } }, 403);
   }
 
   c.set("userPlan", (user?.plan as string) ?? "starter");

@@ -51,9 +51,9 @@ describe("deductCredits", () => {
   test("succeeds when balance sufficient", async () => {
     // @ts-ignore
     globalThis.__dbMockTxResults = [
-      [{ balance_cents: 1000 }], // SELECT FOR UPDATE
-      [],                         // UPDATE credits
-      [],                         // INSERT transaction
+      [{ balance_cents: 1000, bonus_cents: 0 }], // SELECT FOR UPDATE
+      [],                                          // UPDATE credits
+      [],                                          // INSERT transaction
     ];
 
     const result = await credits.deductCredits("user-1", 300, {
@@ -66,10 +66,12 @@ describe("deductCredits", () => {
     expect(result.newBalance).toBe(700);
   });
 
-  test("fails when balance insufficient", async () => {
-    // @ts-ignore
+  test("allows negative balance when balance insufficient (request already served)", async () => {
+    // @ts-ignore — balance goes negative because request was already served
     globalThis.__dbMockTxResults = [
-      [{ balance_cents: 100 }],
+      [{ balance_cents: 100, bonus_cents: 0 }], // SELECT FOR UPDATE
+      [],                                         // UPDATE credits
+      [],                                         // INSERT transaction
     ];
 
     const result = await credits.deductCredits("user-1", 500, {
@@ -78,8 +80,8 @@ describe("deductCredits", () => {
       inputTokens: 100,
       outputTokens: 50,
     });
-    expect(result.success).toBe(false);
-    expect(result.newBalance).toBe(100);
+    expect(result.success).toBe(true);
+    expect(result.newBalance).toBe(-400); // 100 - 500
   });
 
   test("fails when no credits row", async () => {
@@ -183,10 +185,12 @@ describe("deductCredits — bonus priority", () => {
     expect(result.newBalance).toBe(90);
   });
 
-  test("fails when total (balance+bonus) is insufficient", async () => {
-    // @ts-ignore
+  test("allows negative balance when total (balance+bonus) is insufficient", async () => {
+    // @ts-ignore — balance goes negative because request was already served
     globalThis.__dbMockTxResults = [
       [{ balance_cents: 20, bonus_cents: 10 }], // total=30, cost=50
+      [],                                         // UPDATE credits
+      [],                                         // INSERT transaction
     ];
 
     const result = await credits.deductCredits("user-1", 50, {
@@ -195,7 +199,9 @@ describe("deductCredits — bonus priority", () => {
       inputTokens: 100,
       outputTokens: 50,
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    // deductBonus=10, deductBalance=40, newBalance=20-40=-20
+    expect(result.newBalance).toBe(-20);
   });
 
   test("succeeds when only bonus covers cost (balance=0, bonus=200, cost=50)", async () => {

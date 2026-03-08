@@ -51,13 +51,15 @@ export async function deductCredits(
 
     const balance = (row?.balance_cents as number) ?? 0;
     const bonus = (row?.bonus_cents as number) ?? 0;
-    const total = balance + bonus;
 
-    if (!row || total < costCents) {
-      return { success: false, newBalance: balance };
+    if (!row) {
+      return { success: false, newBalance: 0 };
     }
 
-    // Consume bonus first, then balance
+    // Consume bonus first, then balance.
+    // Allow balance to go negative — the request was already served,
+    // so we must still bill. creditsCheck prevents most overdrafts;
+    // this handles the rare concurrent-request edge case.
     const deductBonus = Math.min(costCents, bonus);
     const deductBalance = costCents - deductBonus;
     const newBalance = balance - deductBalance;

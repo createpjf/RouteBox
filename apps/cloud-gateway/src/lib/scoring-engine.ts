@@ -67,8 +67,9 @@ export async function scoreAndRank(input: {
   strategy: string;
   context: RequestContext;
   userPlan: string;
+  crossTier?: boolean;
 }): Promise<ScoredCandidate[]> {
-  const { requestedModel, strategy, context, userPlan } = input;
+  const { requestedModel, strategy, context, userPlan, crossTier } = input;
   const weights = STRATEGY_WEIGHTS[strategy] ?? STRATEGY_WEIGHTS.smart_auto;
 
   const models = await getActiveModels();
@@ -88,15 +89,21 @@ export async function scoreAndRank(input: {
   );
 
   // If the requested model is not in registry, return empty → caller falls back
-  if (!requestedEntry) return [];
+  if (!crossTier && !requestedEntry) return [];
 
-  const tier = requestedEntry.tier;
-  const candidates = models.filter((m) => m.tier === tier);
+  const tier = crossTier ? "all" : requestedEntry!.tier;
+  const candidates = crossTier
+    ? models
+    : models.filter((m) => m.tier === requestedEntry!.tier);
 
   const scored: ScoredCandidate[] = [];
 
   for (const model of candidates) {
     // ── Hard filters ──
+
+    // 0. Model-level plan restriction
+    const allowed = model.allowedPlans ?? ["all"];
+    if (!allowed.includes("all") && !allowed.includes(userPlan)) continue;
 
     // 1. Provider must have keys configured + plan allowed
     if (!availableProviders.has(model.provider)) continue;
@@ -166,7 +173,7 @@ export async function scoreAndRank(input: {
       provider: model.provider,
       totalScore,
       providerConfigs,
-      isFallback: model.modelId !== requestedModel && !requestedModel.startsWith(model.modelId),
+      isFallback: crossTier ? false : (model.modelId !== requestedModel && !requestedModel.startsWith(model.modelId)),
     });
   }
 
@@ -174,13 +181,16 @@ export async function scoreAndRank(input: {
   scored.sort((a, b) => b.totalScore - a.totalScore);
 
   // Put the requested model first if it's in the list (supports prefix match)
-  const reqIdx = scored.findIndex(
-    (s) => s.modelId === requestedModel || requestedModel.startsWith(s.modelId),
-  );
-  if (reqIdx > 0) {
-    const [req] = scored.splice(reqIdx, 1);
-    req.isFallback = false;
-    scored.unshift(req);
+  // Skip for crossTier mode — no specific requested model to prioritize
+  if (!crossTier) {
+    const reqIdx = scored.findIndex(
+      (s) => s.modelId === requestedModel || requestedModel.startsWith(s.modelId),
+    );
+    if (reqIdx > 0) {
+      const [req] = scored.splice(reqIdx, 1);
+      req.isFallback = false;
+      scored.unshift(req);
+    }
   }
 
   log.debug("scoring_results", {

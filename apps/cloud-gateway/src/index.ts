@@ -74,7 +74,7 @@ app.use("*", async (c, next) => {
   const contentLength = c.req.header("content-length");
   if (contentLength && parseInt(contentLength) > 2 * 1024 * 1024) {
     return c.json(
-      { error: { message: "Request body too large (max 2MB)", type: "validation_error" } },
+      { error: { message: "Request body too large (max 2MB)", type: "invalid_request_error", param: null, code: "request_too_large" } },
       413,
     );
   }
@@ -179,12 +179,16 @@ app.get("/health", async (c) => {
   const dbOk = await checkDbHealth();
   const redisOk = await checkRedisHealth() ?? false;
   const status = dbOk ? "ok" : "degraded";
-  healthCache = { result: { status, db: dbOk, redis: redisOk }, expiresAt: now + 10_000 };
+  healthCache = { result: { status, db: dbOk, redis: redisOk }, expiresAt: now + 3_000 };
   return c.json(
     { status, timestamp: new Date().toISOString(), db: dbOk, redis: redisOk },
     dbOk ? 200 : 503,
   );
 });
+
+// ── /v1/models — public (OpenAI-compatible discovery, needed by OpenClaw) ──
+import { modelsHandler } from "./routes/proxy";
+app.get("/v1/models", modelsHandler);
 
 // ── Protected routes (JWT required) ─────────────────────────────────────────
 app.use("/v1/*", jwtAuth);

@@ -199,6 +199,9 @@ export interface CloudModelEntry {
   object: string;
   created: number;
   owned_by: string;
+  display_name?: string;
+  tier?: string;
+  status?: string;
 }
 
 export interface CloudModelsResponse {
@@ -258,6 +261,7 @@ export interface CloudAccountResponse {
   totalDepositedCents: number;
   totalUsedCents: number;
   createdAt: string;
+  isAdmin?: boolean;
 }
 
 export interface CloudBalanceResponse {
@@ -355,6 +359,20 @@ export interface CloudAnnouncementResponse {
 
 export interface CloudRequestsResponse {
   requests: import("@/types/stats").RequestLogEntry[];
+}
+
+// ── Cloud Admin Model Registry ──────────────────────────────────────────
+export interface CloudRegistryModel {
+  id: string;
+  modelId: string;
+  displayName: string;
+  provider: string;
+  status: "active" | "beta" | "deprecated" | "disabled";
+  tier: string;
+}
+
+export interface CloudRegistryResponse {
+  models: CloudRegistryModel[];
 }
 
 export const api = {
@@ -622,6 +640,16 @@ export const api = {
     params.set("limit", String(limit));
     return request<CloudRequestsResponse>(`/account/requests?${params}`);
   },
+
+  // ── Cloud Admin Model Registry ──────────────────────────────────────
+  cloudAdminGetModels: () =>
+    request<CloudRegistryResponse>("/admin/models/registry"),
+  cloudAdminSetModelStatus: (id: string, status: string) =>
+    request<CloudRegistryModel>(`/admin/models/registry/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+      retries: 0,
+    }),
 };
 
 // V2 response types

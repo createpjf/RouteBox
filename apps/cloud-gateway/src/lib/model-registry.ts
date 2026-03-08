@@ -14,7 +14,7 @@ export interface ModelRegistryEntry {
   modelId: string;
   displayName: string;
   provider: string;
-  status: "active" | "beta" | "deprecated";
+  status: "active" | "beta" | "deprecated" | "disabled";
   tier: "flagship" | "fast";
 
   quality: number;
@@ -58,7 +58,7 @@ function rowToEntry(r: Record<string, unknown>): ModelRegistryEntry {
     modelId: r.model_id as string,
     displayName: r.display_name as string,
     provider: r.provider as string,
-    status: r.status as "active" | "beta" | "deprecated",
+    status: r.status as "active" | "beta" | "deprecated" | "disabled",
     tier: r.tier as "flagship" | "fast",
     quality: r.quality as number,
     speed: r.speed as number,
@@ -233,7 +233,7 @@ export async function getActiveModels(): Promise<ModelRegistryEntry[]> {
 
   const rows = await sql`
     SELECT * FROM model_registry
-    WHERE status != 'deprecated'
+    WHERE status NOT IN ('deprecated', 'disabled')
     ORDER BY tier, provider, model_id
   `;
   registryCache = rows.map(rowToEntry);

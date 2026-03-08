@@ -1,16 +1,17 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { Copy, Check, Pause, Play, Plus, X, Pin, Ban, Loader2, Search } from "lucide-react";
+import { Copy, Check, Pause, Play, Plus, X, Pin, Ban, Loader2, Search, ChevronDown, Pencil } from "lucide-react";
 import clsx from "clsx";
 import { ProviderStatus } from "@/components/ProviderStatus";
 import { RoutingStrategy } from "@/components/RoutingStrategy";
 import { api } from "@/lib/api";
-import type { ModelPreference, RoutingRule } from "@/lib/api";
+import type { ModelPreference, RoutingRule, CloudRegistryModel, CloudModelEntry } from "@/lib/api";
 import type { RealtimeStats } from "@/types/stats";
 import { getGatewayMode, setRoutingStrategy as setRoutingStrategyModule, setRoutingRules as setRoutingRulesModule } from "@/lib/constants";
 
 interface RoutingPageProps {
   stats: RealtimeStats;
   showToast: (msg: string) => void;
+  ready?: boolean;
 }
 
 /** Reverse index: modelId → [{provider, pricing}] */
@@ -19,7 +20,7 @@ interface ModelProviderEntry {
   pricing: { input: number; output: number };
 }
 
-export function RoutingPage({ stats, showToast }: RoutingPageProps) {
+export function RoutingPage({ stats, showToast, ready }: RoutingPageProps) {
   const isCloud = getGatewayMode() === "cloud";
   const [isPaused, setIsPaused] = useState(false);
   const [routingStrategy, setRoutingStrategy] = useState("smart_auto");
@@ -39,17 +40,21 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   const [ruleMatchValue, setRuleMatchValue] = useState("");
   const [ruleTargetModel, setRuleTargetModel] = useState("");
   const [ruleSearchQuery, setRuleSearchQuery] = useState("");
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
 
   const [modelIndex, setModelIndex] = useState<Map<string, ModelProviderEntry[]>>(new Map());
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [modelsError, setModelsError] = useState(false);
-  const [cloudModels, setCloudModels] = useState<string[]>([]);
+  const [cloudModels, setCloudModels] = useState<CloudModelEntry[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [registryModels, setRegistryModels] = useState<CloudRegistryModel[]>([]);
+  const [registryLoading, setRegistryLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("");
 
   useEffect(() => {
-    if (isCloud) return;
+    if (isCloud || !ready) return;
     api.getTrafficStatus()
       .then((res) => setIsPaused(res.paused))
       .catch(() => {});
@@ -62,7 +67,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     api.getRoutingRules()
       .then((res) => setRoutingRules(res.rules))
       .catch(() => {});
-  }, [isCloud]);
+  }, [isCloud, ready]);
 
   useEffect(() => {
     if (isCloud) return;
@@ -84,11 +89,11 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   }, [isCloud, stats.providers.length]);
 
   useEffect(() => {
-    if (!isCloud) return;
+    if (!isCloud || !ready) return;
     api.cloudGetModels()
       .then((res) => {
-        const ids = res.data.map((m) => m.id).sort();
-        setCloudModels(ids);
+        const sorted = [...res.data].sort((a, b) => a.id.localeCompare(b.id));
+        setCloudModels(sorted);
         // Build modelIndex for cloud rules target selector
         const idx = new Map<string, ModelProviderEntry[]>();
         for (const m of res.data) {
@@ -99,7 +104,26 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         setModelsError(false);
       })
       .catch(() => setModelsError(true));
-  }, [isCloud]);
+
+    // Check admin status (retry once on failure)
+    const checkAdmin = () =>
+      api.cloudGetAccount()
+        .then((res) => {
+          if (res.isAdmin) {
+            setIsAdmin(true);
+            setRegistryLoading(true);
+            // Load full registry for admin
+            api.cloudAdminGetModels()
+              .then((r) => setRegistryModels(r.models))
+              .catch(() => {})
+              .finally(() => setRegistryLoading(false));
+          }
+        });
+    checkAdmin().catch(() => {
+      // Retry once after 2s
+      setTimeout(() => checkAdmin().catch(() => {}), 2000);
+    });
+  }, [isCloud, ready]);
 
   // Load cloud routing preferences from Tauri store
   useEffect(() => {
@@ -118,7 +142,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     const allModels = Array.from(modelIndex.keys()).sort();
     if (!searchQuery.trim()) return allModels;
     const q = searchQuery.toLowerCase();
-    return allModels.filter((m) => m.toLowerCase().includes(q));
+    return allModels.filter((m) => stripRouterPrefix(m).toLowerCase().includes(q) || m.toLowerCase().includes(q));
   }, [modelIndex, searchQuery]);
 
   const availableProviders = useMemo(() => {
@@ -223,7 +247,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     const allModels = Array.from(modelIndex.keys()).sort();
     if (!ruleSearchQuery.trim()) return allModels;
     const q = ruleSearchQuery.toLowerCase();
-    return allModels.filter((m) => m.toLowerCase().includes(q));
+    return allModels.filter((m) => stripRouterPrefix(m).toLowerCase().includes(q) || m.toLowerCase().includes(q));
   }, [modelIndex, ruleSearchQuery]);
 
   const MATCH_TYPE_META: Record<string, { label: string; color: string; icon: string }> = {
@@ -324,6 +348,66 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     }
   }, [isCloud, routingRules, saveCloudRules, showToast]);
 
+  const clearRuleForm = useCallback(() => {
+    setRuleName("");
+    setRuleMatchType("content_code");
+    setRuleMatchValue("");
+    setRuleTargetModel("");
+    setRuleSearchQuery("");
+    setEditingRuleId(null);
+    setShowAddRule(false);
+  }, []);
+
+  const handleEditRule = useCallback((rule: RoutingRule) => {
+    setShowAddRule(false);
+    setEditingRuleId(rule.id);
+    setRuleName(rule.name);
+    setRuleMatchType(rule.matchType);
+    setRuleMatchValue(rule.matchType === "model_alias" ? rule.matchValue : "");
+    setRuleTargetModel(rule.targetModel);
+    setRuleSearchQuery(stripRouterPrefix(rule.targetModel));
+  }, []);
+
+  const handleSaveEditRule = useCallback(async () => {
+    if (editingRuleId === null || !ruleName || !ruleTargetModel) return;
+    setRuleSaving(true);
+    try {
+      const matchValue = ruleMatchType === "model_alias"
+        ? ruleMatchValue
+        : ruleMatchType === "content_long"
+          ? JSON.stringify({ min_chars: 8000 })
+          : ruleMatchType === "content_code"
+            ? JSON.stringify({ min_markers: 3 })
+            : "{}";
+      const updatedRule: Partial<RoutingRule> = {
+        name: ruleName,
+        matchType: ruleMatchType,
+        matchValue,
+        targetModel: ruleTargetModel,
+      };
+      if (isCloud) {
+        const updated = routingRules.map((r) =>
+          r.id === editingRuleId ? { ...r, ...updatedRule } : r
+        );
+        setRoutingRules(updated);
+        saveCloudRules(updated);
+      } else {
+        const existing = routingRules.find((r) => r.id === editingRuleId);
+        if (existing) {
+          await api.updateRoutingRule(editingRuleId, { ...existing, ...updatedRule });
+          setRoutingRules((prev) =>
+            prev.map((r) => r.id === editingRuleId ? { ...r, ...updatedRule } : r)
+          );
+        }
+      }
+      clearRuleForm();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to update rule");
+    } finally {
+      setRuleSaving(false);
+    }
+  }, [editingRuleId, isCloud, ruleName, ruleMatchType, ruleMatchValue, ruleTargetModel, routingRules, saveCloudRules, clearRuleForm, showToast]);
+
   const fmtPrice = (n: number) => n < 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(1)}`;
 
   return (
@@ -341,7 +425,37 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
       {/* Available Models — cloud mode, grouped by provider */}
       {isCloud && modelsLoaded && cloudModels.length > 0 && (
-        <CloudModelList models={cloudModels} />
+        <CloudModelList
+          models={cloudModels}
+          isAdmin={isAdmin}
+          registryModels={registryModels}
+          registryLoading={registryLoading}
+          onToggleStatus={async (model) => {
+            const newStatus = model.status === "disabled" ? "active" : "disabled";
+            try {
+              await api.cloudAdminSetModelStatus(model.id, newStatus);
+              setRegistryModels((prev) =>
+                prev.map((m) => m.id === model.id ? { ...m, status: newStatus as CloudRegistryModel["status"] } : m)
+              );
+              // Refresh cloud models list
+              await api.cloudGetModels()
+                .then((res) => {
+                  const sorted = [...res.data].sort((a, b) => a.id.localeCompare(b.id));
+                  setCloudModels(sorted);
+                  // Update modelIndex for routing rules
+                  const idx = new Map<string, ModelProviderEntry[]>();
+                  for (const m of res.data) {
+                    idx.set(m.id, [{ provider: m.owned_by || "unknown", pricing: { input: 0, output: 0 } }]);
+                  }
+                  setModelIndex(idx);
+                })
+                .catch(() => {});
+              showToast(`${model.modelId} ${newStatus === "disabled" ? "disabled" : "enabled"}`);
+            } catch (err) {
+              showToast(err instanceof Error ? err.message : "Failed to update model status");
+            }
+          }}
+        />
       )}
 
       {/* Routing Strategy */}
@@ -380,7 +494,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                   ) : (
                     <Ban size={12} strokeWidth={1.75} className="text-[#FF3B30] shrink-0" />
                   )}
-                  <span className="text-[12px] font-mono text-text-primary truncate">{pref.modelPattern}</span>
+                  <span className="text-[12px] font-mono text-text-primary truncate">{stripRouterPrefix(pref.modelPattern)}</span>
                   <span className="text-[10px] text-text-secondary">{"\u2192"}</span>
                   <span className="text-[12px] text-text-secondary truncate">{pref.provider}</span>
                 </div>
@@ -456,11 +570,11 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                           key={modelId}
                           onClick={() => {
                             setSelectedModel(modelId);
-                            setSearchQuery(modelId);
+                            setSearchQuery(stripRouterPrefix(modelId));
                           }}
                           className="flex items-center justify-between w-full px-3 py-1.5 text-left hover:bg-hover-overlay transition-colors border-b border-border-light last:border-b-0"
                         >
-                          <span className="text-[12px] font-mono text-text-primary truncate">{modelId}</span>
+                          <span className="text-[12px] font-mono text-text-primary truncate">{stripRouterPrefix(modelId)}</span>
                           <span className="text-[10px] text-text-secondary shrink-0 ml-2">
                             {entries.length === 1
                               ? entries[0].provider
@@ -478,7 +592,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5 px-1">
                     <span className="text-[11px] font-medium text-text-primary">
-                      {selectedModel}
+                      {stripRouterPrefix(selectedModel)}
                     </span>
                     <button
                       onClick={() => {
@@ -604,7 +718,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                     <span className="text-[10px] shrink-0">{meta.icon}</span>
                     <span className="text-[12px] font-medium text-text-primary truncate">{rule.name}</span>
                     <span className="text-[10px] text-text-secondary">{"\u2192"}</span>
-                    <span className="text-[11px] font-mono text-text-secondary truncate">{rule.targetModel}</span>
+                    <span className="text-[11px] font-mono text-text-secondary truncate">{stripRouterPrefix(rule.targetModel)}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span
@@ -626,6 +740,13 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                       )} />
                     </button>
                     <button
+                      onClick={() => handleEditRule(rule)}
+                      className="p-1 rounded hover:bg-hover-overlay transition-colors"
+                      title="Edit rule"
+                    >
+                      <Pencil size={11} strokeWidth={1.75} className="text-text-tertiary" />
+                    </button>
+                    <button
                       onClick={() => handleRemoveRule(rule.id)}
                       className="p-1 rounded hover:bg-hover-overlay transition-colors"
                     >
@@ -637,8 +758,11 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
             })
           )}
 
-          {showAddRule ? (
+          {(showAddRule || editingRuleId !== null) ? (
             <div className="p-3 border-t border-border-light space-y-2.5">
+              <span className="text-[11px] font-medium text-text-secondary">
+                {editingRuleId !== null ? "Edit Rule" : "Add Rule"}
+              </span>
               {/* Rule Name */}
               <input
                 type="text"
@@ -718,11 +842,11 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                         key={modelId}
                         onClick={() => {
                           setRuleTargetModel(modelId);
-                          setRuleSearchQuery(modelId);
+                          setRuleSearchQuery(stripRouterPrefix(modelId));
                         }}
                         className="flex items-center w-full px-3 py-1.5 text-left hover:bg-hover-overlay transition-colors border-b border-border-light last:border-b-0"
                       >
-                        <span className="text-[12px] font-mono text-text-primary truncate">{modelId}</span>
+                        <span className="text-[12px] font-mono text-text-primary truncate">{stripRouterPrefix(modelId)}</span>
                       </button>
                     ))
                   )}
@@ -731,7 +855,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
               {ruleTargetModel && (
                 <div className="flex items-center gap-1.5 px-1">
-                  <span className="text-[11px] font-medium text-text-primary">{ruleTargetModel}</span>
+                  <span className="text-[11px] font-medium text-text-primary">{stripRouterPrefix(ruleTargetModel)}</span>
                   <button
                     onClick={() => { setRuleTargetModel(""); setRuleSearchQuery(""); }}
                     className="p-0.5 rounded hover:bg-hover-overlay transition-colors"
@@ -744,7 +868,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
               {/* Save / Cancel */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleAddRule}
+                  onClick={editingRuleId !== null ? handleSaveEditRule : handleAddRule}
                   disabled={ruleSaving || !ruleName || !ruleTargetModel}
                   className={clsx(
                     "flex items-center gap-1 text-[11px] font-medium h-7 px-2.5 rounded-lg transition-colors",
@@ -754,7 +878,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                   )}
                 >
                   {ruleSaving && <Loader2 size={11} strokeWidth={1.75} className="animate-spin" />}
-                  Save Rule
+                  {editingRuleId !== null ? "Save" : "Save Rule"}
                 </button>
                 {!ruleSaving && (!ruleName || !ruleTargetModel) && (
                   <span className="text-[9px] text-text-tertiary">
@@ -762,20 +886,14 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
                   </span>
                 )}
                 <button
-                  onClick={() => {
-                    setShowAddRule(false);
-                    setRuleName("");
-                    setRuleMatchValue("");
-                    setRuleTargetModel("");
-                    setRuleSearchQuery("");
-                  }}
+                  onClick={clearRuleForm}
                   className="text-[11px] text-text-tertiary h-7 px-2 rounded-lg hover:bg-hover-overlay transition-colors"
                 >
                   Cancel
                 </button>
               </div>
             </div>
-          ) : (
+          ) : editingRuleId === null ? (
             <button
               onClick={() => setShowAddRule(true)}
               className="flex items-center gap-1.5 w-full h-9 px-3 text-[12px] text-[#007AFF] hover:bg-hover-overlay transition-colors border-t border-border-light"
@@ -783,7 +901,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
               <Plus size={13} strokeWidth={2} />
               Add Rule
             </button>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -836,25 +954,226 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   );
 }
 
-function CloudModelList({ models }: { models: string[] }) {
+/** Strip provider routing prefix (e.g. "openrouter/") for cleaner display */
+function stripRouterPrefix(id: string): string {
+  return id.replace(/^openrouter\//, "");
+}
+
+interface CloudModelListProps {
+  models: CloudModelEntry[];
+  isAdmin?: boolean;
+  registryModels?: CloudRegistryModel[];
+  registryLoading?: boolean;
+  onToggleStatus?: (model: CloudRegistryModel) => void;
+}
+
+function CloudModelList({ models, isAdmin, registryModels, registryLoading, onToggleStatus }: CloudModelListProps) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const handleCopyModel = useCallback(async (modelId: string) => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      try {
+        await invoke("copy_to_clipboard", { text: modelId });
+      } catch {
+        await navigator.clipboard.writeText(modelId);
+      }
+    } catch {
+      await navigator.clipboard.writeText(modelId);
+    }
+    setCopiedId(modelId);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopiedId(null), 1500);
+  }, []);
+
+  // In admin mode, show all registry models; otherwise show available models
+  const displayModels = isAdmin && registryModels && registryModels.length > 0
+    ? registryModels
+    : null;
+
+  const statusBadge = (status: string) => {
+    const colors: Record<string, { bg: string; text: string }> = {
+      active: { bg: "rgba(52,199,89,0.15)", text: "#34C759" },
+      beta: { bg: "rgba(0,122,255,0.15)", text: "#007AFF" },
+      deprecated: { bg: "rgba(142,142,147,0.15)", text: "#8E8E93" },
+      disabled: { bg: "rgba(255,59,48,0.15)", text: "#FF3B30" },
+    };
+    const c = colors[status] ?? colors.active;
+    return (
+      <span
+        className="text-[9px] font-medium px-1.5 py-0.5 rounded-md shrink-0"
+        style={{ backgroundColor: c.bg, color: c.text }}
+      >
+        {status}
+      </span>
+    );
+  };
+
+  const activeCount = displayModels ? displayModels.filter((m) => m.status !== "disabled").length : 0;
+  const disabledCount = displayModels ? displayModels.length - activeCount : 0;
+  const totalCount = displayModels ? displayModels.length : models.length;
+
+  const headerLabel = isAdmin && displayModels
+    ? disabledCount > 0
+      ? `Model Registry (${activeCount} active, ${disabledCount} disabled)`
+      : `Model Registry (${totalCount})`
+    : `Available Models (${totalCount})`;
+
   return (
     <div>
-      <h3 className="section-header">Available Models ({models.length})</h3>
-      <div className="glass-card-static overflow-hidden">
-        {models.map((modelId, i) => (
-          <div
-            key={modelId}
-            className={clsx(
-              "flex items-center py-2 px-4",
-              i < models.length - 1 && "border-b border-border-light"
-            )}
-          >
-            <span className="text-[11px] font-mono text-text-secondary truncate">
-              {modelId}
-            </span>
-          </div>
-        ))}
-      </div>
+      <button
+        onClick={() => setCollapsed((c) => !c)}
+        className="section-header flex items-center gap-1.5 w-full text-left cursor-pointer hover:text-text-primary transition-colors"
+      >
+        <ChevronDown
+          size={13}
+          strokeWidth={2}
+          className={clsx(
+            "transition-transform duration-200 shrink-0",
+            collapsed && "-rotate-90"
+          )}
+        />
+        {registryLoading ? (
+          <span className="flex items-center gap-1.5">
+            Model Registry <Loader2 size={11} className="animate-spin" />
+          </span>
+        ) : headerLabel}
+      </button>
+      {!collapsed && (
+        <div className="glass-card-static overflow-hidden">
+          {registryLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 size={16} className="animate-spin text-text-tertiary" />
+            </div>
+          ) : displayModels ? (
+            // Admin view: full registry with toggles
+            displayModels.map((model, i) => {
+              const isDisabled = model.status === "disabled";
+              const isDeprecated = model.status === "deprecated";
+              return (
+                <div
+                  key={model.id}
+                  className={clsx(
+                    "group flex items-center justify-between py-2 px-4",
+                    i < displayModels.length - 1 && "border-b border-border-light",
+                    isDisabled && "opacity-50"
+                  )}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={clsx(
+                      "text-[11px] font-mono truncate",
+                      isDisabled ? "text-text-tertiary" : "text-text-secondary"
+                    )}>
+                      {stripRouterPrefix(model.modelId)}
+                    </span>
+                    {statusBadge(model.status)}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[9px] text-text-tertiary">{model.provider}</span>
+                    {isDeprecated && (
+                      <span className="text-[9px] text-text-tertiary italic" title="Permanently deprecated — cannot be toggled">
+                        deprecated
+                      </span>
+                    )}
+                    {!isDeprecated && onToggleStatus && (
+                      <button
+                        onClick={async () => {
+                          setTogglingId(model.id);
+                          try {
+                            await onToggleStatus(model);
+                          } finally {
+                            setTogglingId(null);
+                          }
+                        }}
+                        disabled={togglingId === model.id}
+                        className={clsx(
+                          "relative w-7 h-4 rounded-full transition-colors duration-200",
+                          togglingId === model.id && "opacity-50",
+                          !isDisabled ? "bg-[#34C759]" : "bg-toggle-off"
+                        )}
+                      >
+                        <div className={clsx(
+                          "absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200",
+                          !isDisabled ? "translate-x-3.5" : "translate-x-0.5"
+                        )} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleCopyModel(model.modelId)}
+                      className="shrink-0 p-1 rounded hover:bg-hover-overlay transition-colors opacity-0 group-hover:opacity-100"
+                      title="Copy model ID"
+                    >
+                      {copiedId === model.modelId ? (
+                        <Check size={11} strokeWidth={2} className="text-[#34C759]" />
+                      ) : (
+                        <Copy size={11} strokeWidth={1.75} className="text-text-tertiary" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            // Normal user view — enhanced with metadata
+            models.map((model, i) => (
+              <div
+                key={model.id}
+                className={clsx(
+                  "group flex items-center justify-between py-2 px-4",
+                  i < models.length - 1 && "border-b border-border-light"
+                )}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[11px] font-mono text-text-secondary truncate">
+                    {model.display_name && model.display_name !== model.id
+                      ? model.display_name
+                      : stripRouterPrefix(model.id)}
+                  </span>
+                  {model.display_name && model.display_name !== model.id && model.id !== "auto" && (
+                    <span className="text-[9px] font-mono text-text-tertiary truncate">
+                      {stripRouterPrefix(model.id)}
+                    </span>
+                  )}
+                  {model.id === "auto" && (
+                    <span
+                      className="text-[9px] font-medium px-1.5 py-0.5 rounded-md shrink-0"
+                      style={{ backgroundColor: "rgba(94,92,230,0.15)", color: "#5E5CE6" }}
+                    >
+                      Smart Routing
+                    </span>
+                  )}
+                  {model.tier === "flagship" && (
+                    <span
+                      className="text-[9px] font-medium px-1.5 py-0.5 rounded-md shrink-0"
+                      style={{ backgroundColor: "rgba(255,149,0,0.15)", color: "#FF9500" }}
+                    >
+                      flagship
+                    </span>
+                  )}
+                  {model.status === "beta" && statusBadge("beta")}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[9px] text-text-tertiary">{model.owned_by}</span>
+                  <button
+                    onClick={() => handleCopyModel(model.id)}
+                    className="shrink-0 p-1 rounded hover:bg-hover-overlay transition-colors opacity-0 group-hover:opacity-100"
+                    title="Copy model ID"
+                  >
+                    {copiedId === model.id ? (
+                      <Check size={11} strokeWidth={2} className="text-[#34C759]" />
+                    ) : (
+                      <Copy size={11} strokeWidth={1.75} className="text-text-tertiary" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

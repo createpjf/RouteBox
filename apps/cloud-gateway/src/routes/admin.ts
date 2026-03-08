@@ -295,9 +295,9 @@ app.post("/models/registry", async (c) => {
     return c.json({ error: { message: "displayName is required", type: "validation_error" } }, 400);
   }
 
-  const validStatuses = ["active", "beta", "deprecated"];
+  const validStatuses = ["active", "beta", "deprecated", "disabled"];
   if (body.status && !validStatuses.includes(body.status as string)) {
-    return c.json({ error: { message: "status must be active, beta, or deprecated", type: "validation_error" } }, 400);
+    return c.json({ error: { message: "status must be active, beta, deprecated, or disabled", type: "validation_error" } }, 400);
   }
   const validTiers = ["flagship", "fast"];
   if (body.tier && !validTiers.includes(body.tier as string)) {
@@ -330,6 +330,12 @@ app.patch("/models/registry/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<Record<string, unknown>>();
 
+  // Status validation
+  const validStatuses = ["active", "beta", "deprecated", "disabled"];
+  if (body.status && !validStatuses.includes(body.status as string)) {
+    return c.json({ error: { message: "status must be active, beta, deprecated, or disabled", type: "validation_error" } }, 400);
+  }
+
   // Score range validation
   for (const field of ["quality", "speed", "costEfficiency", "codeStrength"]) {
     const val = body[field];
@@ -341,7 +347,10 @@ app.patch("/models/registry/:id", async (c) => {
   const model = await updateModel(id, body as any);
   if (!model) return c.json({ error: { message: "Model not found", type: "not_found" } }, 404);
   reloadRegistry();
-  auditLog(c.get("email") as string, "update_model", undefined, { modelId: id });
+  auditLog(c.get("email") as string, "update_model", undefined, {
+    modelId: model.modelId ?? id,
+    ...(body.status ? { newStatus: body.status } : {}),
+  });
   return c.json(model);
 });
 

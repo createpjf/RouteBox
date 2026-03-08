@@ -44,7 +44,7 @@ export function App() {
   const [cloudAnnouncement, setCloudAnnouncement] = useState<CloudAnnouncement | null>(null);
   const [announcementDismissed, setAnnouncementDismissed] = useState(false);
   const [gatewayRunningAt, setGatewayRunningAt] = useState(0);
-  const { stats, connected, stale, history, requestLog, alert, dismissAlert } = useRealtimeStats(tokenLoaded);
+  const { stats, connected, stale, requestLog, alert, dismissAlert } = useRealtimeStats(tokenLoaded);
   const { toasts, showToast, dismissToast } = useToast();
 
   // Load persisted settings before any API calls
@@ -75,12 +75,16 @@ export function App() {
           try {
             const t = await invoke<string>("get_cloud_token");
             if (t) { setCloudAuthToken(t); setToken(t); }
-          } catch {}
+          } catch (err) {
+            console.error("[RouteBox] Failed to load cloud token:", err);
+          }
         } else {
           try {
             const t = await invoke<string>("get_token");
             if (t) { setAuthToken(t); setToken(t); }
-          } catch {}
+          } catch (err) {
+            console.error("[RouteBox] Failed to load auth token:", err);
+          }
         }
       } catch {
         // Not in Tauri
@@ -135,7 +139,9 @@ export function App() {
           try {
             const t = await invoke<string>("get_token");
             if (t) { setAuthToken(t); setToken(t); }
-          } catch {}
+          } catch (err) {
+            console.error("[RouteBox] Failed to reload token after gateway start:", err);
+          }
 
           // Wait for health
           const healthy = await waitForGateway(url, 12_000, 500);
@@ -143,8 +149,10 @@ export function App() {
             setGatewayState(healthy ? "running" : "failed");
           }
         } else {
-          // Remote gateway: health-check miss is not a hard failure — stay idle
-          if (!cancelled) setGatewayState("idle");
+          // Remote/cloud gateway
+          // If user has a cloud token, treat as running — REST polling handles data
+          const hasCloudAuth = currentMode === "cloud" && getCloudAuthToken();
+          if (!cancelled) setGatewayState(hasCloudAuth ? "running" : "idle");
         }
       } catch (err) {
         console.error("[RouteBox] auto-start failed:", err);
@@ -294,8 +302,8 @@ export function App() {
                 ? "flex flex-1 min-h-0 absolute inset-0 animate-page-in"
                 : "hidden"}
             >
-              {tab === "home"     && <HomePage stats={currentStats} history={history} />}
-              {tab === "routing"  && <RoutingPage stats={currentStats} showToast={showToast} />}
+              {tab === "home"     && <HomePage stats={currentStats} ready={tokenLoaded} />}
+              {tab === "routing"  && <RoutingPage stats={currentStats} showToast={showToast} ready={tokenLoaded} />}
               {tab === "activity" && (
                 <ActivityPage
                   requestLog={requestLog}

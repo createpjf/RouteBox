@@ -137,12 +137,20 @@ async function checkLimit(
         remaining: result[1]!,
         retryAfterMs: result[2]!,
       };
-    } catch {
-      // Redis error — fall through to in-memory
+    } catch (err) {
+      log.warn("redis_rate_limit_fallback", {
+        limiter: limiterName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Redis was available but errored — use stricter in-memory limits
+      // to compensate for per-instance counting in multi-instance deploys
+      const store = getStore(limiterName);
+      const fallbackConfig = { ...config, max: Math.max(1, Math.floor(config.max / 2)) };
+      return checkLimitMemory(store, key, fallbackConfig, now);
     }
   }
 
-  // In-memory fallback
+  // No Redis configured — use standard in-memory limits
   const store = getStore(limiterName);
   return checkLimitMemory(store, key, config, now);
 }

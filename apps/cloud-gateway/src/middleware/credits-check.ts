@@ -17,7 +17,7 @@ export async function creditsCheck(c: Context<CloudEnv>, next: Next) {
   const userId = c.get("userId") as string;
   if (!userId) {
     return c.json(
-      { error: { message: "Authentication required", type: "auth_error" } },
+      { error: { message: "Authentication required", type: "invalid_request_error", param: null, code: "invalid_api_key" } },
       401,
     );
   }
@@ -29,6 +29,7 @@ export async function creditsCheck(c: Context<CloudEnv>, next: Next) {
         error: {
           message: "Insufficient credits. Please add credits to continue.",
           type: "billing_error",
+          param: null,
           code: "insufficient_credits",
           balance_cents,
           total_cents,

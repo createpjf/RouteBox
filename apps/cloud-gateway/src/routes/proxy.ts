@@ -3,7 +3,7 @@
 // Retry + Fallback + Circuit Breaker for high availability
 // ---------------------------------------------------------------------------
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import {
   cloudProviderForModel,
   cloudProvidersForModel,
@@ -15,9 +15,10 @@ import { isProviderAllowed } from "../lib/provider-config";
 import { buildRequestContext } from "../lib/request-context";
 import { scoreAndRank, type ScoredCandidate } from "../lib/scoring-engine";
 import { getCircuitBreaker } from "../lib/circuit-breaker";
+import { sql } from "../lib/db-cloud";
 import { deductCredits, recordCloudRequest } from "../lib/credits";
 import { getMarkupForPlan } from "../lib/polar";
-import { getRegistryEntry } from "../lib/model-registry";
+import { getRegistryEntry, getActiveModels } from "../lib/model-registry";
 import { resolveStrategy } from "../lib/routing-config";
 import { checkDailyQuota, incrementDailyQuota } from "../lib/quota";
 import { log } from "../lib/logger";
@@ -220,6 +221,8 @@ interface StreamMeta {
   requestedModel: string;
   startMs: number;
   isFallback: boolean;
+  autoRouted?: boolean;
+  originalRequestedModel?: string;
 }
 
 function anthropicStreamToOpenAI(
@@ -308,14 +311,16 @@ function anthropicStreamToOpenAI(
       // Inject routebox.meta
       const totalTok = inputTokens + outputTokens;
       const cost = calculateCost(model, inputTokens, outputTokens);
-      push(JSON.stringify({
+      const metaObj: Record<string, unknown> = {
         object: "routebox.meta",
         provider: streamMeta.provider.toLowerCase(),
-        model, requested_model: streamMeta.requestedModel,
+        model, requested_model: streamMeta.originalRequestedModel ?? streamMeta.requestedModel,
         usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
         cost, latency_ms: Math.round(performance.now() - streamMeta.startMs),
         is_fallback: streamMeta.isFallback,
-      }));
+      };
+      if (streamMeta.autoRouted) metaObj.auto_routed = true;
+      push(JSON.stringify(metaObj));
       push("[DONE]");
       try { controller.close(); } catch { /* already closed */ }
       callOnDone({ input: inputTokens, output: outputTokens });
@@ -384,15 +389,17 @@ function openaiStreamPassthrough(
                 // Inject routebox.meta before [DONE]
                 const totalTok = inputTokens + outputTokens;
                 const cost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens);
-                enqueue(encoder.encode(`data: ${JSON.stringify({
+                const metaObj: Record<string, unknown> = {
                   object: "routebox.meta",
                   provider: streamMeta.provider.toLowerCase(),
                   model: streamMeta.requestedModel,
-                  requested_model: streamMeta.requestedModel,
+                  requested_model: streamMeta.originalRequestedModel ?? streamMeta.requestedModel,
                   usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
                   cost, latency_ms: Math.round(performance.now() - streamMeta.startMs),
                   is_fallback: streamMeta.isFallback,
-                })}\n\n`));
+                };
+                if (streamMeta.autoRouted) metaObj.auto_routed = true;
+                enqueue(encoder.encode(`data: ${JSON.stringify(metaObj)}\n\n`));
                 enqueue(encoder.encode(`${line}\n\n`));
                 metaInjected = true;
               } else {
@@ -419,15 +426,17 @@ function openaiStreamPassthrough(
       if (!metaInjected) {
         const totalTok = inputTokens + outputTokens;
         const cost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens);
-        enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+        const metaObj: Record<string, unknown> = {
           object: "routebox.meta",
           provider: streamMeta.provider.toLowerCase(),
           model: streamMeta.requestedModel,
-          requested_model: streamMeta.requestedModel,
+          requested_model: streamMeta.originalRequestedModel ?? streamMeta.requestedModel,
           usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
           cost, latency_ms: Math.round(performance.now() - streamMeta.startMs),
           is_fallback: streamMeta.isFallback,
-        })}\n\n`));
+        };
+        if (streamMeta.autoRouted) metaObj.auto_routed = true;
+        enqueue(new TextEncoder().encode(`data: ${JSON.stringify(metaObj)}\n\n`));
         enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
       }
       try { controller.close(); } catch { /* already closed */ }
@@ -440,22 +449,91 @@ function openaiStreamPassthrough(
 // GET /models — available models
 // ---------------------------------------------------------------------------
 
-app.get("/models", (c) => {
+export async function modelsHandler(c: Context<CloudEnv>) {
   const userPlan = c.get("userPlan") ?? "starter";
-  const modelOwner = new Map<string, string>();
+
+  // Build set of allowed provider names for this plan
+  const allowedProviders = new Set<string>();
   for (const p of cloudProviders) {
-    if (!isProviderAllowed(p.name, userPlan)) continue;
+    if (isProviderAllowed(p.name, userPlan)) allowedProviders.add(p.name);
+  }
+
+  // 1. Load active/beta models from registry
+  let registryModels: { modelId: string; displayName: string; provider: string; tier: string; status: string }[] = [];
+  try {
+    const active = await getActiveModels();
+    registryModels = active.map((m) => ({
+      modelId: m.modelId,
+      displayName: m.displayName,
+      provider: m.provider,
+      tier: m.tier,
+      status: m.status,
+    }));
+  } catch (err) {
+    log.error("registry_load_failed", {
+      endpoint: "GET /models",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const seen = new Set<string>();
+  const data: { id: string; object: "model"; created: number; owned_by: string; display_name: string; tier: string; status: string }[] = [];
+
+  // 2. Registry models — check that at least one provider config exists
+  for (const rm of registryModels) {
+    if (seen.has(rm.modelId)) continue;
+    // Check provider is allowed and has a matching config
+    const hasProvider = cloudProviders.some(
+      (p) => allowedProviders.has(p.name) && p.prefixes.some((pfx) => rm.modelId.startsWith(pfx)),
+    );
+    if (!hasProvider) continue;
+    seen.add(rm.modelId);
+    data.push({
+      id: rm.modelId,
+      object: "model",
+      created: 0,
+      owned_by: rm.provider,
+      display_name: rm.displayName,
+      tier: rm.tier,
+      status: rm.status,
+    });
+  }
+
+  // 3. MODEL_PRICING fallback — models not yet in registry
+  for (const p of cloudProviders) {
+    if (!allowedProviders.has(p.name)) continue;
     for (const modelId of Object.keys(MODEL_PRICING)) {
-      if (!modelOwner.has(modelId) && p.prefixes.some((pfx) => modelId.startsWith(pfx))) {
-        modelOwner.set(modelId, p.name);
+      if (seen.has(modelId)) continue;
+      if (p.prefixes.some((pfx) => modelId.startsWith(pfx))) {
+        seen.add(modelId);
+        data.push({
+          id: modelId,
+          object: "model",
+          created: 0,
+          owned_by: p.name,
+          display_name: modelId,
+          tier: "fast",
+          status: "active",
+        });
       }
     }
   }
-  const data = [...modelOwner.entries()].map(([id, owner]) => ({
-    id, object: "model" as const, created: 0, owned_by: owner,
-  }));
+
+  // Prepend the virtual "auto" smart-routing model
+  data.unshift({
+    id: "auto",
+    object: "model",
+    created: 0,
+    owned_by: "routebox",
+    display_name: "Auto (Smart Routing)",
+    tier: "auto",
+    status: "active",
+  });
+
   return c.json({ object: "list", data });
-});
+}
+
+app.get("/models", modelsHandler);
 
 // ---------------------------------------------------------------------------
 // POST /chat/completions — main handler with retry + fallback
@@ -468,19 +546,19 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // Validate
   if (!body.model || typeof body.model !== "string") {
-    return c.json({ error: { message: "Missing required field: model", type: "invalid_request_error" } }, 400);
+    return c.json({ error: { message: "Missing required field: model", type: "invalid_request_error", param: null, code: "invalid_request" } }, 400);
   }
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
-    return c.json({ error: { message: "Field 'messages' must be a non-empty array", type: "invalid_request_error" } }, 400);
+    return c.json({ error: { message: "Field 'messages' must be a non-empty array", type: "invalid_request_error", param: null, code: "invalid_request" } }, 400);
   }
   if (body.messages.length > 100) {
-    return c.json({ error: { message: "Too many messages (max 100)", type: "invalid_request_error" } }, 400);
+    return c.json({ error: { message: "Too many messages (max 100)", type: "invalid_request_error", param: null, code: "invalid_request" } }, 400);
   }
   if (body.temperature !== undefined && (body.temperature < 0 || body.temperature > 2)) {
-    return c.json({ error: { message: "temperature must be between 0 and 2", type: "invalid_request_error" } }, 400);
+    return c.json({ error: { message: "temperature must be between 0 and 2", type: "invalid_request_error", param: null, code: "invalid_request" } }, 400);
   }
   if (body.max_tokens !== undefined && (body.max_tokens < 1 || body.max_tokens > 200000)) {
-    return c.json({ error: { message: "max_tokens must be between 1 and 200000", type: "invalid_request_error" } }, 400);
+    return c.json({ error: { message: "max_tokens must be between 1 and 200000", type: "invalid_request_error", param: null, code: "invalid_request" } }, 400);
   }
 
   // Resolve alias
@@ -516,54 +594,158 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     } catch { /* invalid JSON, ignore */ }
   }
 
+  // ── Detect auto routing (after user rules may have rewritten it) ────────
+  const isAutoRoute = requestedModel === "auto";
+  const originalRequestedModel = requestedModel; // preserve for metadata
+
   // Strip prefix for OpenRouter models before forwarding
   // (provider matching uses full name, but OpenRouter API expects unprefixed)
-  if (requestedModel.startsWith("openrouter/")) {
+  if (!isAutoRoute && requestedModel.startsWith("openrouter/")) {
     body.model = requestedModel.slice("openrouter/".length);
   }
 
-  // ── Model-level plan check ───────────────────────────────────────────────
-  const modelEntry = await getRegistryEntry(requestedModel);
-  if (modelEntry) {
-    const allowed = modelEntry.allowedPlans ?? ["all"];
-    if (!allowed.includes("all") && !allowed.includes(userPlan)) {
+  // ── Scoring Engine setup ─────────────────────────────────────────────────
+  const routingStrategy = resolveStrategy(userId, c.req.header("x-routebox-strategy")?.toLowerCase());
+  const requestContext = buildRequestContext(body);
+  let scoredCandidates: ScoredCandidate[] = [];
+
+  if (isAutoRoute) {
+    // ── Auto route: cross-tier scoring, skip per-model checks ─────────────
+    try {
+      scoredCandidates = await scoreAndRank({
+        requestedModel: "auto",
+        strategy: routingStrategy,
+        context: requestContext,
+        userPlan,
+        crossTier: true,
+      });
+    } catch (err) {
+      log.error("scoring_engine_failed", {
+        requestId: c.get("requestId"),
+        model: "auto",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    if (scoredCandidates.length === 0) {
       return c.json({
         error: {
-          message: `Model ${requestedModel} requires a higher plan`,
-          type: "plan_restriction",
-          code: "model_plan_restriction",
+          message: "No models available for auto routing",
+          type: "server_error",
+          param: null,
+          code: "no_models_available",
         },
-      }, 403);
+      }, 503);
+    }
+
+    // Select the top-scored model
+    requestedModel = scoredCandidates[0].modelId;
+    body.model = requestedModel;
+
+    // Strip openrouter/ prefix if needed
+    if (requestedModel.startsWith("openrouter/")) {
+      body.model = requestedModel.slice("openrouter/".length);
+    }
+
+    log.info("auto_route_selected", {
+      requestId: c.get("requestId"),
+      selectedModel: requestedModel,
+      strategy: routingStrategy,
+      candidates: scoredCandidates.length,
+      topScore: scoredCandidates[0]?.totalScore.toFixed(3),
+    });
+
+    // Quota check on the selected model
+    const quotaResult = await checkDailyQuota(userId, requestedModel, userPlan);
+    if (!quotaResult.allowed) {
+      return c.json({
+        error: {
+          message: `Daily quota exceeded for ${requestedModel}. Resets at midnight UTC.`,
+          type: "invalid_request_error",
+          param: null,
+          code: "daily_quota_exceeded",
+          reset_at: quotaResult.resetAt.toISOString(),
+          remaining: 0,
+        },
+      }, 429);
+    }
+  } else {
+    // ── Normal route: per-model checks ─────────────────────────────────────
+
+    // Disabled model check
+    {
+      const [disabledRow] = await sql`
+        SELECT 1 FROM model_registry WHERE model_id = ${requestedModel} AND status = 'disabled' LIMIT 1
+      `.catch((err) => {
+        log.error("disabled_check_failed", {
+          model: requestedModel,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      });
+      if (disabledRow) {
+        return c.json({
+          error: {
+            message: "This model is currently unavailable",
+            type: "invalid_request_error",
+            param: null,
+            code: "model_disabled",
+          },
+        }, 403);
+      }
+    }
+
+    // Model-level plan check
+    const modelEntry = await getRegistryEntry(requestedModel);
+    if (modelEntry) {
+      const allowed = modelEntry.allowedPlans ?? ["all"];
+      if (!allowed.includes("all") && !allowed.includes(userPlan)) {
+        return c.json({
+          error: {
+            message: `Model ${requestedModel} requires a higher plan`,
+            type: "invalid_request_error",
+            param: null,
+            code: "model_plan_restriction",
+          },
+        }, 403);
+      }
+    }
+
+    // Daily quota check (Starter plan)
+    const quotaResult = await checkDailyQuota(userId, requestedModel, userPlan);
+    if (!quotaResult.allowed) {
+      return c.json({
+        error: {
+          message: `Daily quota exceeded for ${requestedModel}. Resets at midnight UTC.`,
+          type: "invalid_request_error",
+          param: null,
+          code: "daily_quota_exceeded",
+          reset_at: quotaResult.resetAt.toISOString(),
+          remaining: 0,
+        },
+      }, 429);
+    }
+
+    // Normal scoring
+    try {
+      scoredCandidates = await scoreAndRank({
+        requestedModel,
+        strategy: routingStrategy,
+        context: requestContext,
+        userPlan,
+      });
+    } catch (err) {
+      log.error("scoring_engine_failed", {
+        requestId: c.get("requestId"),
+        model: requestedModel,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Degrade to prefix-match routing below
     }
   }
 
-  // ── Daily quota check (Starter plan) ─────────────────────────────────────
-  const quotaResult = await checkDailyQuota(userId, requestedModel, userPlan);
-  if (!quotaResult.allowed) {
-    return c.json({
-      error: {
-        message: `Daily quota exceeded for ${requestedModel}. Resets at midnight UTC.`,
-        type: "quota_exceeded",
-        code: "daily_quota_exceeded",
-        reset_at: quotaResult.resetAt.toISOString(),
-        remaining: 0,
-      },
-    }, 429);
-  }
-
-  // ── Pre-resolve effective pricing (captured in streaming closure) ─────────
+  // ── Pre-resolve effective pricing (after model is finalized) ─────────────
   const modelPricing = await getModelUserPrice(requestedModel, userPlan);
-
-  // ── Scoring Engine → Provider Chain ─────────────────────────────────────
-  // Try scoring engine first; fall back to prefix matching if model not in registry
-  const routingStrategy = resolveStrategy(userId, c.req.header("x-routebox-strategy")?.toLowerCase());
-  const requestContext = buildRequestContext(body);
-  const scoredCandidates = await scoreAndRank({
-    requestedModel,
-    strategy: routingStrategy,
-    context: requestContext,
-    userPlan,
-  });
 
   let providerChain: CloudProviderConfig[];
 
@@ -609,7 +791,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     return c.json({
       error: {
         message: `Model ${requestedModel} is not available on your plan`,
-        type: "plan_restriction",
+        type: "invalid_request_error",
+        param: null,
         code: "model_not_available",
       },
     }, 403);
@@ -705,11 +888,20 @@ app.post("/chat/completions", creditsCheck, async (c) => {
             provider: provider.name,
           });
 
+          // Log full upstream error server-side; return sanitized message to client
+          log.warn("provider_client_error", {
+            requestId,
+            provider: provider.instanceId,
+            model: requestedModel,
+            status: rawRes.status,
+            upstream: errBody.slice(0, 500),
+          });
           return c.json({
             error: {
-              message: `Provider ${provider.name} returned ${rawRes.status}`,
-              type: "upstream_error",
-              upstream: errBody.slice(0, 500),
+              message: `Provider returned ${rawRes.status}`,
+              type: "invalid_request_error",
+              param: null,
+              code: "upstream_error",
             },
           }, rawRes.status as 400 | 401 | 403 | 404 | 429);
 
@@ -805,6 +997,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       error: {
         message: lastError?.message ?? "All providers failed",
         type: "server_error",
+        param: null,
+        code: "service_unavailable",
         upstream: lastError?.body,
       },
     }, 502);
@@ -825,6 +1019,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       requestedModel,
       startMs,
       isFallback,
+      autoRouted: isAutoRoute,
+      originalRequestedModel: isAutoRoute ? "auto" : undefined,
     };
 
     // Capture variables for the async onDone closure
@@ -898,15 +1094,16 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       ? anthropicStreamToOpenAI(res.body, requestedModel, streamMetaObj, onDone)
       : openaiStreamPassthrough(res.body, streamMetaObj, onDone);
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-RouteBox-Provider": activeProvider.name,
-        "X-RouteBox-Model": requestedModel,
-      },
-    });
+    const streamHeaders: Record<string, string> = {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-RouteBox-Provider": activeProvider.name,
+      "X-RouteBox-Model": requestedModel,
+    };
+    if (isAutoRoute) streamHeaders["X-RouteBox-Auto-Routed"] = "true";
+
+    return new Response(stream, { headers: streamHeaders });
   }
 
   // ── Non-streaming response ──
@@ -980,8 +1177,9 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   }
 
   // Inject _routebox metadata
-  (responseJson as Record<string, unknown>)._routebox = {
+  const routeboxMeta: Record<string, unknown> = {
     routed_model: requestedModel,
+    requested_model: isAutoRoute ? "auto" : requestedModel,
     provider: activeProvider.name.toLowerCase(),
     instance_id: activeProvider.instanceId,
     cost: providerCost,
@@ -990,11 +1188,16 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     latency_ms: latencyMs,
     is_fallback: isFallback,
   };
+  if (isAutoRoute) routeboxMeta.auto_routed = true;
+  (responseJson as Record<string, unknown>)._routebox = routeboxMeta;
 
-  return c.json(responseJson, 200, {
+  const responseHeaders: Record<string, string> = {
     "X-RouteBox-Provider": activeProvider.name,
     "X-RouteBox-Model": requestedModel,
-  });
+  };
+  if (isAutoRoute) responseHeaders["X-RouteBox-Auto-Routed"] = "true";
+
+  return c.json(responseJson, 200, responseHeaders);
 });
 
 export default app;

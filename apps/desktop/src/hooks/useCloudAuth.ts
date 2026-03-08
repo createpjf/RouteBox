@@ -184,6 +184,30 @@ export function useCloudAuth(onLoginSuccess?: () => void, showToast?: (msg: stri
     }
   }, []);
 
+  // ── Balance refresh ──────────────────────────────────────────────────────
+  const refreshBalance = useCallback(async () => {
+    if (!hasCloudToken) return;
+    try {
+      const res = await api.cloudGetBalance();
+      setCloudUser((prev) => prev ? { ...prev, balanceCents: res.total_cents } : prev);
+    } catch { /* silent */ }
+  }, [hasCloudToken]);
+
+  // Poll balance every 10s when authenticated
+  useEffect(() => {
+    if (!isCloud || !hasCloudToken) return;
+    const timer = setInterval(refreshBalance, 10_000);
+    return () => clearInterval(timer);
+  }, [isCloud, hasCloudToken, refreshBalance]);
+
+  // Refresh balance on window focus (e.g. returning from checkout)
+  useEffect(() => {
+    if (!isCloud || !hasCloudToken) return;
+    const onFocus = () => refreshBalance();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [isCloud, hasCloudToken, refreshBalance]);
+
   const handleCopyReferral = useCallback(async () => {
     if (!cloudReferral?.code) return;
     try {
@@ -220,5 +244,6 @@ export function useCloudAuth(onLoginSuccess?: () => void, showToast?: (msg: stri
     handleRecharge,
     handleUpgradePlan,
     handleCopyReferral,
+    refreshBalance,
   };
 }

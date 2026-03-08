@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { getUserById } from "../lib/users";
 import { getBalanceInfo, getTransactions } from "../lib/credits";
 import { getOrCreateReferralCode } from "../lib/referrals";
+import { isAdminEmail } from "../middleware/admin-auth";
 import { sha256Hex } from "../lib/crypto";
 import { sql } from "../lib/db-cloud";
 import type { CloudEnv } from "../types";
@@ -36,6 +37,7 @@ app.get("/me", async (c) => {
     totalDepositedCents: profile.totalDepositedCents,
     totalUsedCents: profile.totalUsedCents,
     createdAt: profile.createdAt,
+    isAdmin: isAdminEmail(profile.email),
   });
 });
 

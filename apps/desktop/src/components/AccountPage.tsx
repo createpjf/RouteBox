@@ -161,6 +161,11 @@ export function AccountPage({ onCloudLoginSuccess, gatewayRunningAt, onGoToSetti
 
   const auth = useCloudAuth(onCloudLoginSuccess, showToast);
 
+  // Refresh balance on mount
+  useEffect(() => {
+    auth.refreshBalance();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Forgot password state
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
@@ -355,31 +360,6 @@ export function AccountPage({ onCloudLoginSuccess, gatewayRunningAt, onGoToSetti
                     ))}
                   </div>
                 )}
-              </div>
-
-              {/* How Credits Work */}
-              <div className="mt-2.5 pt-2.5 border-t border-border-light">
-                <p className="text-[10px] font-semibold text-text-secondary mb-1.5">How Credits Work</p>
-                <p className="text-[10px] text-text-tertiary leading-relaxed">
-                  Credits are deducted based on actual AI provider cost, plus a small markup.
-                </p>
-                <div className="flex gap-2 mt-1.5">
-                  <div className="flex-1 bg-bg-elevated rounded-lg p-2 text-center">
-                    <p className="text-[9px] text-text-secondary">Starter</p>
-                    <p className="text-[12px] font-semibold text-text-primary">25%</p>
-                    <p className="text-[8px] text-text-tertiary">markup</p>
-                  </div>
-                  <div className="flex-1 bg-bg-elevated rounded-lg p-2 text-center border border-[#FFD60A]/20">
-                    <p className="text-[9px] text-text-secondary">Pro</p>
-                    <p className="text-[12px] font-semibold text-text-primary">10%</p>
-                    <p className="text-[8px] text-text-tertiary">markup</p>
-                  </div>
-                  <div className="flex-1 bg-bg-elevated rounded-lg p-2 text-center border border-[#BF5AF2]/20">
-                    <p className="text-[9px] text-text-secondary">Max</p>
-                    <p className="text-[12px] font-semibold text-text-primary">5%</p>
-                    <p className="text-[8px] text-text-tertiary">markup</p>
-                  </div>
-                </div>
               </div>
 
               {/* Referral */}

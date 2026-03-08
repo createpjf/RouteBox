@@ -47,7 +47,7 @@ describe("creditsCheck", () => {
     const res = await app.request("/v1/chat/completions", { method: "POST" });
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.error.type).toBe("auth_error");
+    expect(body.error.type).toBe("invalid_request_error");
   });
 
   test("allows request when balance >= 50 cents", async () => {

@@ -14,6 +14,11 @@ const ADMIN_EMAILS: Set<string> = new Set(
     .filter(Boolean),
 );
 
+/** Check if an email is in the admin list */
+export function isAdminEmail(email: string): boolean {
+  return ADMIN_EMAILS.has(email.toLowerCase());
+}
+
 /**
  * Admin auth middleware — requires a valid JWT whose email is in ADMIN_EMAILS.
  * Must be applied AFTER jwtAuth or used standalone (it verifies the token itself).

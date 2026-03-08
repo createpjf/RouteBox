@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Zap, Coins, DollarSign, Sparkles, Loader2, AlertCircle, Crown, BarChart3 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import clsx from "clsx";
 import { StatCard } from "@/components/StatCard";
-import { TrafficSparkline } from "@/components/TrafficSparkline";
 import { BalanceCard } from "@/components/BalanceCard";
 import { ProviderQuickList } from "@/components/ProviderQuickList";
 import { api } from "@/lib/api";
 import type { AnalyticsResponse } from "@/lib/api";
 import { PROVIDER_COLORS, getGatewayMode } from "@/lib/constants";
-import type { RealtimeStats, TrafficPoint } from "@/types/stats";
+import type { RealtimeStats } from "@/types/stats";
 
 type Period = "today" | "7d" | "30d";
 
@@ -72,17 +71,20 @@ const tooltipStyle = {
 
 interface HomePageProps {
   stats: RealtimeStats;
-  history: TrafficPoint[];
+  ready?: boolean;
 }
 
-export function HomePage({ stats, history }: HomePageProps) {
+export function HomePage({ stats, ready = true }: HomePageProps) {
   const [period, setPeriod] = useState<Period>("today");
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestSeqRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
+    if (!ready) return;
+    // Increment sequence to ignore stale responses from previous period selections
+    const seq = ++requestSeqRef.current;
     async function fetchData() {
       setLoading(true);
       setError(null);
@@ -90,16 +92,15 @@ export function HomePage({ stats, history }: HomePageProps) {
         const res = getGatewayMode() === "cloud"
           ? await api.cloudGetAnalytics(period)
           : await api.getAnalytics(period);
-        if (!cancelled) setData(res);
+        if (seq === requestSeqRef.current) setData(res);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load");
+        if (seq === requestSeqRef.current) setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (seq === requestSeqRef.current) setLoading(false);
       }
     }
     fetchData();
-    return () => { cancelled = true; };
-  }, [period]);
+  }, [period, ready]);
 
   const display = data ?? EMPTY_DATA;
 
@@ -137,9 +138,6 @@ export function HomePage({ stats, history }: HomePageProps) {
           subtitle="by routing"
         />
       </div>
-
-      {/* Traffic Sparkline */}
-      <TrafficSparkline data={history} />
 
       {/* Balance */}
       <BalanceCard
@@ -256,7 +254,7 @@ export function HomePage({ stats, history }: HomePageProps) {
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-[12px] font-medium text-text-primary truncate max-w-[180px]">
-                        {m.model}
+                        {m.model.replace(/^openrouter\//, "")}
                       </span>
                       <span className="text-[10px] text-text-secondary">
                         {m.requests} req · {formatCost(m.cost)}

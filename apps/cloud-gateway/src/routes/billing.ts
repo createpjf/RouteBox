@@ -203,12 +203,17 @@ app.post("/webhook", async (c) => {
           });
         }
       } else {
-        // Missing required metadata — payment received but credits cannot be issued
+        // Missing required metadata — payment received but credits cannot be issued.
+        // Return 422 so Polar will retry (in case metadata was lost transiently).
         log.error("order_paid_missing_metadata", {
           orderId: order.id,
           hasUserId: !!userId,
           hasCreditsCents: !!creditsCents,
         });
+        return c.json(
+          { error: "Missing userId or creditsCents in order metadata" },
+          422,
+        );
       }
     }
 

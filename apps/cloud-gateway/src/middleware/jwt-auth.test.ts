@@ -54,7 +54,7 @@ describe("jwtAuth", () => {
     const res = await app.request("/protected");
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.error.type).toBe("auth_error");
+    expect(body.error.type).toBe("invalid_request_error");
   });
 
   test("returns 401 for non-Bearer format", async () => {
@@ -143,7 +143,7 @@ describe("jwtAuth — API key (rb_)", () => {
     });
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.error.type).toBe("auth_error");
+    expect(body.error.type).toBe("invalid_request_error");
   });
 
   test("returns 503 when DB is unavailable during rb_ key lookup", async () => {

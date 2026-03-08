@@ -210,8 +210,9 @@ function StepReady({
     : tokenTimeout
       ? "Gateway not ready — check Settings"
       : "Loading…";
+  // Always use placeholder in code examples to prevent token leakage via screenshots
   const curlCommand = `curl ${gatewayUrl}/v1/chat/completions \\
-  -H "Authorization: Bearer ${authToken || "YOUR_TOKEN"}" \\
+  -H "Authorization: Bearer YOUR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'`;
 
@@ -276,7 +277,7 @@ function StepReady({
 
 client = OpenAI(
   base_url="${gatewayUrl}/v1",
-  api_key="${tokenDisplay}"
+  api_key="YOUR_TOKEN"
 )`}
         </pre>
       </div>

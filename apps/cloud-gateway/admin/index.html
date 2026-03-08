@@ -21,12 +21,14 @@
     /* Layout */
     .app { display: flex; min-height: 100vh; }
     .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 0; position: fixed; top: 0; left: 0; bottom: 0; overflow-y: auto; }
-    .sidebar h1 { font-size: 15px; font-weight: 700; padding: 0 16px 16px; color: var(--accent); letter-spacing: -0.3px; }
-    .sidebar h1 span { color: var(--muted); font-weight: 400; font-size: 12px; display: block; }
-    .nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 16px; color: var(--muted); cursor: pointer; font-size: 13px; transition: all 0.15s; }
+    .sidebar h1 { font-size: 15px; font-weight: 700; padding: 0 16px 20px; color: var(--accent); letter-spacing: -0.3px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+    .sidebar h1 span { color: var(--muted); font-weight: 400; font-size: 12px; display: block; margin-top: 2px; }
+    .nav-group { padding: 4px 0; }
+    .nav-group + .nav-group { margin-top: 4px; border-top: 1px solid var(--border); padding-top: 8px; }
+    .nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 16px 7px 20px; color: var(--muted); cursor: pointer; font-size: 13px; transition: all 0.15s; border-radius: 0 6px 6px 0; margin-right: 8px; }
     .nav-item:hover { color: var(--text); background: var(--surface2); }
-    .nav-item.active { color: var(--accent); background: var(--accent-soft); }
-    .nav-section { font-size: 11px; text-transform: uppercase; color: var(--muted); padding: 16px 16px 6px; letter-spacing: 0.5px; }
+    .nav-item.active { color: var(--accent); background: var(--accent-soft); border-left: 2px solid var(--accent); padding-left: 18px; }
+    .nav-section { font-size: 10px; text-transform: uppercase; color: var(--muted); padding: 12px 16px 6px; letter-spacing: 0.8px; font-weight: 600; opacity: 0.7; }
     .main { margin-left: 220px; flex: 1; padding: 24px; }
 
     /* Auth overlay */
@@ -125,20 +127,26 @@
 <div id="app" class="app hidden">
   <aside class="sidebar">
     <h1>RouteBox <span>Admin Console</span></h1>
-    <div class="nav-section">Overview</div>
-    <div class="nav-item active" data-page="dashboard">Dashboard</div>
-    <div class="nav-section">Management</div>
-    <div class="nav-item" data-page="users">Users</div>
-    <div class="nav-item" data-page="plans-config">Subscription Plans</div>
-    <div class="nav-item" data-page="packages">Credit Packages</div>
-    <div class="nav-item" data-page="models">Model Registry</div>
-    <div class="nav-item" data-page="provider-keys">Provider Keys</div>
-    <div class="nav-item" data-page="routing">Routing</div>
-    <div class="nav-item" data-page="provider-health">Provider Health</div>
-    <div class="nav-section">Analytics</div>
-    <div class="nav-item" data-page="transactions">Transactions</div>
-    <div class="nav-item" data-page="referrals">Referrals</div>
-    <div class="nav-item" data-page="audit-log">Audit Log</div>
+    <div class="nav-group">
+      <div class="nav-section">Overview</div>
+      <div class="nav-item active" data-page="dashboard">Dashboard</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-section">Management</div>
+      <div class="nav-item" data-page="users">Users</div>
+      <div class="nav-item" data-page="plans-config">Subscription Plans</div>
+      <div class="nav-item" data-page="packages">Credit Packages</div>
+      <div class="nav-item" data-page="models">Model Registry</div>
+      <div class="nav-item" data-page="provider-keys">Provider Keys</div>
+      <div class="nav-item" data-page="routing">Routing</div>
+      <div class="nav-item" data-page="provider-health">Provider Health</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-section">Analytics</div>
+      <div class="nav-item" data-page="transactions">Transactions</div>
+      <div class="nav-item" data-page="referrals">Referrals</div>
+      <div class="nav-item" data-page="audit-log">Audit Log</div>
+    </div>
   </aside>
   <main class="main">
     <!-- Dashboard -->
