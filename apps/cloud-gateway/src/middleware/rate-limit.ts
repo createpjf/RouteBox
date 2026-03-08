@@ -152,10 +152,11 @@ async function checkLimit(
 // ---------------------------------------------------------------------------
 
 const LIMITS = {
-  auth:    { windowMs: 60_000, max: 5    } as RateLimitConfig, // 5 req/min per IP
-  api:     { windowMs: 60_000, max: 1000 } as RateLimitConfig, // default (overridden per plan)
-  account: { windowMs: 60_000, max: 500  } as RateLimitConfig, // 500 req/min per userId
-  billing: { windowMs: 60_000, max: 10   } as RateLimitConfig, // 10 req/min per IP
+  auth:           { windowMs: 60_000, max: 5    } as RateLimitConfig, // 5 req/min per IP
+  api:            { windowMs: 60_000, max: 1000 } as RateLimitConfig, // default (overridden per plan)
+  account:        { windowMs: 60_000, max: 500  } as RateLimitConfig, // 500 req/min per userId
+  billing:        { windowMs: 60_000, max: 10   } as RateLimitConfig, // 10 req/min per IP
+  forgotPassword: { windowMs: 600_000, max: 5   } as RateLimitConfig, // 5 req/10min per IP
 };
 
 /** Per-plan API rate limits */
@@ -248,6 +249,21 @@ export async function rateLimitAccount(c: Context<CloudEnv>, next: Next) {
   if (!result.allowed) {
     log.warn("rate_limit_hit", { limiter: "account", key: userId, retryAfterMs: result.retryAfterMs });
     incCounter("rate_limit_hits_total", { limiter: "account" });
+    return rejectWithLimit(c, result.retryAfterMs);
+  }
+
+  c.header("X-RateLimit-Remaining", String(result.remaining));
+  await next();
+}
+
+/** Rate limit forgot-password by client IP (stricter than general auth) */
+export async function rateLimitForgotPassword(c: Context, next: Next) {
+  const key = getClientIP(c);
+  const result = await checkLimit("forgotPassword", key, LIMITS.forgotPassword, Date.now());
+
+  if (!result.allowed) {
+    log.warn("rate_limit_hit", { limiter: "forgotPassword", key, retryAfterMs: result.retryAfterMs });
+    incCounter("rate_limit_hits_total", { limiter: "forgotPassword" });
     return rejectWithLimit(c, result.retryAfterMs);
   }
 

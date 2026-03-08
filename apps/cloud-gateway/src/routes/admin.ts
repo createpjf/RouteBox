@@ -26,12 +26,31 @@ import {
 } from "../lib/admin-queries";
 import { sql } from "../lib/db-cloud";
 import { processMonthlyReferralEarnings } from "../lib/referrals";
+import { log } from "../lib/logger";
 import type { CloudEnv } from "../types";
 
 const app = new Hono<CloudEnv>();
 
 // All admin routes require admin auth
 app.use("/*", adminAuth);
+
+/** Insert an admin audit log entry (fire-and-forget) */
+function auditLog(
+  adminEmail: string,
+  action: string,
+  targetUserId?: string,
+  details?: Record<string, unknown>,
+) {
+  sql`
+    INSERT INTO admin_audit_log (admin_email, action, target_user_id, details)
+    VALUES (${adminEmail}, ${action}, ${targetUserId ?? null}, ${JSON.stringify(details ?? {})})
+  `.catch((err) => {
+    log.warn("audit_log_insert_failed", {
+      action,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
 
 // ── GET /stats — overview dashboard numbers ────────────────────────────────
 
@@ -43,8 +62,8 @@ app.get("/stats", async (c) => {
 // ── GET /users — user list with balance + usage count ──────────────────────
 
 app.get("/users", async (c) => {
-  const limit = Math.min(Number(c.req.query("limit") ?? 100), 500);
-  const offset = Number(c.req.query("offset") ?? 0);
+  const limit = Math.min(Math.max(1, parseInt(c.req.query("limit") ?? "100", 10) || 100), 500);
+  const offset = Math.max(0, parseInt(c.req.query("offset") ?? "0", 10) || 0);
   const search = c.req.query("search") ?? "";
   const { users, total } = await getAdminUsers(limit, offset, search);
   return c.json({ users, total, limit, offset });
@@ -53,8 +72,8 @@ app.get("/users", async (c) => {
 // ── GET /transactions — recent transactions (all users) ────────────────────
 
 app.get("/transactions", async (c) => {
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const offset = Number(c.req.query("offset") ?? 0);
+  const limit = Math.min(Math.max(1, parseInt(c.req.query("limit") ?? "50", 10) || 50), 200);
+  const offset = Math.max(0, parseInt(c.req.query("offset") ?? "0", 10) || 0);
   const { transactions, total } = await getAdminTransactions(limit, offset);
   return c.json({ transactions, total, limit, offset });
 });
@@ -62,7 +81,7 @@ app.get("/transactions", async (c) => {
 // ── GET /usage/models — usage breakdown by model ───────────────────────────
 
 app.get("/usage/models", async (c) => {
-  const days = Math.min(Number(c.req.query("days") ?? 7), 90);
+  const days = Math.min(Math.max(1, parseInt(c.req.query("days") ?? "7", 10) || 7), 90);
   const models = await getAdminUsageByModel(days);
   return c.json({ models, days });
 });
@@ -70,7 +89,7 @@ app.get("/usage/models", async (c) => {
 // ── GET /usage/providers — usage breakdown by provider ─────────────────────
 
 app.get("/usage/providers", async (c) => {
-  const days = Math.min(Number(c.req.query("days") ?? 7), 90);
+  const days = Math.min(Math.max(1, parseInt(c.req.query("days") ?? "7", 10) || 7), 90);
   const providers = await getAdminUsageByProvider(days);
   return c.json({ providers, days });
 });
@@ -78,7 +97,7 @@ app.get("/usage/providers", async (c) => {
 // ── GET /usage/trend — daily usage trend ───────────────────────────────────
 
 app.get("/usage/trend", async (c) => {
-  const days = Math.min(Number(c.req.query("days") ?? 30), 90);
+  const days = Math.min(Math.max(1, parseInt(c.req.query("days") ?? "30", 10) || 30), 90);
   const trend = await getAdminDailyTrend(days);
   return c.json({ trend, days });
 });
@@ -86,7 +105,7 @@ app.get("/usage/trend", async (c) => {
 // ── GET /registrations/trend — daily registration trend ────────────────────
 
 app.get("/registrations/trend", async (c) => {
-  const days = Math.min(Number(c.req.query("days") ?? 30), 90);
+  const days = Math.min(Math.max(1, parseInt(c.req.query("days") ?? "30", 10) || 30), 90);
   const trend = await getAdminRegistrationTrend(days);
   return c.json({ trend, days });
 });
@@ -94,7 +113,7 @@ app.get("/registrations/trend", async (c) => {
 // ── GET /revenue/trend — daily revenue trend ───────────────────────────────
 
 app.get("/revenue/trend", async (c) => {
-  const days = Math.min(Number(c.req.query("days") ?? 30), 90);
+  const days = Math.min(Math.max(1, parseInt(c.req.query("days") ?? "30", 10) || 30), 90);
   const trend = await getAdminRevenueTrend(days);
   return c.json({ trend, days });
 });
@@ -109,7 +128,7 @@ app.get("/referrals/stats", async (c) => {
 // ── GET /referrals/top — top referrers leaderboard ──────────────────────
 
 app.get("/referrals/top", async (c) => {
-  const limit = Math.min(Number(c.req.query("limit") ?? 20), 100);
+  const limit = Math.min(Math.max(1, parseInt(c.req.query("limit") ?? "20", 10) || 20), 100);
   const referrers = await getAdminTopReferrers(limit);
   return c.json({ referrers });
 });
@@ -117,7 +136,7 @@ app.get("/referrals/top", async (c) => {
 // ── GET /referrals/claims — recent referral claims ──────────────────────
 
 app.get("/referrals/claims", async (c) => {
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const limit = Math.min(Math.max(1, parseInt(c.req.query("limit") ?? "50", 10) || 50), 200);
   const claims = await getAdminRecentReferralClaims(limit);
   return c.json({ claims });
 });
@@ -136,6 +155,7 @@ app.patch("/users/:id", async (c) => {
   }
   try {
     await updateUserPlan(id, body.plan);
+    auditLog(c.get("email") as string, "update_user_plan", id, { plan: body.plan });
     return c.json({ success: true });
   } catch {
     return c.json({ error: { message: "Failed to update user plan", type: "server_error" } }, 500);
@@ -158,6 +178,11 @@ app.post("/users/:id/adjust", async (c) => {
   }
   try {
     const { newBalance } = await adjustUserBalance(id, body.amountCents, body.reason);
+    auditLog(c.get("email") as string, "adjust_user_balance", id, {
+      amountCents: body.amountCents,
+      reason: body.reason,
+      newBalance,
+    });
     return c.json({ success: true, newBalance });
   } catch {
     return c.json({ error: { message: "Failed to adjust balance", type: "server_error" } }, 500);
@@ -185,6 +210,7 @@ app.post("/provider-keys", async (c) => {
   }
   const key = await createProviderKey(body.providerName, body.apiKey, body.baseUrl, body.label);
   await reloadProviders();
+  auditLog(c.get("email") as string, "create_provider_key", undefined, { providerName: body.providerName, label: body.label });
   return c.json(key, 201);
 });
 
@@ -200,6 +226,7 @@ app.patch("/provider-keys/:id", async (c) => {
   const key = await updateProviderKey(id, body);
   if (!key) return c.json({ error: { message: "Key not found", type: "not_found" } }, 404);
   await reloadProviders();
+  auditLog(c.get("email") as string, "update_provider_key", undefined, { keyId: id });
   return c.json(key);
 });
 
@@ -208,6 +235,7 @@ app.delete("/provider-keys/:id", async (c) => {
   const id = c.req.param("id");
   await deleteProviderKey(id);
   await reloadProviders();
+  auditLog(c.get("email") as string, "delete_provider_key", undefined, { keyId: id });
   return c.json({ success: true });
 });
 
@@ -229,6 +257,11 @@ app.put("/provider-access/:providerName", async (c) => {
   }
   await setProviderAccess(providerName, body.isEnabled, body.allowedPlans);
   await loadProviderAccess();
+  auditLog(c.get("email") as string, "update_provider_access", undefined, {
+    providerName,
+    isEnabled: body.isEnabled,
+    allowedPlans: body.allowedPlans,
+  });
   return c.json({ success: true });
 });
 
@@ -282,6 +315,7 @@ app.post("/models/registry", async (c) => {
   try {
     const model = await createModel(body as any);
     reloadRegistry();
+    auditLog(c.get("email") as string, "create_model", undefined, { modelId: body.modelId });
     return c.json(model, 201);
   } catch (err: any) {
     if (err.message?.includes("duplicate key") || err.message?.includes("unique")) {
@@ -307,14 +341,17 @@ app.patch("/models/registry/:id", async (c) => {
   const model = await updateModel(id, body as any);
   if (!model) return c.json({ error: { message: "Model not found", type: "not_found" } }, 404);
   reloadRegistry();
+  auditLog(c.get("email") as string, "update_model", undefined, { modelId: id });
   return c.json(model);
 });
 
 app.delete("/models/registry/:id", async (c) => {
   const { deleteModel, reloadRegistry } = await import("../lib/model-registry");
-  const deleted = await deleteModel(c.req.param("id"));
+  const id = c.req.param("id");
+  const deleted = await deleteModel(id);
   if (!deleted) return c.json({ error: { message: "Model not found", type: "not_found" } }, 404);
   reloadRegistry();
+  auditLog(c.get("email") as string, "delete_model", undefined, { modelId: id });
   return c.json({ success: true });
 });
 
@@ -334,23 +371,23 @@ app.get("/users/:id", async (c) => {
 
 app.get("/users/:id/transactions", async (c) => {
   const id = c.req.param("id");
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const offset = Number(c.req.query("offset") ?? 0);
+  const limit = Math.min(Math.max(1, parseInt(c.req.query("limit") ?? "50", 10) || 50), 200);
+  const offset = Math.max(0, parseInt(c.req.query("offset") ?? "0", 10) || 0);
   const result = await getUserTransactions(id, limit, offset);
   return c.json({ ...result, limit, offset });
 });
 
 app.get("/users/:id/requests", async (c) => {
   const id = c.req.param("id");
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const offset = Number(c.req.query("offset") ?? 0);
+  const limit = Math.min(Math.max(1, parseInt(c.req.query("limit") ?? "50", 10) || 50), 200);
+  const offset = Math.max(0, parseInt(c.req.query("offset") ?? "0", 10) || 0);
   const result = await getUserRequests(id, limit, offset);
   return c.json({ ...result, limit, offset });
 });
 
 app.get("/users/:id/models", async (c) => {
   const id = c.req.param("id");
-  const days = Math.min(Number(c.req.query("days") ?? 30), 90);
+  const days = Math.min(Math.max(1, parseInt(c.req.query("days") ?? "30", 10) || 30), 90);
   const models = await getUserModelBreakdown(id, days);
   return c.json({ models, days });
 });
@@ -405,6 +442,7 @@ app.post("/packages", async (c) => {
       RETURNING *
     `;
     reloadCreditPackages();
+    auditLog(c.get("email") as string, "create_package", undefined, { packageId: body.id, label: body.label });
     return c.json(row, 201);
   } catch (err: any) {
     if (err.message?.includes("duplicate key") || err.message?.includes("unique")) {
@@ -445,6 +483,7 @@ app.patch("/packages/:id", async (c) => {
   `;
   if (!row) return c.json({ error: { message: "Package not found", type: "not_found" } }, 404);
   reloadCreditPackages();
+  auditLog(c.get("email") as string, "update_package", undefined, { packageId: id });
   return c.json(row);
 });
 
@@ -453,6 +492,7 @@ app.delete("/packages/:id", async (c) => {
   const id = c.req.param("id");
   await sql`UPDATE credit_packages SET is_active = false WHERE id = ${id}`;
   reloadCreditPackages();
+  auditLog(c.get("email") as string, "delete_package", undefined, { packageId: id });
   return c.json({ success: true });
 });
 
@@ -504,6 +544,7 @@ app.post("/announcements", async (c) => {
     )
     RETURNING *
   `;
+  auditLog(c.get("email") as string, "create_announcement", undefined, { title: body.title });
   return c.json(row, 201);
 });
 
@@ -534,12 +575,15 @@ app.patch("/announcements/:id", async (c) => {
     UPDATE announcements SET ${sql(setObj)} WHERE id = ${id} RETURNING *
   `;
   if (!row) return c.json({ error: { message: "Announcement not found", type: "not_found" } }, 404);
+  auditLog(c.get("email") as string, "update_announcement", undefined, { announcementId: id });
   return c.json(row);
 });
 
 app.delete("/announcements/:id", async (c) => {
-  const result = await sql`DELETE FROM announcements WHERE id = ${c.req.param("id")}`;
+  const id = c.req.param("id");
+  const result = await sql`DELETE FROM announcements WHERE id = ${id}`;
   if (result.count === 0) return c.json({ error: { message: "Announcement not found", type: "not_found" } }, 404);
+  auditLog(c.get("email") as string, "delete_announcement", undefined, { announcementId: id });
   return c.json({ success: true });
 });
 
@@ -570,9 +614,10 @@ app.delete("/api-keys/:id", async (c) => {
   const [key] = await sql`
     UPDATE api_keys SET is_active = false
     WHERE id = ${id}
-    RETURNING id
+    RETURNING id, user_id
   `;
   if (!key) return c.json({ error: { message: "Key not found", type: "not_found" } }, 404);
+  auditLog(c.get("email") as string, "revoke_api_key", key.user_id as string, { apiKeyId: id });
   return c.json({ success: true });
 });
 
@@ -630,6 +675,7 @@ app.post("/referrals/process", async (c) => {
   const month = (rawBody as { month?: string }).month ?? new Date().toISOString().slice(0, 7);
   try {
     const result = await processMonthlyReferralEarnings(month);
+    auditLog(c.get("email") as string, "process_referral_earnings", undefined, { month });
     return c.json({ success: true, month, ...result });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -681,6 +727,7 @@ app.patch("/models/registry/:id/pricing", async (c) => {
   `;
   if (!row) return c.json({ error: { message: "Model not found", type: "not_found" } }, 404);
   reloadRegistry();
+  auditLog(c.get("email") as string, "update_model_pricing", undefined, { modelId: id });
   return c.json({ success: true, model: row });
 });
 
@@ -726,7 +773,127 @@ app.patch("/plans/config/:planId", async (c) => {
   }
   const ok = updatePlanPolarIds(planId, body.polarProductId, body.polarProductIdPromo);
   if (!ok) return c.json({ error: { message: "Plan not found", type: "not_found" } }, 404);
+  auditLog(c.get("email") as string, "update_plan_config", undefined, { planId });
   return c.json({ success: true });
+});
+
+// ── Routing Config ──────────────────────────────────────────────────
+
+app.get("/routing/config", async (c) => {
+  const { getGlobalStrategy, getUserOverrides } = await import("../lib/routing-config");
+  const [defaultStrategy, userOverrides] = await Promise.all([
+    getGlobalStrategy(),
+    getUserOverrides(),
+  ]);
+  return c.json({ defaultStrategy, userOverrides });
+});
+
+app.patch("/routing/config", async (c) => {
+  const { setGlobalStrategy, VALID_STRATEGIES } = await import("../lib/routing-config");
+  const body = await c.req.json<{ defaultStrategy: string }>();
+  if (!body.defaultStrategy || !VALID_STRATEGIES.includes(body.defaultStrategy as any)) {
+    return c.json({
+      error: { message: `strategy must be one of: ${VALID_STRATEGIES.join(", ")}`, type: "validation_error" },
+    }, 400);
+  }
+  await setGlobalStrategy(body.defaultStrategy);
+  auditLog(c.get("email") as string, "update_routing_strategy", undefined, { strategy: body.defaultStrategy });
+  return c.json({ success: true });
+});
+
+app.post("/routing/user-override", async (c) => {
+  const { setUserOverride, VALID_STRATEGIES } = await import("../lib/routing-config");
+  const body = await c.req.json<{ userId: string; strategy: string }>();
+  if (!body.userId || !body.strategy) {
+    return c.json({ error: { message: "userId and strategy are required", type: "validation_error" } }, 400);
+  }
+  if (!VALID_STRATEGIES.includes(body.strategy as any)) {
+    return c.json({
+      error: { message: `strategy must be one of: ${VALID_STRATEGIES.join(", ")}`, type: "validation_error" },
+    }, 400);
+  }
+  // Verify user exists
+  const [user] = await sql`SELECT id FROM users WHERE id = ${body.userId}`;
+  if (!user) {
+    // Try by email
+    const [byEmail] = await sql`SELECT id FROM users WHERE email = ${body.userId}`;
+    if (!byEmail) {
+      return c.json({ error: { message: "User not found", type: "not_found" } }, 404);
+    }
+    await setUserOverride(byEmail.id as string, body.strategy);
+    auditLog(c.get("email") as string, "set_user_routing_override", byEmail.id as string, { strategy: body.strategy });
+    return c.json({ success: true, userId: byEmail.id });
+  }
+  await setUserOverride(body.userId, body.strategy);
+  auditLog(c.get("email") as string, "set_user_routing_override", body.userId, { strategy: body.strategy });
+  return c.json({ success: true });
+});
+
+app.delete("/routing/user-override/:userId", async (c) => {
+  const { removeUserOverride } = await import("../lib/routing-config");
+  const userId = c.req.param("userId");
+  await removeUserOverride(userId);
+  auditLog(c.get("email") as string, "remove_user_routing_override", userId);
+  return c.json({ success: true });
+});
+
+// ── GET /audit-log — paginated admin audit log with filters ─────────────
+
+app.get("/audit-log", async (c) => {
+  const limit = Math.min(Math.max(1, parseInt(c.req.query("limit") ?? "50", 10) || 50), 200);
+  const offset = Math.max(0, parseInt(c.req.query("offset") ?? "0", 10) || 0);
+  const action = c.req.query("action") ?? "";
+  const adminEmail = c.req.query("admin_email") ?? "";
+  const dateFrom = c.req.query("date_from") ?? "";
+  const dateTo = c.req.query("date_to") ?? "";
+
+  const conditions: string[] = [];
+  const params: (string | number | boolean | null)[] = [];
+
+  if (action) {
+    params.push(action);
+    conditions.push(`action = $${params.length}`);
+  }
+  if (adminEmail) {
+    params.push(`%${adminEmail}%`);
+    conditions.push(`admin_email ILIKE $${params.length}`);
+  }
+  if (dateFrom) {
+    params.push(dateFrom);
+    conditions.push(`created_at >= $${params.length}::timestamptz`);
+  }
+  if (dateTo) {
+    params.push(dateTo + "T23:59:59Z");
+    conditions.push(`created_at <= $${params.length}::timestamptz`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const [countRow] = await sql.unsafe(
+    `SELECT COUNT(*)::int AS total FROM admin_audit_log ${where}`,
+    params,
+  );
+  const rows = await sql.unsafe(
+    `SELECT id, admin_email, action, target_user_id, details, created_at
+     FROM admin_audit_log ${where}
+     ORDER BY created_at DESC
+     LIMIT ${limit} OFFSET ${offset}`,
+    params,
+  );
+
+  return c.json({
+    entries: rows.map((r) => ({
+      id: r.id,
+      adminEmail: r.admin_email,
+      action: r.action,
+      targetUserId: r.target_user_id,
+      details: typeof r.details === "string" ? JSON.parse(r.details) : r.details,
+      createdAt: r.created_at,
+    })),
+    total: countRow.total,
+    limit,
+    offset,
+  });
 });
 
 export default app;

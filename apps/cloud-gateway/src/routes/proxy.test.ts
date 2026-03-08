@@ -19,20 +19,8 @@ const {
 // ── resolveAlias ────────────────────────────────────────────────────────────
 
 describe("resolveAlias", () => {
-  test("resolves known alias", () => {
-    expect(resolveAlias("claude-sonnet")).toBe("claude-sonnet-4-20250514");
-  });
-
-  test("resolves gpt alias", () => {
-    expect(resolveAlias("gpt-4o-latest")).toBe("gpt-4o");
-  });
-
-  test("resolves gemini alias", () => {
-    expect(resolveAlias("gemini-pro")).toBe("gemini-2.5-pro");
-  });
-
   test("returns original model if no alias", () => {
-    expect(resolveAlias("gpt-4o")).toBe("gpt-4o");
+    expect(resolveAlias("minimax-m2.5")).toBe("minimax-m2.5");
   });
 
   test("returns unknown model unchanged", () => {
@@ -43,16 +31,16 @@ describe("resolveAlias", () => {
 // ── pricingFor ──────────────────────────────────────────────────────────────
 
 describe("pricingFor", () => {
-  test("returns exact match pricing", () => {
-    const p = pricingFor("gpt-4o");
-    expect(p.input).toBe(2.5);
-    expect(p.output).toBe(10);
+  test("returns exact match pricing for minimax", () => {
+    const p = pricingFor("minimax-m2.5");
+    expect(p.input).toBe(0.30);
+    expect(p.output).toBe(1.20);
   });
 
-  test("returns pricing for claude model", () => {
-    const p = pricingFor("claude-sonnet-4-20250514");
-    expect(p.input).toBe(3);
-    expect(p.output).toBe(15);
+  test("returns pricing for openrouter model", () => {
+    const p = pricingFor("openrouter/anthropic/claude-sonnet-4.6");
+    expect(p.input).toBe(3.00);
+    expect(p.output).toBe(15.00);
   });
 
   test("returns default pricing for unknown model", () => {
@@ -61,9 +49,10 @@ describe("pricingFor", () => {
     expect(p.output).toBe(3);
   });
 
-  test("uses prefix match for versioned models", () => {
-    const p = pricingFor("deepseek-chat");
-    expect(p.input).toBe(0.27);
+  test("returns pricing for kimi model", () => {
+    const p = pricingFor("kimi-k2.5");
+    expect(p.input).toBe(0.60);
+    expect(p.output).toBe(3.00);
   });
 });
 
@@ -71,13 +60,14 @@ describe("pricingFor", () => {
 
 describe("calculateCost", () => {
   test("calculates cost for known model", () => {
-    // gpt-4o: input=$2.50/M, output=$10/M
-    const cost = calculateCost("gpt-4o", 1000, 500);
-    expect(cost).toBeCloseTo(0.0075);
+    // kimi-k2.5: input=$0.60/M, output=$3.00/M
+    const cost = calculateCost("kimi-k2.5", 1000, 500);
+    // (1000 * 0.60 + 500 * 3.00) / 1_000_000 = 0.0021
+    expect(cost).toBeCloseTo(0.0021);
   });
 
   test("returns 0 for zero tokens", () => {
-    expect(calculateCost("gpt-4o", 0, 0)).toBe(0);
+    expect(calculateCost("minimax-m2.1", 0, 0)).toBe(0);
   });
 
   test("uses default pricing for unknown model", () => {

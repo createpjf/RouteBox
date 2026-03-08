@@ -12,14 +12,12 @@ const REVENUE_SHARE_PCT = 10;         // 10% of referred user's API spend
 const REVENUE_SHARE_MONTHS = 3;       // 3 months duration
 const MAX_REFERRER_REWARDS = 50;      // Max 50 active referrals earning
 
-/** Generate a random 6-character referral code */
+/** Generate a random 6-character referral code using crypto RNG */
 function generateCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/O/0/1
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +185,7 @@ export async function processMonthlyReferralEarnings(periodMonth: string): Promi
     FROM referral_claims rc
     JOIN referrals r ON r.id = rc.referral_id
     WHERE rc.referred_rewarded = true
-      AND rc.created_at >= ${cutoffDate}
+      AND rc.created_at > ${cutoffDate}
   `;
 
   let processed = 0;

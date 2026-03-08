@@ -45,28 +45,61 @@ export async function checkDbHealth(): Promise<boolean> {
   }
 }
 
+async function waitForDb(maxRetries = 5) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await sql`SELECT 1`;
+      return;
+    } catch (err) {
+      const delay = Math.pow(2, i) * 1000;
+      log.warn("db_connect_retry", {
+        attempt: i + 1,
+        maxRetries,
+        delayMs: delay,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      if (i === maxRetries - 1) {
+        throw new Error(`Database unreachable after ${maxRetries} attempts`);
+      }
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
 export async function initDatabase() {
+  await waitForDb();
+
   try {
     const migrationsDir = join(import.meta.dir, "../../migrations");
 
     if (!existsSync(migrationsDir)) {
-      // Migrations directory not present (e.g. inside Docker container).
-      // Migrations are applied externally via deploy.sh — just verify connectivity.
-      await sql`SELECT 1`;
       log.info("database_ready", { migrations: "skipped (dir not found)" });
       return;
     }
 
-    const files = readdirSync(migrationsDir)
-      .filter((f) => f.endsWith(".sql"))
-      .sort(); // 001_init.sql, 002_phase2.sql, ...
-
-    for (const file of files) {
-      const migrationSql = readFileSync(join(migrationsDir, file), "utf-8");
-      await sql.unsafe(migrationSql);
-      log.info("migration_applied", { file });
+    // Acquire advisory lock to prevent concurrent migration runs
+    const [lock] = await sql`SELECT pg_try_advisory_lock(1) AS acquired`;
+    if (!lock?.acquired) {
+      log.info("migration_skipped", { reason: "another instance is running migrations" });
+      await sql`SELECT pg_advisory_lock(1)`;
+      await sql`SELECT pg_advisory_unlock(1)`;
+      return;
     }
-    log.info("database_ready");
+
+    try {
+      const files = readdirSync(migrationsDir)
+        .filter((f) => f.endsWith(".sql"))
+        .sort();
+
+      for (const file of files) {
+        const migrationSql = readFileSync(join(migrationsDir, file), "utf-8");
+        await sql.unsafe(migrationSql);
+        log.info("migration_applied", { file });
+      }
+      log.info("database_ready");
+    } finally {
+      await sql`SELECT pg_advisory_unlock(1)`;
+    }
   } catch (err) {
     log.error("migration_failed", { error: err instanceof Error ? err.message : String(err) });
     throw err;

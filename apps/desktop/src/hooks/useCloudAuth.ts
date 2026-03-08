@@ -4,7 +4,7 @@ import {
   setCloudAuthToken,
   getCloudAuthToken,
 } from "@/lib/constants";
-import { api, type CloudCreditPackage } from "@/lib/api";
+import { api, ApiError, type CloudCreditPackage } from "@/lib/api";
 
 async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
@@ -54,21 +54,30 @@ export function useCloudAuth(onLoginSuccess?: () => void, showToast?: (msg: stri
   // Auto-load user + packages when in cloud mode with token
   useEffect(() => {
     if (!isCloud) return;
+    let cancelled = false;
+
     api.cloudGetPackages()
-      .then((res) => setCloudPackages(res.packages))
-      .catch(() => setPackagesError(true));
+      .then((res) => { if (!cancelled) setCloudPackages(res.packages); })
+      .catch((err) => { console.warn("Failed to load packages:", err); if (!cancelled) setPackagesError(true); });
 
     if (hasCloudToken || !!getCloudAuthToken()) {
       api.cloudGetMe()
-        .then((res) => setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan }))
-        .catch(() => {
-          setHasCloudToken(false);
-          setCloudAuthToken("");
+        .then((res) => { if (!cancelled) setCloudUser({ email: res.user.email, balanceCents: res.user.balanceCents, plan: res.user.plan }); })
+        .catch(async (err) => {
+          if (cancelled) return;
+          // Only logout on 401 (expired/invalid token), not on network errors
+          if (err instanceof ApiError && err.status === 401) {
+            setHasCloudToken(false);
+            setCloudAuthToken("");
+            try { await tauriInvoke("delete_cloud_token"); } catch (e) { console.warn("Failed to delete cloud token:", e); }
+          }
         });
       api.cloudGetReferral()
-        .then((res) => setCloudReferral(res))
-        .catch(() => setReferralError(true));
+        .then((res) => { if (!cancelled) setCloudReferral(res); })
+        .catch((err) => { console.warn("Failed to load referral:", err); if (!cancelled) setReferralError(true); });
     }
+
+    return () => { cancelled = true; };
   }, [isCloud, hasCloudToken]);
 
   const handleCloudLogin = useCallback(async () => {
@@ -125,7 +134,7 @@ export function useCloudAuth(onLoginSuccess?: () => void, showToast?: (msg: stri
     setHasCloudToken(false);
     try {
       await tauriInvoke("delete_cloud_token");
-    } catch {}
+    } catch (err) { console.warn("Failed to delete cloud token on logout:", err); }
     setCloudAuthToken("");
   }, []);
 
@@ -165,11 +174,21 @@ export function useCloudAuth(onLoginSuccess?: () => void, showToast?: (msg: stri
     }
   }, [showToast]);
 
+  const handleForgotPassword = useCallback(async (email: string) => {
+    try {
+      await api.cloudForgotPassword(email);
+      return true;
+    } catch (err) {
+      console.warn("Forgot password request failed:", err);
+      return false;
+    }
+  }, []);
+
   const handleCopyReferral = useCallback(async () => {
     if (!cloudReferral?.code) return;
     try {
       await navigator.clipboard.writeText(cloudReferral.code);
-    } catch {}
+    } catch (err) { console.warn("Clipboard write failed:", err); }
   }, [cloudReferral]);
 
   return {
@@ -197,6 +216,7 @@ export function useCloudAuth(onLoginSuccess?: () => void, showToast?: (msg: stri
     handleCloudLogin,
     handleCloudRegister,
     handleCloudLogout,
+    handleForgotPassword,
     handleRecharge,
     handleUpgradePlan,
     handleCopyReferral,

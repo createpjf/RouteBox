@@ -542,6 +542,18 @@ export const api = {
     }),
   cloudGetMe: () =>
     request<{ user: CloudAccountResponse }>("/auth/me"),
+  cloudForgotPassword: (email: string) =>
+    request<{ success: boolean }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      retries: 0,
+    }),
+  cloudResetPassword: (token: string, newPassword: string) =>
+    request<{ success: boolean }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword }),
+      retries: 0,
+    }),
 
   // ── Cloud Account ───────────────────────────────────────────────────────
   cloudGetAccount: () =>

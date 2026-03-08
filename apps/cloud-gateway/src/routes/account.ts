@@ -7,20 +7,11 @@ import { Hono } from "hono";
 import { getUserById } from "../lib/users";
 import { getBalanceInfo, getTransactions } from "../lib/credits";
 import { getOrCreateReferralCode } from "../lib/referrals";
+import { sha256Hex } from "../lib/crypto";
 import { sql } from "../lib/db-cloud";
 import type { CloudEnv } from "../types";
 
 const app = new Hono<CloudEnv>();
-
-// ── Helper: SHA-256 hex ─────────────────────────────────────────────────────
-
-async function sha256Hex(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 // ── GET /me — full user profile ─────────────────────────────────────────────
 
@@ -130,9 +121,23 @@ app.get("/api-keys", async (c) => {
 
 // ── POST /api-keys — create a new API key ────────────────────────────────────
 
+const MAX_API_KEYS_PER_USER = 20;
+
 app.post("/api-keys", async (c) => {
   const userId = c.get("userId") as string;
   const body = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
+
+  // Check API key limit
+  const [countRow] = await sql`
+    SELECT COUNT(*)::int AS cnt FROM api_keys
+    WHERE user_id = ${userId} AND is_active = true
+  `;
+  if ((countRow?.cnt as number) >= MAX_API_KEYS_PER_USER) {
+    return c.json(
+      { error: { message: `Maximum of ${MAX_API_KEYS_PER_USER} active API keys allowed`, type: "validation_error" } },
+      400,
+    );
+  }
 
   // Generate rb_ key: "rb_" + 32 hex chars = 35 chars total
   const randomBytes = crypto.getRandomValues(new Uint8Array(16));

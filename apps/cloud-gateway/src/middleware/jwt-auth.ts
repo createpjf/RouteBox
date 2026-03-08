@@ -5,16 +5,10 @@
 
 import type { Context, Next } from "hono";
 import { verifyToken } from "../lib/jwt";
+import { sha256Hex } from "../lib/crypto";
 import { sql } from "../lib/db-cloud";
+import { log } from "../lib/logger";
 import type { CloudEnv } from "../types";
-
-async function sha256Hex(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 /**
  * Extracts Bearer token from Authorization header.
@@ -61,7 +55,11 @@ export async function jwtAuth(c: Context<CloudEnv>, next: Next) {
     }
 
     // Update last_used_at asynchronously (fire-and-forget)
-    sql`UPDATE api_keys SET last_used_at = now() WHERE key_hash = ${hash}`.catch(() => {});
+    sql`UPDATE api_keys SET last_used_at = now() WHERE key_hash = ${hash}`.catch((err) => {
+      log.warn("api_key_last_used_update_failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     c.set("userId", key.user_id as string);
     c.set("email", key.email as string);

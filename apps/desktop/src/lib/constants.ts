@@ -98,7 +98,26 @@ export const PROVIDER_COLORS: Record<string, string> = {
   "FLock.io": "#7C3AED",
   Ollama: "#0077B6",
   "LM Studio": "#E63946",
+  "z.ai": "#6B21A8",
 };
+
+// ── Cloud routing state (client-side, sent via headers) ─────────────────
+
+export interface RoutingRuleCompact {
+  matchType: "model_alias" | "content_code" | "content_long" | "content_general";
+  matchValue: string;
+  targetModel: string;
+  enabled: boolean;
+  priority: number;
+}
+
+let cloudRoutingStrategy = "smart_auto";
+let cloudRoutingRules: RoutingRuleCompact[] = [];
+
+export function getRoutingStrategy() { return cloudRoutingStrategy; }
+export function setRoutingStrategy(s: string) { cloudRoutingStrategy = s; }
+export function getRoutingRules() { return cloudRoutingRules; }
+export function setRoutingRules(r: RoutingRuleCompact[]) { cloudRoutingRules = r; }
 
 export const ROUTING_STRATEGIES = [
   { id: "smart_auto", name: "Smart Auto", description: "AI picks the best route" },

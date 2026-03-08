@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from "react";
-import { getGatewayUrl, getAuthToken } from "../lib/constants";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { getGatewayUrl, getAuthToken, getGatewayMode, getRoutingStrategy, getRoutingRules } from "../lib/constants";
 import type { RouteboxMeta } from "../types/chat";
 
 interface ChatMessage {
@@ -21,6 +21,11 @@ export function useStreamChat(): UseStreamChatReturn {
   const [streamedText, setStreamedText] = useState("");
   const [meta, setMeta] = useState<RouteboxMeta | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Abort in-progress stream on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
@@ -49,6 +54,18 @@ export function useStreamChat(): UseStreamChatReturn {
           "Content-Type": "application/json",
         };
         if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        // Inject cloud routing preferences via headers
+        if (getGatewayMode() === "cloud") {
+          const strategy = getRoutingStrategy();
+          if (strategy && strategy !== "smart_auto") {
+            headers["x-routebox-strategy"] = strategy;
+          }
+          const rules = getRoutingRules();
+          if (rules.length > 0) {
+            headers["x-routebox-rules"] = JSON.stringify(rules);
+          }
+        }
 
         const res = await fetch(`${getGatewayUrl()}/v1/chat/completions`, {
           method: "POST",

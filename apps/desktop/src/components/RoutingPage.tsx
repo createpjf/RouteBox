@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Copy, Check, Pause, Play, Plus, X, Pin, Ban, Loader2, Search, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { ProviderStatus } from "@/components/ProviderStatus";
@@ -6,7 +6,7 @@ import { RoutingStrategy } from "@/components/RoutingStrategy";
 import { api } from "@/lib/api";
 import type { ModelPreference, RoutingRule } from "@/lib/api";
 import type { RealtimeStats } from "@/types/stats";
-import { getGatewayMode, PROVIDER_COLORS } from "@/lib/constants";
+import { getGatewayMode, PROVIDER_COLORS, setRoutingStrategy as setRoutingStrategyModule, setRoutingRules as setRoutingRulesModule } from "@/lib/constants";
 
 interface RoutingPageProps {
   stats: RealtimeStats;
@@ -24,6 +24,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [routingStrategy, setRoutingStrategy] = useState("smart_auto");
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const [preferences, setPreferences] = useState<ModelPreference[]>([]);
   const [showAddPref, setShowAddPref] = useState(false);
@@ -99,10 +100,29 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
           grouped.set(key, list.sort());
         }
         setCloudModelsByProvider(grouped);
+        // Build modelIndex for cloud rules target selector
+        const idx = new Map<string, ModelProviderEntry[]>();
+        for (const m of res.data) {
+          idx.set(m.id, [{ provider: m.owned_by || "unknown", pricing: { input: 0, output: 0 } }]);
+        }
+        setModelIndex(idx);
         setModelsLoaded(true);
         setModelsError(false);
       })
       .catch(() => setModelsError(true));
+  }, [isCloud]);
+
+  // Load cloud routing preferences from Tauri store
+  useEffect(() => {
+    if (!isCloud) return;
+    import("@tauri-apps/plugin-store").then(({ load }) =>
+      load("settings.json").then(async (store) => {
+        const s = await store.get<string>("cloudRoutingStrategy");
+        if (s) { setRoutingStrategy(s); setRoutingStrategyModule(s); }
+        const r = await store.get<RoutingRule[]>("cloudRoutingRules");
+        if (r) { setRoutingRules(r); setRoutingRulesModule(r.map(rule => ({ matchType: rule.matchType, matchValue: rule.matchValue, targetModel: rule.targetModel, enabled: rule.enabled, priority: rule.priority }))); }
+      })
+    ).catch(() => {});
   }, [isCloud]);
 
   const filteredModels = useMemo(() => {
@@ -139,7 +159,8 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         await navigator.clipboard.writeText(key);
       }
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to copy key");
     }
@@ -162,10 +183,20 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
 
   const handleChangeStrategy = useCallback((strategyId: string) => {
     setRoutingStrategy(strategyId);
-    api.setRouting(strategyId).catch((err) => {
-      showToast(err instanceof Error ? err.message : "Failed to change routing");
-    });
-  }, [showToast]);
+    if (isCloud) {
+      setRoutingStrategyModule(strategyId);
+      import("@tauri-apps/plugin-store").then(({ load }) =>
+        load("settings.json").then(async (store) => {
+          await store.set("cloudRoutingStrategy", strategyId);
+          await store.save();
+        })
+      ).catch(() => {});
+    } else {
+      api.setRouting(strategyId).catch((err) => {
+        showToast(err instanceof Error ? err.message : "Failed to change routing");
+      });
+    }
+  }, [isCloud, showToast]);
 
   const handleAddPreference = useCallback(async () => {
     if (!selectedModel || !selectedProvider) return;
@@ -213,6 +244,16 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     content_general: { label: "General", color: "#34C759", icon: "\uD83D\uDCAC" },
   };
 
+  const saveCloudRules = useCallback((rules: RoutingRule[]) => {
+    setRoutingRulesModule(rules.map(r => ({ matchType: r.matchType, matchValue: r.matchValue, targetModel: r.targetModel, enabled: r.enabled, priority: r.priority })));
+    import("@tauri-apps/plugin-store").then(({ load }) =>
+      load("settings.json").then(async (store) => {
+        await store.set("cloudRoutingRules", rules);
+        await store.save();
+      })
+    ).catch(() => {});
+  }, []);
+
   const handleAddRule = useCallback(async () => {
     if (!ruleName || !ruleTargetModel) return;
     setRuleSaving(true);
@@ -224,7 +265,8 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
           : ruleMatchType === "content_code"
             ? JSON.stringify({ min_markers: 3 })
             : "{}";
-      const res = await api.addRoutingRule({
+      const newRule: RoutingRule = {
+        id: isCloud ? Date.now() : 0,
         name: ruleName,
         matchType: ruleMatchType,
         matchValue,
@@ -232,17 +274,24 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         targetProvider: null,
         priority: 0,
         enabled: true,
-      });
-      setRoutingRules((prev) => [...prev, {
-        id: res.id,
-        name: ruleName,
-        matchType: ruleMatchType,
-        matchValue,
-        targetModel: ruleTargetModel,
-        targetProvider: null,
-        priority: 0,
-        enabled: true,
-      }]);
+      };
+      if (isCloud) {
+        const updated = [...routingRules, newRule];
+        setRoutingRules(updated);
+        saveCloudRules(updated);
+      } else {
+        const res = await api.addRoutingRule({
+          name: ruleName,
+          matchType: ruleMatchType,
+          matchValue,
+          targetModel: ruleTargetModel,
+          targetProvider: null,
+          priority: 0,
+          enabled: true,
+        });
+        newRule.id = res.id;
+        setRoutingRules((prev) => [...prev, newRule]);
+      }
       setRuleName("");
       setRuleMatchValue("");
       setRuleTargetModel("");
@@ -253,27 +302,38 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
     } finally {
       setRuleSaving(false);
     }
-  }, [ruleName, ruleMatchType, ruleMatchValue, ruleTargetModel, showToast]);
+  }, [isCloud, ruleName, ruleMatchType, ruleMatchValue, ruleTargetModel, routingRules, saveCloudRules, showToast]);
 
   const handleToggleRule = useCallback(async (id: number, enabled: boolean) => {
     const rule = routingRules.find((r) => r.id === id);
     if (!rule) return;
-    setRoutingRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled } : r));
-    try {
-      await api.updateRoutingRule(id, { ...rule, enabled });
-    } catch {
-      setRoutingRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled: !enabled } : r));
+    const updated = routingRules.map((r) => r.id === id ? { ...r, enabled } : r);
+    setRoutingRules(updated);
+    if (isCloud) {
+      saveCloudRules(updated);
+    } else {
+      try {
+        await api.updateRoutingRule(id, { ...rule, enabled });
+      } catch {
+        setRoutingRules((prev) => prev.map((r) => r.id === id ? { ...r, enabled: !enabled } : r));
+      }
     }
-  }, [routingRules]);
+  }, [isCloud, routingRules, saveCloudRules]);
 
   const handleRemoveRule = useCallback(async (id: number) => {
-    try {
-      await api.removeRoutingRule(id);
-      setRoutingRules((prev) => prev.filter((r) => r.id !== id));
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to remove rule");
+    if (isCloud) {
+      const updated = routingRules.filter((r) => r.id !== id);
+      setRoutingRules(updated);
+      saveCloudRules(updated);
+    } else {
+      try {
+        await api.removeRoutingRule(id);
+        setRoutingRules((prev) => prev.filter((r) => r.id !== id));
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Failed to remove rule");
+      }
     }
-  }, [showToast]);
+  }, [isCloud, routingRules, saveCloudRules, showToast]);
 
   const fmtPrice = (n: number) => n < 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(1)}`;
 
@@ -285,7 +345,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
           <p className="text-[13px] font-semibold text-[#007AFF] mb-1">Cloud Routing</p>
           <p className="text-[11px] text-text-secondary leading-relaxed">
             RouteBox Cloud automatically selects the best model for each request.
-            Routing strategy, preferences, and rules are managed server-side.
+            You can customize the routing strategy and add rules below.
           </p>
         </div>
       )}
@@ -295,8 +355,8 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         <CloudProviderModels modelsByProvider={cloudModelsByProvider} />
       )}
 
-      {/* Routing Strategy — local mode only */}
-      {!isCloud && <div>
+      {/* Routing Strategy */}
+      <div>
         <h3 className="section-header">Routing Strategy</h3>
         <div className="glass-card-static p-2">
           <RoutingStrategy
@@ -304,7 +364,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
             onChange={handleChangeStrategy}
           />
         </div>
-      </div>}
+      </div>
 
       {/* Model Preferences — local mode only */}
       {!isCloud && <div>
@@ -529,8 +589,8 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
         </div>
       </div>}
 
-      {/* Routing Rules — local mode only */}
-      {!isCloud && <div>
+      {/* Routing Rules */}
+      <div>
         <h3 className="section-header">Routing Rules</h3>
         <div className="glass-card-static overflow-hidden">
           {routingRules.length === 0 && !showAddRule ? (
@@ -736,7 +796,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
             </button>
           )}
         </div>
-      </div>}
+      </div>
 
       {/* Provider Status */}
       {!isCloud && <ProviderStatus providers={stats.providers} />}

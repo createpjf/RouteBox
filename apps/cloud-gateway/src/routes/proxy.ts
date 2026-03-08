@@ -8,6 +8,7 @@ import {
   cloudProviderForModel,
   cloudProvidersForModel,
   cloudProviders,
+  getOpenRouterFallbacks,
   type CloudProviderConfig,
 } from "../lib/key-pool";
 import { isProviderAllowed } from "../lib/provider-config";
@@ -17,6 +18,7 @@ import { getCircuitBreaker } from "../lib/circuit-breaker";
 import { deductCredits, recordCloudRequest } from "../lib/credits";
 import { getMarkupForPlan } from "../lib/polar";
 import { getRegistryEntry } from "../lib/model-registry";
+import { resolveStrategy } from "../lib/routing-config";
 import { checkDailyQuota, incrementDailyQuota } from "../lib/quota";
 import { log } from "../lib/logger";
 import { incCounter, observeHistogram, incGauge, decGauge } from "../lib/metrics";
@@ -54,53 +56,31 @@ export function isRetryableStatus(status: number): boolean {
 // ---------------------------------------------------------------------------
 
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  "gpt-4o":           { input: 2.5,   output: 10 },
-  "gpt-4o-mini":      { input: 0.15,  output: 0.6 },
-  "gpt-4.1":          { input: 2,     output: 8 },
-  "gpt-4.1-mini":     { input: 0.4,   output: 1.6 },
-  "gpt-4.1-nano":     { input: 0.1,   output: 0.4 },
-  "o3":               { input: 2,     output: 8 },
-  "o3-mini":          { input: 1.1,   output: 4.4 },
-  "o4-mini":          { input: 1.1,   output: 4.4 },
-  "o1":               { input: 15,    output: 60 },
-  "o1-mini":          { input: 3,     output: 12 },
-  "claude-sonnet-4-20250514":   { input: 3,    output: 15 },
-  "claude-haiku-4-20250514":    { input: 0.8,  output: 4 },
-  "claude-opus-4-20250514":     { input: 15,   output: 75 },
-  "claude-3-5-sonnet-20241022": { input: 3,    output: 15 },
-  "claude-3-haiku-20240307":    { input: 0.25, output: 1.25 },
-  "gemini-2.5-pro":   { input: 1.25,  output: 10 },
-  "gemini-2.5-flash": { input: 0.15,  output: 0.6 },
-  "gemini-2.0-flash": { input: 0.075, output: 0.30 },
-  "gemini-2.0-pro":   { input: 1.25,  output: 5 },
-  "deepseek-chat":     { input: 0.27, output: 1.10 },
-  "deepseek-reasoner": { input: 0.55, output: 2.19 },
-  "MiniMax-M2.5": { input: 0.80, output: 3.20 },
-  "MiniMax-M2.1": { input: 0.50, output: 2.00 },
-  "kimi-k2.5":        { input: 0.60, output: 2.40 },
-  "kimi-k2":          { input: 0.40, output: 1.60 },
-  "moonshot-v1-128k": { input: 0.84, output: 0.84 },
-  "moonshot-v1-32k":  { input: 0.34, output: 0.34 },
-  // FLock.io models
-  "qwen3-235b-a22b-thinking-2507":  { input: 0.70, output: 2.80 },
-  "qwen3-30b-a3b-instruct-2507":    { input: 0.15, output: 0.60 },
-  "qwen3-30b-a3b-instruct-coding":  { input: 0.15, output: 0.60 },
-  "deepseek-v3.2":                  { input: 0.27, output: 1.10 },
-  // OpenRouter models
-  "openrouter/stepfun/step-3.5-flash:free": { input: 0, output: 0 },
+  // MiniMax
+  "minimax-m2.1":                                    { input: 0.27,  output: 0.95 },
+  "minimax-m2.5":                                    { input: 0.30,  output: 1.20 },
+  // FLock.io
+  "gemini-3-flash-preview":                          { input: 0.50,  output: 3.00 },
+  "gemini-3.1-pro-preview":                          { input: 2.00,  output: 12.00 },
+  "qwen3-235b-a22b-instruct-2507":                   { input: 0.455, output: 1.82 },
+  "qwen3-30b-a3b-instruct-2507":                     { input: 0.07,  output: 0.27 },
+  "deepseek-v3.2":                                   { input: 0.28,  output: 0.42 },
+  // Kimi
+  "kimi-k2-thinking":                                { input: 0.60,  output: 2.50 },
+  "kimi-k2.5":                                       { input: 0.60,  output: 3.00 },
+  // OpenRouter
+  "openrouter/stepfun/step-3.5-flash":               { input: 0.10,  output: 0.30 },
+  "openrouter/qwen/qwen3-max-thinking":              { input: 0.78,  output: 3.90 },
+  "openrouter/openai/gpt-5.4":                       { input: 2.50,  output: 20.00 },
+  "openrouter/anthropic/claude-sonnet-4.6":          { input: 3.00,  output: 15.00 },
+  "openrouter/qwen/qwen3-coder-next":                { input: 0.12,  output: 0.75 },
+  "openrouter/arcee-ai/trinity-large-preview:free":  { input: 0,     output: 0 },
+  // z.ai
+  "z-ai/glm-5":                                      { input: 1.00,  output: 3.20 },
+  "z-ai/glm-4.7":                                    { input: 0.60,  output: 2.20 },
 };
 
-const MODEL_ALIASES: Record<string, string> = {
-  "claude-3.5-sonnet":     "claude-3-5-sonnet-20241022",
-  "claude-3-sonnet":       "claude-sonnet-4-20250514",
-  "claude-3-haiku":        "claude-3-haiku-20240307",
-  "claude-sonnet":         "claude-sonnet-4-20250514",
-  "claude-haiku":          "claude-haiku-4-20250514",
-  "claude-opus":           "claude-opus-4-20250514",
-  "gpt-4o-latest":         "gpt-4o",
-  "gemini-flash":          "gemini-2.0-flash",
-  "gemini-pro":            "gemini-2.5-pro",
-};
+const MODEL_ALIASES: Record<string, string> = {};
 
 export function resolveAlias(model: string): string {
   return MODEL_ALIASES[model] ?? model;
@@ -274,7 +254,9 @@ function anthropicStreamToOpenAI(
       const resetIdleTimer = () => {
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
-          reader.cancel().catch(() => {});
+          reader.cancel().catch((err) => {
+            log.warn("stream_idle_cancel_failed", { error: err instanceof Error ? err.message : String(err) });
+          });
           try { controller.close(); } catch { /* already closed */ }
           callOnDone({ input: inputTokens, output: outputTokens });
         }, STREAM_IDLE_TIMEOUT_MS);
@@ -377,7 +359,9 @@ function openaiStreamPassthrough(
       const resetIdleTimer = () => {
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
-          reader.cancel().catch(() => {});
+          reader.cancel().catch((err) => {
+            log.warn("stream_idle_cancel_failed", { error: err instanceof Error ? err.message : String(err) });
+          });
           try { controller.close(); } catch { /* already closed */ }
           callOnDone({ input: inputTokens, output: outputTokens });
         }, STREAM_IDLE_TIMEOUT_MS);
@@ -500,9 +484,37 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   }
 
   // Resolve alias
-  const requestedModel = resolveAlias(body.model);
+  let requestedModel = resolveAlias(body.model);
   body.model = requestedModel;
   const isStream = body.stream === true;
+
+  // ── User routing rules (from header) ────────────────────────────────────
+  const rulesHeader = c.req.header("x-routebox-rules");
+  if (rulesHeader) {
+    try {
+      const rules: { matchType: string; matchValue: string; targetModel: string; enabled: boolean; priority: number }[] = JSON.parse(rulesHeader);
+      const reqCtx = buildRequestContext(body);
+      const sorted = rules.filter(r => r.enabled).sort((a, b) => b.priority - a.priority);
+      for (const rule of sorted) {
+        let matches = false;
+        if (rule.matchType === "model_alias" && requestedModel === rule.matchValue) {
+          matches = true;
+        } else if (rule.matchType === "content_code" && reqCtx.contentType === "code") {
+          matches = true;
+        } else if (rule.matchType === "content_long" && reqCtx.contentType === "long_text") {
+          matches = true;
+        } else if (rule.matchType === "content_general") {
+          matches = true;
+        }
+        if (matches) {
+          body.model = rule.targetModel;
+          requestedModel = rule.targetModel;
+          log.info("user_routing_rule_applied", { requestId: c.get("requestId"), rule: rule.matchType, targetModel: rule.targetModel });
+          break;
+        }
+      }
+    } catch { /* invalid JSON, ignore */ }
+  }
 
   // Strip prefix for OpenRouter models before forwarding
   // (provider matching uses full name, but OpenRouter API expects unprefixed)
@@ -544,7 +556,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // ── Scoring Engine → Provider Chain ─────────────────────────────────────
   // Try scoring engine first; fall back to prefix matching if model not in registry
-  const routingStrategy = (c.req.header("x-routebox-strategy") ?? "smart_auto").toLowerCase();
+  const routingStrategy = resolveStrategy(userId, c.req.header("x-routebox-strategy")?.toLowerCase());
   const requestContext = buildRequestContext(body);
   const scoredCandidates = await scoreAndRank({
     requestedModel,
@@ -581,6 +593,16 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     // Fallback to classic prefix-match routing
     providerChain = cloudProvidersForModel(requestedModel)
       .filter((p) => isProviderAllowed(p.name, userPlan));
+  }
+
+  // If no direct provider found, try OpenRouter as universal fallback
+  if (providerChain.length === 0) {
+    const orFallbacks = getOpenRouterFallbacks()
+      .filter((p) => isProviderAllowed(p.name, userPlan));
+    if (orFallbacks.length > 0) {
+      providerChain = orFallbacks;
+      log.info("openrouter_fallback", { requestId: c.get("requestId"), model: requestedModel });
+    }
   }
 
   if (providerChain.length === 0) {
@@ -850,11 +872,13 @@ app.post("/chat/completions", creditsCheck, async (c) => {
         }
       }
 
-      // Increment daily quota (fire-and-forget) — skip on zero-token responses
+      // Increment daily quota — skip on zero-token responses
       if (usage.input + usage.output > 0) {
-        incrementDailyQuota(userId, requestedModel).catch((err) => {
-          log.error("quota_increment_failed", { userId, model: requestedModel, error: err?.message });
-        });
+        try {
+          await incrementDailyQuota(userId, requestedModel);
+        } catch (err) {
+          log.error("quota_increment_failed", { userId, model: requestedModel, error: err instanceof Error ? err.message : String(err) });
+        }
       }
 
       // Record request
@@ -920,11 +944,13 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     }
   }
 
-  // Increment daily quota (fire-and-forget) — skip on zero-token responses
+  // Increment daily quota — skip on zero-token responses
   if (inputTokens + outputTokens > 0) {
-    incrementDailyQuota(userId, requestedModel).catch((err) => {
-      log.error("quota_increment_failed", { userId, model: requestedModel, error: err?.message });
-    });
+    try {
+      await incrementDailyQuota(userId, requestedModel);
+    } catch (err) {
+      log.error("quota_increment_failed", { userId, model: requestedModel, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   // Record request

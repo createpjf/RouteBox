@@ -132,15 +132,18 @@
     <div class="nav-item" data-page="plans-config">Subscription Plans</div>
     <div class="nav-item" data-page="packages">Credit Packages</div>
     <div class="nav-item" data-page="models">Model Registry</div>
+    <div class="nav-item" data-page="routing">Routing</div>
     <div class="nav-section">Analytics</div>
     <div class="nav-item" data-page="transactions">Transactions</div>
     <div class="nav-item" data-page="referrals">Referrals</div>
+    <div class="nav-item" data-page="audit-log">Audit Log</div>
   </aside>
   <main class="main">
     <!-- Dashboard -->
     <div id="page-dashboard">
       <div class="page-title">Dashboard</div>
       <div id="statsGrid" class="card-grid"></div>
+      <div id="noTrafficHint" style="display:none;padding:12px 16px;margin-bottom:16px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:14px;">No API traffic yet — stats will appear here once users start making API calls.</div>
       <div class="card" style="margin-bottom:16px">
         <div class="flex-between mb-2"><strong>Plan Distribution</strong></div>
         <div id="planStats"></div>
@@ -306,6 +309,98 @@
         </table>
       </div>
     </div>
+
+    <!-- Audit Log -->
+    <div id="page-audit-log" class="hidden">
+      <div class="page-title">Audit Log</div>
+      <div class="search-bar" style="flex-wrap:wrap">
+        <select id="auditAction" class="input" style="width:180px">
+          <option value="">All Actions</option>
+          <option value="update_user_plan">update_user_plan</option>
+          <option value="adjust_user_balance">adjust_user_balance</option>
+          <option value="create_provider_key">create_provider_key</option>
+          <option value="update_provider_key">update_provider_key</option>
+          <option value="delete_provider_key">delete_provider_key</option>
+          <option value="create_model">create_model</option>
+          <option value="update_model">update_model</option>
+          <option value="delete_model">delete_model</option>
+          <option value="update_model_pricing">update_model_pricing</option>
+          <option value="create_package">create_package</option>
+          <option value="update_package">update_package</option>
+          <option value="delete_package">delete_package</option>
+          <option value="create_announcement">create_announcement</option>
+          <option value="update_announcement">update_announcement</option>
+          <option value="delete_announcement">delete_announcement</option>
+          <option value="revoke_api_key">revoke_api_key</option>
+          <option value="update_routing_strategy">update_routing_strategy</option>
+          <option value="set_user_routing_override">set_user_routing_override</option>
+          <option value="remove_user_routing_override">remove_user_routing_override</option>
+          <option value="update_plan_config">update_plan_config</option>
+          <option value="update_provider_access">update_provider_access</option>
+          <option value="process_referral_earnings">process_referral_earnings</option>
+        </select>
+        <input id="auditAdminEmail" class="input" placeholder="Admin email..." style="width:180px" />
+        <input id="auditDateFrom" class="input" type="date" style="width:150px" title="From date" />
+        <input id="auditDateTo" class="input" type="date" style="width:150px" title="To date" />
+        <button class="btn" onclick="loadAuditLog()">Filter</button>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Target User</th><th>Details</th></tr></thead>
+          <tbody id="auditBody"></tbody>
+        </table>
+        <div class="pagination">
+          <span id="auditPagInfo"></span>
+          <button class="btn btn-sm" onclick="auditPage(-1)">Prev</button>
+          <button class="btn btn-sm" onclick="auditPage(1)">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Routing -->
+    <div id="page-routing" class="hidden">
+      <div class="page-title">Routing Strategy</div>
+      <div class="card" style="margin-bottom:16px">
+        <strong>Global Default Strategy</strong>
+        <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Used when a user has no header override and no admin per-user override.</p>
+        <div id="routingStrategyRadios" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="globalStrategy" value="smart_auto"> smart_auto</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="globalStrategy" value="cost_first"> cost_first</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="globalStrategy" value="speed_first"> speed_first</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="globalStrategy" value="quality_first"> quality_first</label>
+        </div>
+        <button class="btn btn-accent" onclick="saveGlobalStrategy()">Save Default Strategy</button>
+      </div>
+      <div class="card">
+        <div class="flex-between mb-2">
+          <strong>Per-User Overrides</strong>
+          <button class="btn btn-accent" onclick="showAddOverride()">+ Add Override</button>
+        </div>
+        <div id="addOverrideForm" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--surface2);border-radius:8px">
+          <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+            <div>
+              <label style="font-size:12px;color:var(--muted)">User Email or ID</label>
+              <input id="overrideUserId" class="input" style="width:240px" placeholder="user@example.com or UUID" />
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--muted)">Strategy</label>
+              <select id="overrideStrategy" class="input" style="width:160px">
+                <option value="smart_auto">smart_auto</option>
+                <option value="cost_first">cost_first</option>
+                <option value="speed_first">speed_first</option>
+                <option value="quality_first">quality_first</option>
+              </select>
+            </div>
+            <button class="btn btn-accent" onclick="saveUserOverride()">Save</button>
+            <button class="btn" onclick="hideAddOverride()">Cancel</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Email</th><th>Strategy</th><th>Actions</th></tr></thead>
+          <tbody id="overridesBody"></tbody>
+        </table>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -393,7 +488,7 @@ function toast(msg, type = 'success') {
 }
 
 // ── Navigation ────────────────────────────────────────────────────
-const pages = ['dashboard','users','user-detail','plans-config','packages','models','transactions','referrals'];
+const pages = ['dashboard','users','user-detail','plans-config','packages','models','routing','transactions','referrals','audit-log'];
 
 function showPage(name) {
   pages.forEach(p => {
@@ -408,8 +503,10 @@ function showPage(name) {
   else if (name === 'plans-config') loadPlansConfig();
   else if (name === 'packages') loadPackages();
   else if (name === 'models') loadModels();
+  else if (name === 'routing') loadRouting();
   else if (name === 'transactions') loadTransactions();
   else if (name === 'referrals') loadReferrals();
+  else if (name === 'audit-log') loadAuditLog();
 }
 
 document.querySelectorAll('.nav-item').forEach(n => {
@@ -448,14 +545,19 @@ async function loadDashboard() {
     statCard('Week Signups', s.users.weekRegistrations),
     statCard('Total Revenue', cents(s.deposits.totalCents)),
     statCard('Today Revenue', cents(s.deposits.todayCents)),
-    statCard('Total Requests', s.usage.totalRequests.toLocaleString()),
-    statCard('Today Requests', s.usage.todayRequests.toLocaleString()),
+    statCard('API Calls', s.usage.totalRequests.toLocaleString()),
+    statCard('API Calls Today', s.usage.todayRequests.toLocaleString()),
     statCard('API Cost', cents(s.usage.totalCostCents)),
     statCard('Outstanding Bal.', cents(s.balance.totalOutstandingCents)),
     statCard('Total Used', cents(s.balance.totalUsedCents)),
     statCard('Referral Codes', s.referrals.totalCodes),
     statCard('Referral Claims', s.referrals.totalClaims),
   ].join('');
+
+  const noTrafficHint = document.getElementById('noTrafficHint');
+  if (noTrafficHint) {
+    noTrafficHint.style.display = s.usage.totalRequests === 0 ? 'block' : 'none';
+  }
 
   document.getElementById('planStats').innerHTML = `<table><thead><tr><th>Plan</th><th>Users</th><th>Total Deposited</th><th>API Spend</th></tr></thead><tbody>${
     (plans.plans||[]).map(p => `<tr><td>${planBadge(p.plan)}</td><td>${p.user_count}</td><td>${cents(p.total_deposited_cents)}</td><td>${cents(p.total_api_spend_cents)}</td></tr>`).join('')
@@ -777,6 +879,90 @@ async function loadReferrals() {
     </tr>
   `).join('');
 }
+
+// ── Routing ───────────────────────────────────────────────────────
+async function loadRouting() {
+  const res = await apiFetch('/admin/routing/config');
+  const data = await res.json();
+  // Set radio button
+  const radios = document.querySelectorAll('input[name="globalStrategy"]');
+  radios.forEach(r => { r.checked = r.value === (data.defaultStrategy || 'smart_auto'); });
+  // Render overrides table
+  document.getElementById('overridesBody').innerHTML = (data.userOverrides||[]).map(o => `
+    <tr>
+      <td>${esc(o.email)}</td>
+      <td><span class="badge" style="background:var(--surface2)">${esc(o.strategy)}</span></td>
+      <td><button class="btn" style="font-size:12px;padding:2px 8px" onclick="removeOverride('${esc(o.userId)}')">Remove</button></td>
+    </tr>
+  `).join('') || '<tr><td colspan="3" style="color:var(--muted)">No per-user overrides</td></tr>';
+  hideAddOverride();
+}
+
+async function saveGlobalStrategy() {
+  const selected = document.querySelector('input[name="globalStrategy"]:checked');
+  if (!selected) { toast('Select a strategy', 'error'); return; }
+  const res = await apiFetch('/admin/routing/config', {
+    method: 'PATCH',
+    body: JSON.stringify({ defaultStrategy: selected.value })
+  });
+  if (res.ok) { toast('Default strategy updated'); }
+  else { const err = await res.json(); toast(err.error?.message || 'Failed', 'error'); }
+}
+
+function showAddOverride() { document.getElementById('addOverrideForm').classList.remove('hidden'); }
+function hideAddOverride() { document.getElementById('addOverrideForm').classList.add('hidden'); document.getElementById('overrideUserId').value = ''; }
+
+async function saveUserOverride() {
+  const userId = document.getElementById('overrideUserId').value.trim();
+  const strategy = document.getElementById('overrideStrategy').value;
+  if (!userId) { toast('Enter a user email or ID', 'error'); return; }
+  const res = await apiFetch('/admin/routing/user-override', {
+    method: 'POST',
+    body: JSON.stringify({ userId, strategy })
+  });
+  if (res.ok) { toast('Override saved'); loadRouting(); }
+  else { const err = await res.json(); toast(err.error?.message || 'Failed', 'error'); }
+}
+
+async function removeOverride(userId) {
+  if (!confirm('Remove this routing override?')) return;
+  const res = await apiFetch(`/admin/routing/user-override/${userId}`, { method: 'DELETE' });
+  if (res.ok) { toast('Override removed'); loadRouting(); }
+  else { const err = await res.json(); toast(err.error?.message || 'Failed', 'error'); }
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────
+let auditOffset = 0;
+const AUDIT_LIMIT = 50;
+
+async function loadAuditLog() {
+  const action = document.getElementById('auditAction').value;
+  const adminEmail = document.getElementById('auditAdminEmail').value.trim();
+  const dateFrom = document.getElementById('auditDateFrom').value;
+  const dateTo = document.getElementById('auditDateTo').value;
+  const params = new URLSearchParams();
+  params.set('limit', AUDIT_LIMIT);
+  params.set('offset', auditOffset);
+  if (action) params.set('action', action);
+  if (adminEmail) params.set('admin_email', adminEmail);
+  if (dateFrom) params.set('date_from', dateFrom);
+  if (dateTo) params.set('date_to', dateTo);
+
+  const res = await apiFetch(`/admin/audit-log?${params}`);
+  const data = await res.json();
+  document.getElementById('auditBody').innerHTML = (data.entries||[]).map(e => `
+    <tr>
+      <td>${fmtDateTime(e.createdAt)}</td>
+      <td class="truncate">${esc(e.adminEmail)}</td>
+      <td><span class="badge" style="background:var(--surface2)">${esc(e.action)}</span></td>
+      <td style="font-size:11px">${e.targetUserId ? esc(e.targetUserId.slice(0,8))+'...' : '-'}</td>
+      <td class="truncate" style="max-width:280px;font-size:11px">${esc(JSON.stringify(e.details||{}))}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" class="text-muted">No audit log entries</td></tr>';
+  document.getElementById('auditPagInfo').textContent = `${data.total === 0 ? 0 : auditOffset+1}-${Math.min(auditOffset+AUDIT_LIMIT, data.total)} of ${data.total}`;
+}
+
+function auditPage(dir) { auditOffset = Math.max(0, auditOffset + dir * AUDIT_LIMIT); loadAuditLog(); }
 
 // ── Escape HTML ───────────────────────────────────────────────────
 function esc(s) {

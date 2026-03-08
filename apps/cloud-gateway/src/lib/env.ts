@@ -43,6 +43,10 @@ export function validateEnv(): void {
     });
   }
 
+  if (!process.env.RESEND_API_KEY) {
+    log.warn("resend_disabled", { message: "RESEND_API_KEY not set, password reset emails will not be sent" });
+  }
+
   if (!process.env.SENTRY_DSN) {
     log.info("sentry_disabled", { message: "SENTRY_DSN not set, error tracking disabled" });
   }

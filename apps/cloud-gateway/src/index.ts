@@ -163,10 +163,23 @@ app.get("/favicon.ico", async (c) => {
 
 // ── Unauthenticated utility routes ──────────────────────────────────────────
 app.route("/metrics", metricsRoutes);
+// Health check with 10s cache to reduce DB/Redis load from monitoring
+let healthCache: { result: { status: string; db: boolean; redis: boolean }; expiresAt: number } | null = null;
+
 app.get("/health", async (c) => {
+  const now = Date.now();
+  if (healthCache && now < healthCache.expiresAt) {
+    const { result } = healthCache;
+    return c.json(
+      { ...result, timestamp: new Date().toISOString() },
+      result.db ? 200 : 503,
+    );
+  }
+
   const dbOk = await checkDbHealth();
-  const redisOk = await checkRedisHealth();
+  const redisOk = await checkRedisHealth() ?? false;
   const status = dbOk ? "ok" : "degraded";
+  healthCache = { result: { status, db: dbOk, redis: redisOk }, expiresAt: now + 10_000 };
   return c.json(
     { status, timestamp: new Date().toISOString(), db: dbOk, redis: redisOk },
     dbOk ? 200 : 503,
@@ -190,6 +203,10 @@ log.info("gateway_starting");
 
 // Validate environment variables (fail-fast)
 validateEnv();
+
+if (!process.env.POLAR_WEBHOOK_SECRET) {
+  log.warn("POLAR_WEBHOOK_SECRET not set — webhook endpoint will reject all events");
+}
 
 // Init Sentry (before other services so it captures initialization errors)
 if (process.env.SENTRY_DSN) {
@@ -232,6 +249,10 @@ try {
   }
   await ensureProviderAccessDefaults();
   await loadProviderAccess();
+
+  // Load routing config cache (global default + per-user overrides)
+  const { loadRoutingConfig } = await import("./lib/routing-config");
+  await loadRoutingConfig();
 } catch (err) {
   log.warn("provider_config_init_error", {
     error: err instanceof Error ? err.message : String(err),

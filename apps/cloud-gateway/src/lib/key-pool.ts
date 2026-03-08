@@ -66,7 +66,7 @@ export const PROVIDER_REGISTRY: ProviderTemplate[] = [
     envKey: "MINIMAX_API_KEY",
     baseUrlEnvKey: "MINIMAX_BASE_URL",
     defaultBaseUrl: "https://api.minimax.io/v1",
-    prefixes: ["MiniMax-"],
+    prefixes: ["MiniMax-", "minimax-"],
     format: "openai",
   },
   {
@@ -90,7 +90,7 @@ export const PROVIDER_REGISTRY: ProviderTemplate[] = [
     envKey: "FLOCK_API_KEY",
     baseUrlEnvKey: "FLOCK_BASE_URL",
     defaultBaseUrl: "https://api.flock.io/v1",
-    prefixes: ["qwen3-", "deepseek-v3"],
+    prefixes: ["qwen3-", "deepseek-v3", "gemini-3"],
     format: "openai",
     authHeader: "x-litellm-api-key",
   },
@@ -100,6 +100,14 @@ export const PROVIDER_REGISTRY: ProviderTemplate[] = [
     baseUrlEnvKey: "GLM_BASE_URL",
     defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
     prefixes: ["glm-"],
+    format: "openai",
+  },
+  {
+    name: "z.ai",
+    envKey: "ZAI_API_KEY",
+    baseUrlEnvKey: "ZAI_BASE_URL",
+    defaultBaseUrl: "https://open.z.ai/api/paas/v4",
+    prefixes: ["z-ai/"],
     format: "openai",
   },
 ];
@@ -206,6 +214,14 @@ export function cloudProvidersForModel(model: string): CloudProviderConfig[] {
   });
 
   return ordered;
+}
+
+/**
+ * Get OpenRouter provider configs as a universal fallback.
+ * OpenRouter can proxy most models (gpt-*, claude-*, gemini-*, deepseek-*, etc.)
+ */
+export function getOpenRouterFallbacks(): CloudProviderConfig[] {
+  return cloudProviders.filter((p) => p.name === "OpenRouter");
 }
 
 /** Backward-compatible: returns first available provider for a model */

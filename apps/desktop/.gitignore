@@ -26,3 +26,6 @@ dist-ssr
 # Xcode user data (keep xcshareddata for shared schemes)
 RouteBox.xcodeproj/xcuserdata/
 RouteBox.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Residual nested Tauri app directory
+apps/

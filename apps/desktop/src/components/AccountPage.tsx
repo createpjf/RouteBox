@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { LogOut, Zap, Copy, Gift, Crown, Wifi, Server, ArrowRight, Check, Loader2, Key, Plus, Trash2 } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { LogOut, Zap, Copy, Gift, Crown, Wifi, Server, ArrowRight, Check, Loader2, Key, Plus, Trash2, Mail } from "lucide-react";
 import { api, type CloudApiKey } from "@/lib/api";
 import clsx from "clsx";
 import {
@@ -10,12 +10,15 @@ import { useCloudAuth } from "@/hooks/useCloudAuth";
 
 function CopyRow({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {}
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch (err) { console.warn("Clipboard write failed:", err); }
   }, [value]);
   const display = secret ? (value ? value.slice(0, 8) + "\u2026" : "\u2014") : value;
   return (
@@ -43,12 +46,14 @@ function CloudApiKeySection() {
   const [newKey, setNewKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); }, []);
 
   const loadKeys = useCallback(async () => {
     try {
       const res = await api.cloudGetApiKeys();
       setKeys(res.apiKeys.filter(k => k.isActive));
-    } catch {}
+    } catch (err) { console.warn("Failed to load API keys:", err); }
   }, []);
 
   useEffect(() => { loadKeys(); }, [loadKeys]);
@@ -59,8 +64,8 @@ function CloudApiKeySection() {
       const res = await api.cloudCreateApiKey();
       setNewKey(res.key);
       await loadKeys();
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.warn("Failed to create API key:", err);
     } finally {
       setCreating(false);
     }
@@ -70,7 +75,7 @@ function CloudApiKeySection() {
     try {
       await api.cloudDeleteApiKey(id);
       await loadKeys();
-    } catch {}
+    } catch (err) { console.warn("Failed to delete API key:", err); }
   };
 
   const handleCopyNew = async () => {
@@ -78,8 +83,9 @@ function CloudApiKeySection() {
     try {
       await navigator.clipboard.writeText(newKey);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {}
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch (err) { console.warn("Clipboard write failed:", err); }
   };
 
   return (
@@ -154,6 +160,23 @@ export function AccountPage({ onCloudLoginSuccess, gatewayRunningAt, onGoToSetti
   const isCloud = mode === "cloud";
 
   const auth = useCloudAuth(onCloudLoginSuccess, showToast);
+
+  // Forgot password state
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+
+  const handleForgotSubmit = useCallback(async () => {
+    if (!forgotEmail.trim()) return;
+    setForgotSending(true);
+    const ok = await auth.handleForgotPassword(forgotEmail.trim());
+    setForgotSending(false);
+    if (ok) {
+      setForgotSent(true);
+      showToast?.("If the email exists, a reset link was sent.");
+    }
+  }, [forgotEmail, auth, showToast]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 pt-2 gap-3">
@@ -500,6 +523,13 @@ export function AccountPage({ onCloudLoginSuccess, gatewayRunningAt, onGoToSetti
                     >
                       Sign up
                     </button>
+                    {" · "}
+                    <button
+                      onClick={() => { setShowForgotPassword(true); setForgotEmail(auth.cloudEmail); setForgotSent(false); }}
+                      className="text-text-tertiary hover:text-text-secondary hover:underline"
+                    >
+                      Forgot Password?
+                    </button>
                   </>
                 ) : (
                   <>
@@ -513,6 +543,61 @@ export function AccountPage({ onCloudLoginSuccess, gatewayRunningAt, onGoToSetti
                   </>
                 )}
               </p>
+
+              {/* Forgot Password Dialog */}
+              {showForgotPassword && (
+                <div className="mt-3 p-3 rounded-xl bg-bg-elevated border border-border">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Mail size={12} strokeWidth={1.75} className="text-[#007AFF]" />
+                    <p className="text-[11px] text-text-primary font-medium">Reset Password</p>
+                  </div>
+                  {forgotSent ? (
+                    <>
+                      <p className="text-[10px] text-[#34C759] mb-2">
+                        If an account with that email exists, we've sent a reset link.
+                      </p>
+                      <button
+                        onClick={() => setShowForgotPassword(false)}
+                        className="text-[10px] text-text-secondary hover:underline"
+                      >
+                        Back to login
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="email"
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="input mb-2"
+                        onKeyDown={(e) => e.key === "Enter" && handleForgotSubmit()}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleForgotSubmit}
+                          disabled={forgotSending || !forgotEmail.trim()}
+                          className={clsx(
+                            "flex-1 h-7 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1",
+                            forgotSending || !forgotEmail.trim()
+                              ? "bg-bg-elevated text-text-tertiary cursor-not-allowed"
+                              : "bg-[#007AFF] text-white hover:bg-[#0062CC]",
+                          )}
+                        >
+                          {forgotSending && <Loader2 size={10} className="animate-spin" />}
+                          Send Reset Link
+                        </button>
+                        <button
+                          onClick={() => setShowForgotPassword(false)}
+                          className="h-7 px-3 rounded-lg text-[11px] text-text-secondary hover:bg-hover-overlay transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

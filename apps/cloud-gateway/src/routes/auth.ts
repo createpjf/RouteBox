@@ -7,6 +7,11 @@ import { createUser, authenticateUser, getUserById } from "../lib/users";
 import { signToken } from "../lib/jwt";
 import { claimReferral } from "../lib/referrals";
 import { jwtAuth } from "../middleware/jwt-auth";
+import { sql } from "../lib/db-cloud";
+import { sendPasswordResetEmail } from "../lib/email";
+import { sha256Hex } from "../lib/crypto";
+import { rateLimitForgotPassword } from "../middleware/rate-limit";
+import { log } from "../lib/logger";
 import type { CloudEnv } from "../types";
 
 const app = new Hono<CloudEnv>();
@@ -67,7 +72,13 @@ app.post("/register", async (c) => {
 
     // Process referral code if provided
     if (body.referralCode) {
-      await claimReferral(body.referralCode, user.id).catch(() => {});
+      await claimReferral(body.referralCode, user.id).catch((err) => {
+        log.warn("referral_claim_failed", {
+          userId: user.id,
+          referralCode: body.referralCode,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     }
 
     return c.json({
@@ -164,6 +175,142 @@ app.get("/me", jwtAuth, async (c) => {
       createdAt: profile.createdAt,
     },
   });
+});
+
+// ── POST /forgot-password ───────────────────────────────────────────────────
+
+app.post("/forgot-password", rateLimitForgotPassword, async (c) => {
+  const body = await c.req.json<{ email: string }>();
+
+  if (!body.email) {
+    return c.json(
+      { error: { message: "Email is required", type: "validation_error" } },
+      400,
+    );
+  }
+
+  // Always return success to prevent email enumeration
+  const respond = () => c.json({ success: true });
+
+  try {
+    // Cleanup expired tokens (older than 7 days)
+    await sql`
+      DELETE FROM password_reset_tokens WHERE expires_at < now() - interval '7 days'
+    `.catch((err) => {
+      log.warn("expired_token_cleanup_failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
+    // Rate limit: 1 request per email per 10 minutes
+    const [recent] = await sql`
+      SELECT 1 FROM password_reset_tokens prt
+      JOIN users u ON u.id = prt.user_id
+      WHERE u.email = ${body.email}
+        AND prt.created_at > now() - interval '10 minutes'
+      LIMIT 1
+    `;
+    if (recent) {
+      return respond();
+    }
+
+    // Look up user
+    const [user] = await sql`SELECT id, email FROM users WHERE email = ${body.email}`;
+    if (!user) {
+      return respond();
+    }
+
+    // Generate token
+    const rawToken = crypto.randomUUID();
+    const tokenHash = await sha256Hex(rawToken);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await sql`
+      INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+      VALUES (${user.id}, ${tokenHash}, ${expiresAt})
+    `;
+
+    // Build reset URL
+    const appUrl = process.env.APP_URL ?? "https://routebox.dev";
+    const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+
+    await sendPasswordResetEmail(user.email, resetUrl);
+    log.info("password_reset_requested", { userId: user.id });
+  } catch (err) {
+    log.error("forgot_password_error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return respond();
+});
+
+// ── POST /reset-password ────────────────────────────────────────────────────
+
+app.post("/reset-password", async (c) => {
+  const body = await c.req.json<{ token: string; newPassword: string }>();
+
+  if (!body.token || !body.newPassword) {
+    return c.json(
+      { error: { message: "Token and new password are required", type: "validation_error" } },
+      400,
+    );
+  }
+
+  if (body.newPassword.length < 6) {
+    return c.json(
+      { error: { message: "Password must be at least 6 characters", type: "validation_error" } },
+      400,
+    );
+  }
+  if (body.newPassword.length > 72) {
+    return c.json(
+      { error: { message: "Password too long (max 72 characters)", type: "validation_error" } },
+      400,
+    );
+  }
+
+  const tokenHash = await sha256Hex(body.token);
+
+  const [resetToken] = await sql`
+    SELECT prt.id, prt.user_id, prt.expires_at, prt.used_at
+    FROM password_reset_tokens prt
+    WHERE prt.token_hash = ${tokenHash}
+  `;
+
+  if (!resetToken) {
+    return c.json(
+      { error: { message: "Invalid or expired reset token", type: "auth_error" } },
+      400,
+    );
+  }
+
+  if (resetToken.used_at) {
+    return c.json(
+      { error: { message: "This reset token has already been used", type: "auth_error" } },
+      400,
+    );
+  }
+
+  if (new Date(resetToken.expires_at) < new Date()) {
+    return c.json(
+      { error: { message: "Invalid or expired reset token", type: "auth_error" } },
+      400,
+    );
+  }
+
+  // Hash new password and update
+  const passwordHash = await Bun.password.hash(body.newPassword, {
+    algorithm: "bcrypt",
+    cost: 10,
+  });
+
+  await sql`UPDATE users SET password_hash = ${passwordHash} WHERE id = ${resetToken.user_id}`;
+  await sql`UPDATE password_reset_tokens SET used_at = now() WHERE id = ${resetToken.id}`;
+
+  log.info("password_reset_completed", { userId: resetToken.user_id });
+
+  return c.json({ success: true });
 });
 
 export default app;
