@@ -49,11 +49,12 @@ export function useRealtimeStats(ready = true) {
   const wsRef = useRef<RouteBoxWebSocket | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load cached stats as initial state
+  // Load cached stats as initial state (only before live data arrives)
+  const connectedRef = useRef(false);
   useEffect(() => {
     loadCachedStats().then((cached) => {
-      if (cached && !wsRef.current) {
-        setStats(cached);
+      if (cached && !connectedRef.current) {
+        setStats((prev) => prev ?? cached);
         setStale(true);
       }
     });
@@ -67,7 +68,9 @@ export function useRealtimeStats(ready = true) {
     let lastId: string | undefined;
 
     // Mark as connected immediately for cloud mode
+    connectedRef.current = true;
     setConnected(true);
+    setStale(false);
 
     async function poll() {
       if (cancelled) return;
@@ -108,10 +111,11 @@ export function useRealtimeStats(ready = true) {
     wsRef.current = ws;
 
     ws.on("open", () => {
+      connectedRef.current = true;
       setConnected(true);
       setStale(false);
     });
-    ws.on("close", () => setConnected(false));
+    ws.on("close", () => { connectedRef.current = false; setConnected(false); });
 
     ws.on("stats", (data) => {
       const s = data as RealtimeStats;

@@ -31,7 +31,7 @@ export function HeroSection({ connected, stale, gatewayState, gatewayError, onOp
   } else if (gatewayState === "failed") {
     statusText = "Gateway failed";
     statusColor = "#FF3B30";
-  } else if (connected && stale) {
+  } else if (!connected && stale) {
     statusText = "Reconnecting…";
     statusColor = "#FF9500";
     showSpinner = true;
