@@ -24,7 +24,7 @@ export function RoutingPage({ stats, showToast }: RoutingPageProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [routingStrategy, setRoutingStrategy] = useState("smart_auto");
   const [copied, setCopied] = useState(false);
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const [preferences, setPreferences] = useState<ModelPreference[]>([]);
   const [showAddPref, setShowAddPref] = useState(false);
