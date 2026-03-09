@@ -1,0 +1,49 @@
+# AlertManager configuration
+# Configure receivers below to enable alert notifications.
+# Docs: https://prometheus.io/docs/alerting/latest/configuration/
+
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default'
+
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical'
+      repeat_interval: 1h
+
+receivers:
+  - name: 'default'
+    # Uncomment and configure one of the following:
+
+    # ── Slack ───────────────────────────────────────────────────────
+    # slack_configs:
+    #   - api_url: '${SLACK_WEBHOOK_URL}'
+    #     channel: '#alerts'
+    #     title: '{{ .GroupLabels.alertname }}'
+    #     text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}'
+    #     send_resolved: true
+
+    # ── Email ───────────────────────────────────────────────────────
+    # email_configs:
+    #   - to: 'admin@routebox.dev'
+    #     from: 'alerts@routebox.dev'
+    #     smarthost: 'smtp.example.com:587'
+    #     auth_username: '...'
+    #     auth_password: '...'
+
+    webhook_configs:
+      - url: 'http://gateway:3001/admin/alert-webhook'
+        send_resolved: true
+
+  - name: 'critical'
+    # Same as default but with shorter repeat interval (configured in route above)
+    webhook_configs:
+      - url: 'http://gateway:3001/admin/alert-webhook'
+        send_resolved: true

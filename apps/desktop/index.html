@@ -10,6 +10,20 @@
     <style>
       html, body { background: transparent; margin: 0; padding: 0; overflow: hidden; }
     </style>
+    <script>
+      // Sync theme before first paint to avoid FOUC (F7)
+      (function() {
+        try {
+          var t = localStorage.getItem('routebox-theme') || 'dark';
+          document.documentElement.dataset.themeMode = t;
+          if (t === 'auto') {
+            document.documentElement.dataset.theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          } else {
+            document.documentElement.dataset.theme = t;
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

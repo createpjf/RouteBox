@@ -165,6 +165,7 @@ const LIMITS = {
   account:        { windowMs: 60_000, max: 500  } as RateLimitConfig, // 500 req/min per userId
   billing:        { windowMs: 60_000, max: 10   } as RateLimitConfig, // 10 req/min per IP
   forgotPassword: { windowMs: 600_000, max: 5   } as RateLimitConfig, // 5 req/10min per IP
+  resetPassword:  { windowMs: 3600_000, max: 10 } as RateLimitConfig, // 10 req/hour per IP
 };
 
 /** Per-plan API rate limits */
@@ -277,6 +278,35 @@ export async function rateLimitForgotPassword(c: Context, next: Next) {
 
   c.header("X-RateLimit-Remaining", String(result.remaining));
   await next();
+}
+
+/** Rate limit reset-password by client IP (prevent brute-force token enumeration) */
+export async function rateLimitResetPassword(c: Context, next: Next) {
+  const key = getClientIP(c);
+  const result = await checkLimit("resetPassword", key, LIMITS.resetPassword, Date.now());
+
+  if (!result.allowed) {
+    log.warn("rate_limit_hit", { limiter: "resetPassword", key, retryAfterMs: result.retryAfterMs });
+    incCounter("rate_limit_hits_total", { limiter: "resetPassword" });
+    return rejectWithLimit(c, result.retryAfterMs);
+  }
+
+  c.header("X-RateLimit-Remaining", String(result.remaining));
+  await next();
+}
+
+/** H4: Per-email rate limit for forgot-password (callable, not middleware) */
+export async function rateLimitForgotPasswordByEmail(
+  email: string,
+): Promise<{ allowed: boolean }> {
+  const config: RateLimitConfig = { windowMs: 3600_000, max: 3 }; // 3 req/hour per email
+  const normalizedEmail = email.trim().toLowerCase();
+  const result = await checkLimit("forgotPasswordEmail", normalizedEmail, config, Date.now());
+  if (!result.allowed) {
+    log.warn("rate_limit_hit", { limiter: "forgotPasswordEmail", key: normalizedEmail });
+    incCounter("rate_limit_hits_total", { limiter: "forgotPasswordEmail" });
+  }
+  return { allowed: result.allowed };
 }
 
 /** Rate limit billing routes by userId (or IP for public endpoints) */

@@ -1,6 +1,8 @@
 // ---------------------------------------------------------------------------
 // Account routes — GET /account/me, /account/balance, /account/transactions,
-//                  /account/api-keys
+//                  /account/api-keys, POST /account/change-password,
+//                  PATCH /account/profile, GET /account/subscription,
+//                  DELETE /account, PATCH /account/api-keys/:id
 // ---------------------------------------------------------------------------
 
 import { Hono } from "hono";
@@ -10,6 +12,7 @@ import { getOrCreateReferralCode } from "../lib/referrals";
 import { isAdminEmail } from "../middleware/admin-auth";
 import { sha256Hex } from "../lib/crypto";
 import { sql } from "../lib/db-cloud";
+import { log } from "../lib/logger";
 import type { CloudEnv } from "../types";
 
 const app = new Hono<CloudEnv>();
@@ -171,6 +174,33 @@ app.post("/api-keys", async (c) => {
   );
 });
 
+// ── PATCH /api-keys/:id — rename an API key (P10) ────────────────────────────
+
+app.patch("/api-keys/:id", async (c) => {
+  const userId = c.get("userId") as string;
+  const id = c.req.param("id");
+  const body = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
+
+  if (!body.name || !body.name.trim()) {
+    return c.json(
+      { error: { message: "Name is required", type: "validation_error" } },
+      400,
+    );
+  }
+
+  const name = body.name.trim().substring(0, 100);
+  const result = await sql`
+    UPDATE api_keys SET name = ${name}
+    WHERE id = ${id} AND user_id = ${userId} AND is_active = true
+  `;
+
+  if (result.count === 0) {
+    return c.json({ error: { message: "API key not found", type: "not_found" } }, 404);
+  }
+
+  return c.json({ success: true, name });
+});
+
 // ── DELETE /api-keys/:id — deactivate an API key ─────────────────────────────
 
 app.delete("/api-keys/:id", async (c) => {
@@ -233,6 +263,195 @@ app.get("/requests", async (c) => {
       status: r.status === "ok" ? "success" : r.status === "fallback" ? "fallback" : "error",
     })),
   });
+});
+
+// ── POST /change-password — change password (P1) ─────────────────────────────
+
+app.post("/change-password", async (c) => {
+  const userId = c.get("userId") as string;
+  const body = await c.req.json<{ currentPassword: string; newPassword: string }>();
+
+  if (!body.currentPassword || !body.newPassword) {
+    return c.json(
+      { error: { message: "Current password and new password are required", type: "validation_error" } },
+      400,
+    );
+  }
+
+  if (body.newPassword.length < 6) {
+    return c.json(
+      { error: { message: "New password must be at least 6 characters", type: "validation_error" } },
+      400,
+    );
+  }
+  if (body.newPassword.length > 72) {
+    return c.json(
+      { error: { message: "New password too long (max 72 characters)", type: "validation_error" } },
+      400,
+    );
+  }
+
+  // Verify current password
+  const [user] = await sql`SELECT password_hash FROM users WHERE id = ${userId}`;
+  if (!user) {
+    return c.json({ error: { message: "User not found", type: "not_found" } }, 404);
+  }
+
+  const valid = await Bun.password.verify(body.currentPassword, user.password_hash);
+  if (!valid) {
+    return c.json(
+      { error: { message: "Current password is incorrect", type: "auth_error" } },
+      401,
+    );
+  }
+
+  // Hash and update
+  const newHash = await Bun.password.hash(body.newPassword, {
+    algorithm: "bcrypt",
+    cost: 12,
+  });
+  await sql`UPDATE users SET password_hash = ${newHash}, updated_at = now() WHERE id = ${userId}`;
+
+  log.info("password_changed", { userId });
+  return c.json({ success: true });
+});
+
+// ── PATCH /profile — update display name / email (P4) ────────────────────────
+
+app.patch("/profile", async (c) => {
+  const userId = c.get("userId") as string;
+  const body = await c.req.json<{ displayName?: string; email?: string }>().catch(() => ({ displayName: undefined, email: undefined }));
+
+  const updates: string[] = [];
+
+  if (body.displayName !== undefined) {
+    const name = body.displayName.trim().substring(0, 100);
+    await sql`UPDATE users SET display_name = ${name || null}, updated_at = now() WHERE id = ${userId}`;
+    updates.push("displayName");
+  }
+
+  if (body.email !== undefined) {
+    const email = body.email.trim().toLowerCase();
+    if (!email || email.length > 254) {
+      return c.json(
+        { error: { message: "Invalid email", type: "validation_error" } },
+        400,
+      );
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return c.json(
+        { error: { message: "Invalid email format", type: "validation_error" } },
+        400,
+      );
+    }
+    try {
+      await sql`UPDATE users SET email = ${email}, updated_at = now() WHERE id = ${userId}`;
+      updates.push("email");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("unique") || msg.includes("duplicate")) {
+        return c.json(
+          { error: { message: "Email already in use", type: "conflict_error" } },
+          409,
+        );
+      }
+      throw err;
+    }
+  }
+
+  if (updates.length === 0) {
+    return c.json(
+      { error: { message: "No fields to update", type: "validation_error" } },
+      400,
+    );
+  }
+
+  // Return updated profile
+  const profile = await getUserById(userId);
+  return c.json({
+    displayName: profile?.displayName ?? null,
+    email: profile?.email ?? "",
+  });
+});
+
+// ── GET /subscription — subscription details (P3) ────────────────────────────
+
+app.get("/subscription", async (c) => {
+  const userId = c.get("userId") as string;
+
+  const [sub] = await sql`
+    SELECT plan, status, current_period_start, current_period_end, created_at, updated_at
+    FROM subscriptions
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+
+  if (!sub) {
+    return c.json({ subscription: null });
+  }
+
+  return c.json({
+    subscription: {
+      plan: sub.plan,
+      status: sub.status,
+      currentPeriodStart: sub.current_period_start,
+      currentPeriodEnd: sub.current_period_end,
+      createdAt: sub.created_at,
+    },
+  });
+});
+
+// ── DELETE / — delete account (P9) ───────────────────────────────────────────
+
+app.delete("/", async (c) => {
+  const userId = c.get("userId") as string;
+  const body = await c.req.json<{ password: string }>().catch(() => ({ password: "" }));
+
+  if (!body.password) {
+    return c.json(
+      { error: { message: "Password is required to confirm account deletion", type: "validation_error" } },
+      400,
+    );
+  }
+
+  // Verify password
+  const [user] = await sql`SELECT password_hash, email FROM users WHERE id = ${userId}`;
+  if (!user) {
+    return c.json({ error: { message: "User not found", type: "not_found" } }, 404);
+  }
+
+  const valid = await Bun.password.verify(body.password, user.password_hash);
+  if (!valid) {
+    return c.json(
+      { error: { message: "Incorrect password", type: "auth_error" } },
+      401,
+    );
+  }
+
+  // Cancel active subscriptions
+  const [activeSub] = await sql`
+    SELECT polar_subscription_id FROM subscriptions
+    WHERE user_id = ${userId} AND status = 'active'
+  `;
+  if (activeSub?.polar_subscription_id) {
+    try {
+      const { cancelSubscription } = await import("../lib/polar");
+      await cancelSubscription(activeSub.polar_subscription_id as string);
+    } catch (err) {
+      log.warn("account_delete_cancel_sub_failed", {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // Delete user (CASCADE will handle related tables)
+  await sql`DELETE FROM users WHERE id = ${userId}`;
+  log.info("account_deleted", { userId, email: user.email });
+
+  return c.json({ success: true });
 });
 
 export default app;

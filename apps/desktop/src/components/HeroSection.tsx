@@ -1,4 +1,4 @@
-import { Settings, Loader2, MessageSquare, BookOpen } from "lucide-react";
+import { Settings, Loader2, MessageSquare, BookOpen, AlertTriangle } from "lucide-react";
 import { getGatewayMode } from "@/lib/constants";
 
 type GatewayState = "idle" | "checking" | "starting" | "running" | "failed";
@@ -8,12 +8,14 @@ interface HeroSectionProps {
   stale?: boolean;
   gatewayState?: GatewayState;
   gatewayError?: string | null;
+  balanceCents?: number;
   onOpenSettings: () => void;
   onOpenChat?: () => void;
   onShowOnboarding?: () => void;
+  onGoToAccount?: () => void;
 }
 
-export function HeroSection({ connected, stale, gatewayState, gatewayError, onOpenSettings, onOpenChat, onShowOnboarding }: HeroSectionProps) {
+export function HeroSection({ connected, stale, gatewayState, gatewayError, balanceCents, onOpenSettings, onOpenChat, onShowOnboarding, onGoToAccount }: HeroSectionProps) {
   const mode = getGatewayMode();
   const effectivelyOnline = connected || (mode === "cloud" && gatewayState === "running");
 
@@ -104,6 +106,19 @@ export function HeroSection({ connected, stale, gatewayState, gatewayError, onOp
         <div className="px-5 pb-2 -mt-1">
           <p className="text-[10px] text-[#FF3B30] leading-tight truncate">{shortError}</p>
         </div>
+      )}
+      {/* Low balance warning (P8) */}
+      {mode === "cloud" && balanceCents !== undefined && balanceCents < 100 && balanceCents >= 0 && (
+        <button
+          onClick={onGoToAccount}
+          className="mx-5 mb-2 px-3 py-1.5 rounded-lg flex items-center gap-2 text-left transition-colors hover:bg-[#FF9500]/15"
+          style={{ background: "rgba(255, 149, 0, 0.08)", border: "1px solid rgba(255, 149, 0, 0.15)" }}
+        >
+          <AlertTriangle size={12} strokeWidth={2} className="text-[#FF9500] shrink-0" />
+          <span className="text-[10px] text-[#FF9500] font-medium">
+            Low balance (${(balanceCents / 100).toFixed(2)}) — tap to add credits
+          </span>
+        </button>
       )}
     </div>
   );

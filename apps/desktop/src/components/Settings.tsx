@@ -57,19 +57,42 @@ export function Settings({ onClose }: SettingsProps) {
   // Cloud read-only info
   const [cloudUser, setCloudUser] = useState<{ email: string; plan: string } | null>(null);
 
-  // Theme state
-  const [theme, setTheme] = useState<"dark" | "light">(
-    () => (document.documentElement.dataset.theme as "dark" | "light") || "dark"
+  // Theme state — supports "auto" (follow system)
+  const [theme, setTheme] = useState<"dark" | "light" | "auto">(
+    () => (document.documentElement.dataset.themeMode as "dark" | "light" | "auto") || (document.documentElement.dataset.theme as "dark" | "light") || "dark"
   );
 
-  const handleSetTheme = useCallback(async (t: "dark" | "light") => {
-    setTheme(t);
+  const applyTheme = useCallback((t: "dark" | "light") => {
     document.documentElement.dataset.theme = t;
+  }, []);
+
+  const handleSetTheme = useCallback(async (t: "dark" | "light" | "auto") => {
+    setTheme(t);
+    document.documentElement.dataset.themeMode = t;
+    if (t === "auto") {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      applyTheme(prefersDark ? "dark" : "light");
+    } else {
+      applyTheme(t);
+    }
     try {
+      localStorage.setItem("routebox-theme", t);
       const store = await loadStore();
       await store.set("theme", t);
     } catch {}
-  }, []);
+  }, [applyTheme]);
+
+  // H3: Listen for system theme changes — always register + clean up to avoid leaked listeners
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => {
+      if (theme === "auto") {
+        applyTheme(e.matches ? "dark" : "light");
+      }
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [theme, applyTheme]);
 
   useEffect(() => {
     tauriInvoke<string>("get_token")
@@ -359,6 +382,18 @@ export function Settings({ onClose }: SettingsProps) {
               >
                 <Sun size={13} strokeWidth={1.75} />
                 Light
+              </button>
+              <button
+                onClick={() => handleSetTheme("auto")}
+                className={clsx(
+                  "flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-medium transition-colors",
+                  theme === "auto"
+                    ? "bg-bg-elevated shadow-sm text-text-primary"
+                    : "text-text-secondary hover:text-text-primary"
+                )}
+              >
+                <RefreshCw size={13} strokeWidth={1.75} />
+                Auto
               </button>
             </div>
           </div>
@@ -674,6 +709,29 @@ export function Settings({ onClose }: SettingsProps) {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Keyboard Shortcuts (P12) */}
+          <div>
+            <h3 className="section-header">Keyboard Shortcuts</h3>
+            <div className="glass-card-static overflow-hidden">
+              {[
+                { keys: "⌘⇧X", desc: "Open Spotlight" },
+                { keys: "⌘⇧R", desc: "Open Panel" },
+                { keys: "⌘⇧T", desc: "Translate" },
+                { keys: "⌘⇧S", desc: "Summarize" },
+                { keys: "⌘⇧E", desc: "Explain" },
+                { keys: "⌘⏎", desc: "Send in Spotlight" },
+                { keys: "Esc", desc: "Close Spotlight" },
+              ].map(({ keys, desc }) => (
+                <div key={keys} className="flex items-center justify-between h-9 px-3 border-b border-border-light last:border-b-0">
+                  <span className="text-[13px] text-text-primary">{desc}</span>
+                  <kbd className="text-[10px] font-mono text-text-tertiary bg-bg-elevated px-1.5 py-0.5 rounded border border-border">
+                    {keys}
+                  </kbd>
+                </div>
+              ))}
             </div>
           </div>
 

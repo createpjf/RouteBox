@@ -50,8 +50,8 @@ describe("creditsCheck", () => {
     expect(body.error.type).toBe("invalid_request_error");
   });
 
-  test("allows request when balance >= 50 cents", async () => {
-    mockBalanceCents = 50;
+  test("allows request when balance >= estimated cost (no body → default 10c)", async () => {
+    mockBalanceCents = 10;
     mockBonusCents = 0;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
@@ -61,8 +61,8 @@ describe("creditsCheck", () => {
     expect(res.status).toBe(200);
   });
 
-  test("returns 402 when balance < 50 cents and no bonus", async () => {
-    mockBalanceCents = 49;
+  test("returns 402 when balance < estimated cost (no body → default 10c)", async () => {
+    mockBalanceCents = 5;
     mockBonusCents = 0;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
@@ -72,7 +72,7 @@ describe("creditsCheck", () => {
     expect(res.status).toBe(402);
     const body = await res.json();
     expect(body.error.code).toBe("insufficient_credits");
-    expect(body.error.balance_cents).toBe(49);
+    expect(body.error.balance_cents).toBe(5);
   });
 
   test("returns 402 when balance and bonus are both 0", async () => {
@@ -87,7 +87,7 @@ describe("creditsCheck", () => {
   });
 
   test("402 response has correct structure", async () => {
-    mockBalanceCents = 10;
+    mockBalanceCents = 0;
     mockBonusCents = 0;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
@@ -102,7 +102,7 @@ describe("creditsCheck", () => {
 
   // ── Bonus credits scenarios ────────────────────────────────────────────────
 
-  test("allows request when balance=0 but bonus=200 (total >= 50)", async () => {
+  test("allows request when balance=0 but bonus=200", async () => {
     mockBalanceCents = 0;
     mockBonusCents = 200;
     const app = createApp();
@@ -113,9 +113,9 @@ describe("creditsCheck", () => {
     expect(res.status).toBe(200);
   });
 
-  test("returns 402 when balance=0 and bonus=30 (total < 50)", async () => {
+  test("returns 402 when total < estimated cost", async () => {
     mockBalanceCents = 0;
-    mockBonusCents = 30;
+    mockBonusCents = 5;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
       method: "POST",
@@ -126,9 +126,9 @@ describe("creditsCheck", () => {
     expect(body.error.code).toBe("insufficient_credits");
   });
 
-  test("allows when balance=20 and bonus=30 (total=50 >= threshold)", async () => {
-    mockBalanceCents = 20;
-    mockBonusCents = 30;
+  test("allows when total >= estimated cost (balance=5 + bonus=5 = 10c)", async () => {
+    mockBalanceCents = 5;
+    mockBonusCents = 5;
     const app = createApp();
     const res = await app.request("/v1/chat/completions", {
       method: "POST",

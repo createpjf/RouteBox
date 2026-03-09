@@ -1,7 +1,7 @@
-import React, { useState } from "react";
-import { Plus, Search, Trash2, Pin, XCircle } from "lucide-react";
+import React, { useState, useCallback } from "react";
+import { Plus, Search, Trash2, Pin, XCircle, Download } from "lucide-react";
 import clsx from "clsx";
-import type { ConversationSummary } from "../../lib/api";
+import { api, type ConversationSummary } from "../../lib/api";
 
 interface ChatSidebarProps {
   conversations: ConversationSummary[];
@@ -20,6 +20,48 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 }) => {
   const [search, setSearch] = useState("");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  const handleExport = useCallback(async (convId: string, format: "md" | "json") => {
+    try {
+      const conv = await api.getConversation(convId);
+      let content: string;
+      let filename: string;
+      const safeTitle = conv.title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+
+      if (format === "md") {
+        const lines = [`# ${conv.title}\n`];
+        for (const msg of conv.messages) {
+          const role = msg.role === "user" ? "**You**" : "**Assistant**";
+          lines.push(`### ${role}\n\n${msg.content}\n`);
+        }
+        content = lines.join("\n");
+        filename = `${safeTitle}.md`;
+      } else {
+        content = JSON.stringify({
+          title: conv.title,
+          model: conv.model,
+          exportedAt: new Date().toISOString(),
+          messages: conv.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            model: m.model,
+            cost: m.cost,
+            tokens: m.input_tokens + m.output_tokens,
+            timestamp: m.created_at,
+          })),
+        }, null, 2);
+        filename = `${safeTitle}.json`;
+      }
+
+      const blob = new Blob([content], { type: format === "md" ? "text/markdown" : "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent */ }
+  }, []);
 
   const filtered = conversations.filter(
     (c) => !search || c.title.toLowerCase().includes(search.toLowerCase()),
@@ -125,15 +167,27 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     {conv.title}
                   </span>
                   {(isHovered || isActive) && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(conv.id);
-                      }}
-                      className="flex items-center justify-center w-5 h-5 rounded-md hover:bg-accent-red/10 transition-colors shrink-0"
-                    >
-                      <Trash2 size={10} strokeWidth={1.75} className="text-text-tertiary hover:text-accent-red" />
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExport(conv.id, "md");
+                        }}
+                        className="flex items-center justify-center w-5 h-5 rounded-md hover:bg-hover-overlay transition-colors"
+                        title="Export as Markdown"
+                      >
+                        <Download size={9} strokeWidth={1.75} className="text-text-tertiary hover:text-text-secondary" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(conv.id);
+                        }}
+                        className="flex items-center justify-center w-5 h-5 rounded-md hover:bg-accent-red/10 transition-colors"
+                      >
+                        <Trash2 size={10} strokeWidth={1.75} className="text-text-tertiary hover:text-accent-red" />
+                      </button>
+                    </div>
                   )}
                 </button>
               );

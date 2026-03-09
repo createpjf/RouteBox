@@ -44,6 +44,7 @@ export function App() {
   const [cloudAnnouncement, setCloudAnnouncement] = useState<CloudAnnouncement | null>(null);
   const [announcementDismissed, setAnnouncementDismissed] = useState(false);
   const [gatewayRunningAt, setGatewayRunningAt] = useState(0);
+  const [cloudBalanceCents, setCloudBalanceCents] = useState<number | undefined>(undefined);
   const { stats, connected, stale, requestLog, alert, dismissAlert } = useRealtimeStats(tokenLoaded);
   const { toasts, showToast, dismissToast } = useToast();
 
@@ -193,9 +194,18 @@ export function App() {
         setCloudAnnouncement(res.announcement);
         setAnnouncementDismissed(false);
       }
-    }).catch(() => {
-      // Best-effort — silent on failure
-    });
+    }).catch(() => {});
+
+    // Load balance for low-balance warning (P8)
+    api.cloudGetBalance().then((res) => {
+      setCloudBalanceCents(res.total_cents);
+    }).catch(() => {});
+
+    // Poll balance every 30s
+    const balanceInterval = setInterval(() => {
+      api.cloudGetBalance().then((res) => setCloudBalanceCents(res.total_cents)).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(balanceInterval);
   }, [tokenLoaded]);
 
   // Auto-show onboarding for first-run users (only needs tokenLoaded, not connected)
@@ -271,6 +281,7 @@ export function App() {
           stale={stale}
           gatewayState={gatewayState}
           gatewayError={gatewayError}
+          balanceCents={cloudBalanceCents}
           onOpenSettings={() => setShowSettings(true)}
           onOpenChat={() => {
             import("@tauri-apps/api/core").then(({ invoke }) => invoke("open_chat")).catch(() => {});
@@ -279,6 +290,7 @@ export function App() {
             setShowOnboarding(true);
             setOnboardingDismissed(false);
           }}
+          onGoToAccount={() => setActiveTab("account")}
         />
         {alert && (
           <AlertBanner

@@ -1,6 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { LogOut, Zap, Copy, Gift, Crown, Wifi, Server, ArrowRight, Check, Loader2, Key, Plus, Trash2, Mail } from "lucide-react";
-import { api, type CloudApiKey } from "@/lib/api";
+import {
+  LogOut, Zap, Copy, Gift, Crown, Wifi, Server, ArrowRight, Check, Loader2,
+  Key, Plus, Trash2, Mail, Lock, User, CreditCard, AlertTriangle, Pencil,
+  ChevronDown, ChevronUp,
+} from "lucide-react";
+import { api, type CloudApiKey, type CloudTransaction, type CloudSubscriptionInfo } from "@/lib/api";
 import clsx from "clsx";
 import {
   getGatewayMode,
@@ -46,6 +50,8 @@ function CloudApiKeySection() {
   const [newKey, setNewKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); }, []);
 
@@ -76,6 +82,16 @@ function CloudApiKeySection() {
       await api.cloudDeleteApiKey(id);
       await loadKeys();
     } catch (err) { console.warn("Failed to delete API key:", err); }
+  };
+
+  const handleRename = async (id: string) => {
+    if (!editName.trim()) return;
+    try {
+      await api.cloudRenameApiKey(id, editName.trim());
+      setEditingId(null);
+      setEditName("");
+      await loadKeys();
+    } catch (err) { console.warn("Failed to rename API key:", err); }
   };
 
   const handleCopyNew = async () => {
@@ -132,7 +148,27 @@ function CloudApiKeySection() {
               <code className="flex-1 text-[10px] font-mono text-text-primary truncate">
                 {k.keyPrefix}...
               </code>
-              <span className="text-[9px] text-text-tertiary shrink-0">{k.name}</span>
+              {editingId === k.id ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleRename(k.id)}
+                    className="text-[9px] bg-bg-input border border-border rounded px-1.5 py-0.5 w-20 outline-none"
+                    autoFocus
+                  />
+                  <button onClick={() => handleRename(k.id)} className="text-[#34C759]"><Check size={10} /></button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setEditingId(k.id); setEditName(k.name); }}
+                  className="text-[9px] text-text-tertiary shrink-0 hover:text-text-secondary flex items-center gap-0.5"
+                  title="Rename"
+                >
+                  {k.name} <Pencil size={8} />
+                </button>
+              )}
               <button
                 onClick={() => handleDelete(k.id)}
                 className="h-5 w-5 flex items-center justify-center rounded hover:bg-accent-red/10 transition-colors shrink-0"
@@ -147,6 +183,404 @@ function CloudApiKeySection() {
     </div>
   );
 }
+
+// ── Change Password Form (P1) ────────────────────────────────────────────────
+
+function ChangePasswordForm({ showToast }: { showToast?: (msg: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!currentPw || !newPw) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.cloudChangePassword(currentPw, newPw);
+      setCurrentPw("");
+      setNewPw("");
+      setOpen(false);
+      showToast?.("Password changed successfully");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to change password");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border-light">
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls="section-change-password"
+        className="flex items-center gap-1.5 text-[11px] text-text-secondary hover:text-text-primary font-medium w-full"
+      >
+        <Lock size={12} strokeWidth={1.75} />
+        Change Password
+        {open ? <ChevronUp size={10} className="ml-auto" /> : <ChevronDown size={10} className="ml-auto" />}
+      </button>
+      {open && (
+        <div id="section-change-password" className="mt-2 space-y-2">
+          <input
+            type="password"
+            value={currentPw}
+            onChange={(e) => { setCurrentPw(e.target.value); setError(null); }}
+            placeholder="Current password"
+            className="input"
+          />
+          <input
+            type="password"
+            value={newPw}
+            onChange={(e) => { setNewPw(e.target.value); setError(null); }}
+            placeholder="New password (min 6 chars)"
+            className="input"
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          />
+          {error && <p className="text-[10px] text-accent-red">{error}</p>}
+          <button
+            onClick={handleSubmit}
+            disabled={saving || !currentPw || !newPw || newPw.length < 6}
+            className={clsx(
+              "w-full h-7 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1",
+              saving || !currentPw || !newPw || newPw.length < 6
+                ? "bg-bg-elevated text-text-tertiary cursor-not-allowed"
+                : "bg-[#007AFF] text-white hover:bg-[#0062CC]",
+            )}
+          >
+            {saving && <Loader2 size={10} className="animate-spin" />}
+            Update Password
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Edit Profile Form (P4) ───────────────────────────────────────────────────
+
+function EditProfileForm({ email, displayName, showToast, onUpdate }: {
+  email: string;
+  displayName: string | null;
+  showToast?: (msg: string) => void;
+  onUpdate: (data: { email?: string; displayName?: string }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(displayName ?? "");
+  const [newEmail, setNewEmail] = useState(email);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const updates: { displayName?: string; email?: string } = {};
+      if (name !== (displayName ?? "")) updates.displayName = name;
+      if (newEmail !== email) updates.email = newEmail;
+      if (Object.keys(updates).length === 0) {
+        setOpen(false);
+        return;
+      }
+      await api.cloudUpdateProfile(updates);
+      onUpdate(updates);
+      setOpen(false);
+      showToast?.("Profile updated");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update profile");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border-light">
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls="section-edit-profile"
+        className="flex items-center gap-1.5 text-[11px] text-text-secondary hover:text-text-primary font-medium w-full"
+      >
+        <User size={12} strokeWidth={1.75} />
+        Edit Profile
+        {open ? <ChevronUp size={10} className="ml-auto" /> : <ChevronDown size={10} className="ml-auto" />}
+      </button>
+      {open && (
+        <div id="section-edit-profile" className="mt-2 space-y-2">
+          <div>
+            <label className="block text-[10px] text-text-tertiary mb-0.5">Display Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-text-tertiary mb-0.5">Email</label>
+            <input
+              type="email"
+              value={newEmail}
+              onChange={(e) => { setNewEmail(e.target.value); setError(null); }}
+              placeholder="you@example.com"
+              className="input"
+            />
+          </div>
+          {error && <p className="text-[10px] text-accent-red">{error}</p>}
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            className={clsx(
+              "w-full h-7 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1",
+              saving
+                ? "bg-bg-elevated text-text-tertiary cursor-not-allowed"
+                : "bg-[#007AFF] text-white hover:bg-[#0062CC]",
+            )}
+          >
+            {saving && <Loader2 size={10} className="animate-spin" />}
+            Save Changes
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Subscription Card (P3) ───────────────────────────────────────────────────
+
+function SubscriptionCard({ plan }: { plan: string }) {
+  const [sub, setSub] = useState<CloudSubscriptionInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.cloudGetSubscription()
+      .then((res) => setSub(res.subscription))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (plan === "starter" || loading) return null;
+  if (!sub) return null;
+
+  const nextBilling = sub.currentPeriodEnd
+    ? new Date(sub.currentPeriodEnd).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : null;
+  const isCanceled = sub.status === "canceled";
+
+  return (
+    <div className="mb-3 p-2.5 rounded-xl bg-bg-elevated">
+      <div className="flex items-center gap-1.5 mb-1">
+        <CreditCard size={12} strokeWidth={1.75} className="text-text-secondary" />
+        <p className="text-[11px] text-text-secondary font-medium">Subscription</p>
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[12px] text-text-primary font-medium capitalize">{sub.plan} Plan</p>
+          {nextBilling && (
+            <p className="text-[10px] text-text-tertiary">
+              {isCanceled ? "Active until" : "Next billing"}: {nextBilling}
+            </p>
+          )}
+        </div>
+        {isCanceled ? (
+          <span className="text-[9px] text-[#FF9500] bg-[#FF9500]/10 px-1.5 py-0.5 rounded-md font-medium">
+            Canceled
+          </span>
+        ) : (
+          <span className="text-[9px] text-[#34C759] bg-[#34C759]/10 px-1.5 py-0.5 rounded-md font-medium">
+            Active
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Transaction History (P6) ─────────────────────────────────────────────────
+
+function TransactionHistory() {
+  const [transactions, setTransactions] = useState<CloudTransaction[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
+  const loadTransactions = useCallback(async (offset = 0) => {
+    setLoading(true);
+    try {
+      const res = await api.cloudGetTransactions(20, offset);
+      if (offset === 0) {
+        setTransactions(res.transactions);
+      } else {
+        setTransactions((prev) => [...prev, ...res.transactions]);
+      }
+      setHasMore(res.transactions.length === 20);
+    } catch { /* silent */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (open && transactions.length === 0) loadTransactions();
+  }, [open]);
+
+  const typeColor = (type: string) => {
+    if (type === "deposit" || type === "bonus") return "text-[#34C759]";
+    if (type === "usage") return "text-text-secondary";
+    return "text-[#FF9500]";
+  };
+
+  const typeLabel = (type: string) => {
+    if (type === "deposit") return "Deposit";
+    if (type === "usage") return "Usage";
+    if (type === "bonus") return "Bonus";
+    if (type === "refund") return "Refund";
+    return type;
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border-light">
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls="section-transaction-history"
+        className="flex items-center gap-1.5 text-[11px] text-text-secondary hover:text-text-primary font-medium w-full"
+      >
+        <CreditCard size={12} strokeWidth={1.75} />
+        Transaction History
+        {open ? <ChevronUp size={10} className="ml-auto" /> : <ChevronDown size={10} className="ml-auto" />}
+      </button>
+      {open && (
+        <div id="section-transaction-history" className="mt-2 max-h-[200px] overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
+          {transactions.length === 0 && !loading ? (
+            <p className="text-[10px] text-text-tertiary text-center py-3">No transactions yet</p>
+          ) : (
+            <div className="space-y-0.5">
+              {transactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-bg-elevated">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className={clsx("text-[9px] font-semibold uppercase", typeColor(tx.type))}>
+                        {typeLabel(tx.type)}
+                      </span>
+                      {tx.model && (
+                        <span className="text-[9px] text-text-tertiary font-mono truncate max-w-[100px]">
+                          {tx.model}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[9px] text-text-tertiary truncate">
+                      {tx.description ?? new Date(tx.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className={clsx(
+                    "text-[11px] font-medium tabular-nums shrink-0 ml-2",
+                    tx.amountCents >= 0 ? "text-[#34C759]" : "text-text-primary",
+                  )}>
+                    {tx.amountCents >= 0 ? "+" : ""}{(tx.amountCents / 100).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {loading && (
+            <div className="flex justify-center py-2">
+              <Loader2 size={12} className="animate-spin text-text-tertiary" />
+            </div>
+          )}
+          {hasMore && !loading && transactions.length > 0 && (
+            <button
+              onClick={() => loadTransactions(transactions.length)}
+              className="w-full text-[10px] text-[#ff4d00] hover:underline py-1.5"
+            >
+              Load more
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Delete Account (P9) ──────────────────────────────────────────────────────
+
+function DeleteAccountSection({ onLogout, showToast }: { onLogout: () => void; showToast?: (msg: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canDelete = password.length >= 6 && confirmText === "DELETE";
+
+  const handleDelete = async () => {
+    if (!canDelete) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.cloudDeleteAccount(password);
+      showToast?.("Account deleted");
+      onLogout();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete account");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border-light">
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls="section-delete-account"
+        className="flex items-center gap-1.5 text-[11px] text-accent-red/70 hover:text-accent-red font-medium w-full"
+      >
+        <AlertTriangle size={12} strokeWidth={1.75} />
+        Delete Account
+        {open ? <ChevronUp size={10} className="ml-auto" /> : <ChevronDown size={10} className="ml-auto" />}
+      </button>
+      {open && (
+        <div id="section-delete-account" className="mt-2 p-2.5 rounded-xl border border-accent-red/20 bg-accent-red/5">
+          <p className="text-[10px] text-text-secondary mb-2">
+            This will permanently delete your account, all data, and cancel any active subscription. This cannot be undone.
+          </p>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError(null); }}
+            placeholder="Enter your password"
+            className="input mb-1.5"
+          />
+          <input
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder='Type "DELETE" to confirm'
+            className="input mb-1.5"
+          />
+          {error && <p className="text-[10px] text-accent-red mb-1.5">{error}</p>}
+          <button
+            onClick={handleDelete}
+            disabled={!canDelete || deleting}
+            className={clsx(
+              "w-full h-7 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1",
+              !canDelete || deleting
+                ? "bg-bg-elevated text-text-tertiary cursor-not-allowed"
+                : "bg-accent-red text-white hover:bg-accent-red/90",
+            )}
+          >
+            {deleting && <Loader2 size={10} className="animate-spin" />}
+            Permanently Delete Account
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main AccountPage ─────────────────────────────────────────────────────────
 
 interface AccountPageProps {
   onCloudLoginSuccess?: () => void;
@@ -298,6 +732,9 @@ export function AccountPage({ onCloudLoginSuccess, gatewayRunningAt, onGoToSetti
                 </button>
               )}
 
+              {/* Subscription Card (P3) */}
+              <SubscriptionCard plan={auth.cloudUser.plan} />
+
               {/* Plan + Balance */}
               <div className="flex gap-2 mb-3">
                 <div className="flex-1 bg-bg-elevated rounded-lg p-2.5">
@@ -320,6 +757,19 @@ export function AccountPage({ onCloudLoginSuccess, gatewayRunningAt, onGoToSetti
                   </p>
                 </div>
               </div>
+
+              {/* Low balance warning (P8) */}
+              {auth.cloudUser.balanceCents < 100 && auth.cloudUser.balanceCents >= 0 && (
+                <div className="mb-3 p-2 rounded-lg bg-[#FF9500]/10 border border-[#FF9500]/20 flex items-center gap-2">
+                  <AlertTriangle size={14} strokeWidth={1.75} className="text-[#FF9500] shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] text-[#FF9500] font-semibold">Low balance</p>
+                    <p className="text-[10px] text-text-secondary">
+                      Add credits to avoid request failures.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Connect Your App */}
               <div className="mb-3 p-2.5 rounded-xl" style={{ background: "var(--color-bg-row-hover)" }}>
@@ -397,6 +847,23 @@ export function AccountPage({ onCloudLoginSuccess, gatewayRunningAt, onGoToSetti
                   </p>
                 </div>
               )}
+
+              {/* Transaction History (P6) */}
+              <TransactionHistory />
+
+              {/* Edit Profile (P4) */}
+              <EditProfileForm
+                email={auth.cloudUser.email}
+                displayName={null}
+                showToast={showToast}
+                onUpdate={() => { /* refresh handled by auth hook */ }}
+              />
+
+              {/* Change Password (P1) */}
+              <ChangePasswordForm showToast={showToast} />
+
+              {/* Delete Account (P9) */}
+              <DeleteAccountSection onLogout={auth.handleCloudLogout} showToast={showToast} />
 
               {auth.cloudError && <p className="mt-2 text-[10px] text-accent-red">{auth.cloudError}</p>}
             </>

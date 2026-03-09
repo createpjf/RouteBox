@@ -80,8 +80,30 @@ export function useStreamChat(): UseStreamChatReturn {
         });
 
         if (!res.ok || !res.body) {
-          const err = await res.text().catch(() => "Stream error");
-          throw new Error(err);
+          const errText = await res.text().catch(() => "");
+          let errMsg = `Request failed (${res.status})`;
+          try {
+            const errJson = JSON.parse(errText);
+            const apiErr = errJson?.error;
+            if (typeof apiErr === "string") {
+              errMsg = apiErr;
+            } else if (apiErr?.message) {
+              errMsg = apiErr.message;
+            }
+          } catch {
+            if (errText) errMsg = errText;
+          }
+
+          // Add actionable context based on status code
+          if (res.status === 402) {
+            errMsg = `Insufficient credits. ${errMsg.replace(/\.\s*$/, "")}. Please add credits at routebox.cloud or in the main app's Account tab.`;
+          } else if (res.status === 429) {
+            errMsg = `Rate limit reached. ${errMsg.replace(/\.\s*$/, "")}. Please wait a moment and try again.`;
+          } else if (res.status === 503) {
+            errMsg = `Service temporarily unavailable. ${errMsg.replace(/\.\s*$/, "")}. The provider may be experiencing issues.`;
+          }
+
+          throw new Error(errMsg);
         }
 
         const reader = res.body.getReader();

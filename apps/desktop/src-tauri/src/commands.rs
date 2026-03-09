@@ -384,10 +384,11 @@ pub async fn is_gateway_running(app: tauri::AppHandle) -> Result<bool, String> {
 }
 
 fn generate_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-    let pid = std::process::id() as u128;
-    format!("rb_{:x}{:x}", nanos, pid ^ nanos.wrapping_mul(6364136223846793005))
+    // C4: Use crypto-secure random bytes instead of time+PID
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes).expect("failed to generate random bytes");
+    let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    format!("rb_{hex}")
 }
 
 fn which_bun() -> Option<String> {

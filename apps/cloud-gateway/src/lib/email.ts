@@ -9,6 +9,29 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
+const MAX_EMAIL_RETRIES = 2;
+const RETRY_DELAY_MS = 1000;
+
+/** Send email with retry (up to MAX_EMAIL_RETRIES attempts) */
+async function sendWithRetry(
+  params: Parameters<InstanceType<typeof Resend>["emails"]["send"]>[0],
+): Promise<void> {
+  if (!resend) return;
+
+  for (let attempt = 0; attempt <= MAX_EMAIL_RETRIES; attempt++) {
+    const { error } = await resend.emails.send(params);
+    if (!error) return;
+
+    if (attempt < MAX_EMAIL_RETRIES) {
+      log.warn("email_send_retry", { to: params.to, attempt: attempt + 1, error: error.message });
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+    } else {
+      log.error("email_send_failed", { to: params.to, error: error.message, attempts: attempt + 1 });
+      throw new Error(`Failed to send email after ${attempt + 1} attempts: ${error.message}`);
+    }
+  }
+}
+
 export async function sendPasswordResetEmail(
   to: string,
   resetUrl: string,
@@ -18,7 +41,7 @@ export async function sendPasswordResetEmail(
     return;
   }
 
-  const { error } = await resend.emails.send({
+  await sendWithRetry({
     from: "RouteBox <noreply@routebox.dev>",
     to,
     subject: "Reset your RouteBox password",
@@ -37,11 +60,6 @@ export async function sendPasswordResetEmail(
       </div>
     `,
   });
-
-  if (error) {
-    log.error("email_send_failed", { to, error: error.message });
-    throw new Error(`Failed to send email: ${error.message}`);
-  }
 
   log.info("email_sent", { to, type: "password_reset" });
 }
@@ -70,17 +88,19 @@ export async function sendAdminAlert(
   }
 
   for (const to of adminEmails) {
-    const { error } = await resend.emails.send({
-      from: "RouteBox Alerts <alerts@routebox.dev>",
-      to,
-      subject: `[RouteBox] ${subject}`,
-      html,
-    });
-
-    if (error) {
-      log.error("admin_alert_send_failed", { to, error: error.message });
-    } else {
+    try {
+      await sendWithRetry({
+        from: "RouteBox Alerts <alerts@routebox.dev>",
+        to,
+        subject: `[RouteBox] ${subject}`,
+        html,
+      });
       log.info("admin_alert_sent", { to, subject });
+    } catch (err) {
+      log.error("admin_alert_send_failed", {
+        to,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

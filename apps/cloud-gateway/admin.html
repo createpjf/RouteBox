@@ -29,7 +29,7 @@
     .nav-item:hover { color: var(--text); background: var(--surface2); }
     .nav-item.active { color: var(--accent); background: var(--accent-soft); border-left: 2px solid var(--accent); padding-left: 18px; }
     .nav-section { font-size: 10px; text-transform: uppercase; color: var(--muted); padding: 12px 16px 6px; letter-spacing: 0.8px; font-weight: 600; opacity: 0.7; }
-    .main { margin-left: 220px; flex: 1; padding: 24px; }
+    .main { margin-left: 220px; flex: 1; padding: 24px; overflow-x: auto; }
 
     /* Auth overlay */
     .auth-overlay { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 100; }
@@ -50,8 +50,11 @@
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
     td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; white-space: nowrap; }
+    .table-wrap { overflow-x: auto; }
     tr:hover td { background: var(--surface2); }
     .truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+    .loading-placeholder { padding: 24px; text-align: center; color: var(--muted); font-size: 14px; }
+    .chart-error { padding: 12px; text-align: center; color: var(--muted); font-size: 13px; }
 
     /* Badges */
     .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
@@ -108,6 +111,7 @@
     .mb-2 { margin-bottom: 8px; }
     .flex-between { display: flex; align-items: center; justify-content: space-between; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" onerror="window.__chartJsFailed=true"></script>
 </head>
 <body>
 
@@ -161,6 +165,18 @@
         <div class="flex-between mb-2"><strong>Plan Distribution</strong></div>
         <div id="planStats"></div>
       </div>
+      <!-- Charts Row 1: Core metrics -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">Daily Requests & Active Users (30d)</div><canvas id="chartDailyRequests"></canvas></div>
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">Daily Revenue (30d)</div><canvas id="chartRevenue"></canvas></div>
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">Daily New Registrations (30d)</div><canvas id="chartRegistrations"></canvas></div>
+      </div>
+      <!-- Charts Row 2: Distribution -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">Top 10 Models by Requests</div><canvas id="chartModelUsage"></canvas></div>
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">Provider Traffic Distribution</div><canvas id="chartProviderDist"></canvas></div>
+        <div class="card"><div class="stat-label" style="margin-bottom:8px">User Plan Distribution</div><canvas id="chartPlanDist"></canvas></div>
+      </div>
     </div>
 
     <!-- Users -->
@@ -171,15 +187,17 @@
       </div>
       <div class="search-bar">
         <input id="userSearch" class="input" placeholder="Search by email..." />
-        <button class="btn" onclick="loadUsers()">Search</button>
+        <button class="btn" onclick="usersOffset=0;loadUsers()">Search</button>
       </div>
       <div class="card">
+        <div class="table-wrap">
         <table>
           <thead><tr>
             <th>Email</th><th>Plan</th><th>Status</th><th>Balance</th><th>Deposited</th><th>Used</th><th>Requests</th><th>Joined</th><th>Actions</th>
           </tr></thead>
           <tbody id="usersBody"></tbody>
         </table>
+        </div>
         <div class="pagination">
           <span id="usersPagInfo"></span>
           <button class="btn btn-sm" onclick="usersPage(-1)">Prev</button>
@@ -273,7 +291,8 @@
     <!-- Subscription Plans Config -->
     <div id="page-plans-config" class="hidden">
       <div class="page-title">Subscription Plans — Polar Configuration</div>
-      <p class="text-muted mb-2" style="font-size:13px">Configure the Polar Product IDs for each subscription tier. Changes take effect immediately but reset on server restart — update <code>.env</code> for persistence.</p>
+      <div style="background:rgba(234,179,8,0.1);border:1px solid var(--yellow);border-radius:var(--radius);padding:8px 12px;margin-bottom:12px;font-size:13px;color:var(--text)">Changes take effect immediately but <strong>reset on server restart</strong> — update <code>.env</code> for persistence.</div>
+      <p class="text-muted mb-2" style="font-size:13px">Configure the Polar Product IDs for each subscription tier.</p>
       <div id="plansConfigCards"></div>
     </div>
 
@@ -296,6 +315,25 @@
       <div class="flex-between">
         <div class="page-title">Model Registry</div>
         <button class="btn btn-accent" onclick="showAddModel()">+ Add Model</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+        <select id="filterProvider" class="input" style="width:140px" onchange="renderModels()">
+          <option value="">All Providers</option>
+        </select>
+        <select id="filterStatus" class="input" style="width:130px" onchange="renderModels()">
+          <option value="">All Status</option>
+          <option value="active">active</option>
+          <option value="beta">beta</option>
+          <option value="deprecated">deprecated</option>
+          <option value="disabled">disabled</option>
+        </select>
+        <select id="filterPrice" class="input" style="width:130px" onchange="renderModels()">
+          <option value="">All Pricing</option>
+          <option value="has">Has pricing</option>
+          <option value="no">No pricing</option>
+        </select>
+        <input id="filterSearch" class="input" style="flex:1;min-width:150px" placeholder="Search model ID or name..." oninput="renderModels()" />
+        <button class="btn btn-sm" onclick="clearModelFilters()">Clear</button>
       </div>
       <div class="card">
         <table>
@@ -457,7 +495,7 @@
     <div id="page-provider-health" class="hidden">
       <div class="flex-between">
         <div class="page-title">Provider Health</div>
-        <span id="healthAutoRefresh" class="text-muted" style="font-size:12px">Auto-refresh: 10s</span>
+        <span id="healthAutoRefresh" class="text-muted" style="font-size:12px">Auto-refresh: 10s | <span id="healthLastUpdated">Loading...</span></span>
       </div>
       <div class="card" style="margin-bottom:16px">
         <table>
@@ -528,6 +566,7 @@
           <option value="active">active</option>
           <option value="beta">beta</option>
           <option value="deprecated">deprecated</option>
+          <option value="disabled">disabled</option>
         </select>
       </div>
       <div>
@@ -659,7 +698,10 @@ const pages = ['dashboard','users','user-detail','plans-config','packages','mode
 
 function showPage(name) {
   // Stop provider health auto-refresh when navigating away
-  if (name !== 'provider-health' && healthInterval) { clearInterval(healthInterval); healthInterval = null; }
+  if (name !== 'provider-health') {
+    if (healthInterval) { clearInterval(healthInterval); healthInterval = null; }
+    if (healthStalenessInterval) { clearInterval(healthStalenessInterval); healthStalenessInterval = null; }
+  }
   pages.forEach(p => {
     const el = document.getElementById(`page-${p}`);
     if (el) el.classList.toggle('hidden', p !== name);
@@ -668,7 +710,7 @@ function showPage(name) {
     n.classList.toggle('active', n.dataset.page === name);
   });
   if (name === 'dashboard') loadDashboard();
-  else if (name === 'users') loadUsers();
+  else if (name === 'users') { if (!_usersLoaded) loadUsers(); }
   else if (name === 'plans-config') loadPlansConfig();
   else if (name === 'packages') loadPackages();
   else if (name === 'models') loadModels();
@@ -701,10 +743,155 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', {month:'short
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
 const planBadge = (p) => `<span class="badge badge-${p||'starter'}">${(p||'starter').toUpperCase()}</span>`;
 
+function fmtDetails(details) {
+  if (!details || typeof details !== 'object') return '-';
+  const entries = Object.entries(details);
+  if (entries.length === 0) return '-';
+  return esc(entries.map(([k, v]) => `${k}: ${v}`).join(' | '));
+}
+
+function copyId(id) {
+  navigator.clipboard.writeText(id).then(() => toast('ID copied'));
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────
+// ── Chart instances (for destroy on reload) ──
+let chartInstances = {};
+function destroyCharts() {
+  Object.values(chartInstances).forEach(c => c.destroy());
+  chartInstances = {};
+}
+
+// Chart.js dark theme
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.color = '#8b8d98';
+  Chart.defaults.borderColor = '#2e3140';
+  Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  Chart.defaults.font.size = 11;
+}
+
+function fmtLabel(dateStr) {
+  const d = new Date(dateStr);
+  return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+}
+
+const CHART_COLORS = ['#ff4d00','#3b82f6','#22c55e','#eab308','#a855f7','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+
+function renderDailyRequests(data) {
+  const labels = data.map(d => fmtLabel(d.date));
+  chartInstances.dailyReq = new Chart(document.getElementById('chartDailyRequests'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Requests', data: data.map(d => d.requests), backgroundColor: 'rgba(255,77,0,0.6)', borderRadius: 3, yAxisID: 'y', order: 2 },
+        { label: 'Active Users', data: data.map(d => d.activeUsers), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', type: 'line', tension: 0.3, pointRadius: 2, yAxisID: 'y1', order: 1 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 12, padding: 8 } } },
+      scales: {
+        y: { position: 'left', beginAtZero: true, grid: { color: '#2e3140' }, title: { display: true, text: 'Requests', color: '#8b8d98' } },
+        y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'Active Users', color: '#8b8d98' } }
+      }
+    }
+  });
+}
+
+function renderRevenue(data) {
+  const labels = data.map(d => fmtLabel(d.date));
+  chartInstances.revenue = new Chart(document.getElementById('chartRevenue'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Revenue ($)', data: data.map(d => (d.depositCents||0)/100), backgroundColor: 'rgba(34,197,94,0.6)', borderRadius: 3, yAxisID: 'y', order: 2 },
+        { label: 'Transactions', data: data.map(d => d.depositCount||0), borderColor: '#eab308', backgroundColor: 'rgba(234,179,8,0.1)', type: 'line', tension: 0.3, pointRadius: 2, yAxisID: 'y1', order: 1 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 12, padding: 8 } } },
+      scales: {
+        y: { position: 'left', beginAtZero: true, grid: { color: '#2e3140' }, title: { display: true, text: '$', color: '#8b8d98' } },
+        y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'Count', color: '#8b8d98' } }
+      }
+    }
+  });
+}
+
+function renderRegistrations(data) {
+  const labels = data.map(d => fmtLabel(d.date));
+  chartInstances.reg = new Chart(document.getElementById('chartRegistrations'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'New Users', data: data.map(d => d.registrations), backgroundColor: 'rgba(59,130,246,0.6)', borderRadius: 3 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, grid: { color: '#2e3140' } } }
+    }
+  });
+}
+
+function renderModelUsage(data) {
+  const sorted = [...data].sort((a,b) => b.requests - a.requests).slice(0, 10);
+  chartInstances.model = new Chart(document.getElementById('chartModelUsage'), {
+    type: 'bar',
+    data: {
+      labels: sorted.map(d => d.model.length > 25 ? d.model.slice(0,22)+'...' : d.model),
+      datasets: [{ label: 'Requests', data: sorted.map(d => d.requests), backgroundColor: CHART_COLORS, borderRadius: 3 }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, grid: { color: '#2e3140' } }, y: { grid: { display: false } } }
+    }
+  });
+}
+
+function renderProviderDist(data) {
+  chartInstances.provider = new Chart(document.getElementById('chartProviderDist'), {
+    type: 'doughnut',
+    data: {
+      labels: data.map(d => d.provider),
+      datasets: [{ data: data.map(d => d.requests), backgroundColor: CHART_COLORS, borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, cutout: '55%',
+      plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 6 } } }
+    }
+  });
+}
+
+function renderPlanDist(plansData) {
+  const items = plansData || [];
+  chartInstances.plan = new Chart(document.getElementById('chartPlanDist'), {
+    type: 'doughnut',
+    data: {
+      labels: items.map(p => p.plan),
+      datasets: [{ data: items.map(p => p.user_count), backgroundColor: ['#3b82f6','#ff4d00','#a855f7','#22c55e'], borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, cutout: '55%',
+      plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 6 } } }
+    }
+  });
+}
+
 async function loadDashboard() {
-  const [statsRes, plansRes] = await Promise.all([
-    apiFetch('/admin/stats'), apiFetch('/admin/plans/stats')
+  destroyCharts();
+  document.getElementById('statsGrid').innerHTML = '<div class="loading-placeholder">Loading dashboard...</div>';
+  const [statsRes, plansRes, dailyRes, revenueRes, regRes, modelRes, providerRes] = await Promise.all([
+    apiFetch('/admin/stats'), apiFetch('/admin/plans/stats'),
+    apiFetch('/admin/usage/trend'), apiFetch('/admin/revenue/trend'),
+    apiFetch('/admin/registrations/trend'), apiFetch('/admin/usage/models'),
+    apiFetch('/admin/usage/providers')
   ]);
   const stats = await statsRes.json();
   const plans = await plansRes.json();
@@ -719,7 +906,7 @@ async function loadDashboard() {
     statCard('API Calls', s.usage.totalRequests.toLocaleString()),
     statCard('API Calls Today', s.usage.todayRequests.toLocaleString()),
     statCard('API Cost', cents(s.usage.totalCostCents)),
-    statCard('Outstanding Bal.', cents(s.balance.totalOutstandingCents)),
+    statCard('Total Credits', cents(s.balance.totalOutstandingCents)),
     statCard('Total Used', cents(s.balance.totalUsedCents)),
     statCard('Referral Codes', s.referrals.totalCodes),
     statCard('Referral Claims', s.referrals.totalClaims),
@@ -733,6 +920,21 @@ async function loadDashboard() {
   document.getElementById('planStats').innerHTML = `<table><thead><tr><th>Plan</th><th>Users</th><th>Total Deposited</th><th>API Spend</th></tr></thead><tbody>${
     (plans.plans||[]).map(p => `<tr><td>${planBadge(p.plan)}</td><td>${p.user_count}</td><td>${cents(p.total_deposited_cents)}</td><td>${cents(p.total_api_spend_cents)}</td></tr>`).join('')
   }</tbody></table>`;
+
+  // Render charts (graceful: show error placeholder if data fetch failed)
+  if (window.__chartJsFailed) {
+    document.querySelectorAll('#page-dashboard canvas').forEach(c => {
+      c.parentElement.innerHTML = '<div class="chart-error">Chart.js failed to load — charts unavailable.</div>';
+    });
+  } else {
+    const chartFail = (canvasId) => { document.getElementById(canvasId).parentElement.innerHTML = '<div class="chart-error">Failed to load chart</div>'; };
+    try { const d = await dailyRes.json(); renderDailyRequests(d.trend || d); } catch(e) { console.warn('daily-trend chart error', e); chartFail('chartDailyRequests'); }
+    try { const d = await revenueRes.json(); renderRevenue(d.trend || d); } catch(e) { console.warn('revenue-trend chart error', e); chartFail('chartRevenue'); }
+    try { const d = await regRes.json(); renderRegistrations(d.trend || d); } catch(e) { console.warn('registration-trend chart error', e); chartFail('chartRegistrations'); }
+    try { const d = await modelRes.json(); renderModelUsage(d.models || d); } catch(e) { console.warn('model-usage chart error', e); chartFail('chartModelUsage'); }
+    try { const d = await providerRes.json(); renderProviderDist(d.providers || d); } catch(e) { console.warn('provider-dist chart error', e); chartFail('chartProviderDist'); }
+    try { renderPlanDist(plans.plans); } catch(e) { console.warn('plan-dist chart error', e); chartFail('chartPlanDist'); }
+  }
 }
 
 function statCard(label, value) {
@@ -742,14 +944,17 @@ function statCard(label, value) {
 // ── Users ─────────────────────────────────────────────────────────
 let usersOffset = 0;
 const USERS_LIMIT = 50;
+let _usersLoaded = false;
 
 async function loadUsers() {
+  _usersLoaded = true;
+  document.getElementById('usersBody').innerHTML = '<tr><td colspan="9" class="loading-placeholder">Loading users...</td></tr>';
   const search = document.getElementById('userSearch').value.trim();
   const res = await apiFetch(`/admin/users?limit=${USERS_LIMIT}&offset=${usersOffset}&search=${encodeURIComponent(search)}`);
   const data = await res.json();
   document.getElementById('usersBody').innerHTML = data.users.map(u => `
     <tr class="clickable" onclick="openUser('${u.id}')">
-      <td class="truncate">${esc(u.email)}</td>
+      <td class="truncate" title="${esc(u.email)}">${esc(u.email)}</td>
       <td>${planBadge(u.plan)}</td>
       <td>${statusBadge(u.status)}</td>
       <td>${cents(u.balanceCents)}</td>
@@ -760,7 +965,7 @@ async function loadUsers() {
       <td><button class="btn btn-sm" onclick="event.stopPropagation();openUser('${u.id}')">Manage</button></td>
     </tr>
   `).join('');
-  document.getElementById('usersPagInfo').textContent = `${usersOffset+1}-${Math.min(usersOffset+USERS_LIMIT, data.total)} of ${data.total}`;
+  document.getElementById('usersPagInfo').textContent = data.total === 0 ? '0 results' : `${usersOffset+1}\u2013${Math.min(usersOffset+USERS_LIMIT, data.total)} of ${data.total}`;
 }
 
 function usersPage(dir) {
@@ -778,7 +983,7 @@ async function openUser(id) {
   document.getElementById('detailEmail').textContent = u.email;
   document.getElementById('detailPlan').innerHTML = `
     ${planBadge(u.plan)}
-    <span class="text-muted" style="font-size:12px;margin-left:4px">ID: ${u.id.slice(0,8)}...</span>
+    <span class="text-muted" style="font-size:12px;margin-left:4px;cursor:pointer" title="${u.id}" onclick="copyId('${u.id}')">ID: ${u.id.slice(0,8)}... <span style="font-size:10px">&#128203;</span></span>
   `;
   document.getElementById('detailStatus').innerHTML = statusBadge(u.status);
   document.getElementById('detailBalance').textContent = cents(u.balanceCents);
@@ -893,7 +1098,7 @@ async function loadTransactions() {
       <td>${fmtDateTime(t.createdAt)}</td>
     </tr>
   `).join('');
-  document.getElementById('txPagInfo').textContent = `${txOffset+1}-${Math.min(txOffset+TX_LIMIT, data.total)} of ${data.total}`;
+  document.getElementById('txPagInfo').textContent = data.total === 0 ? '0 results' : `${txOffset+1}\u2013${Math.min(txOffset+TX_LIMIT, data.total)} of ${data.total}`;
 }
 
 function txPage(dir) { txOffset = Math.max(0, txOffset + dir * TX_LIMIT); loadTransactions(); }
@@ -914,11 +1119,11 @@ async function loadPlansConfig() {
       <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div>
           <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Polar Product ID</label>
-          <input id="plan-polar-${p.id}" class="input" style="width:100%;font-size:12px" value="${esc(p.polarProductId)}" placeholder="UUID" />
+          <input id="plan-polar-${p.id}" class="input" style="width:100%;font-size:12px${p.id === 'starter' ? ';opacity:0.5' : ''}" value="${esc(p.polarProductId)}" placeholder="UUID" ${p.id === 'starter' ? 'disabled' : ''} />
         </div>
         <div>
           <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Promo Product ID (First Month)</label>
-          <input id="plan-promo-${p.id}" class="input" style="width:100%;font-size:12px" value="${esc(p.polarProductIdPromo)}" placeholder="UUID (optional)" />
+          <input id="plan-promo-${p.id}" class="input" style="width:100%;font-size:12px${p.id === 'starter' ? ';opacity:0.5' : ''}" value="${esc(p.polarProductIdPromo)}" placeholder="UUID (optional)" ${p.id === 'starter' ? 'disabled' : ''} />
         </div>
       </div>
       ${p.id !== 'starter' ? `<div style="margin-top:10px;text-align:right"><button class="btn btn-accent btn-sm" onclick="savePlanConfig('${p.id}')">Save</button></div>` : '<div style="margin-top:8px"><span class="text-muted" style="font-size:11px">Starter is the free tier — no Polar product needed.</span></div>'}
@@ -1019,17 +1224,58 @@ async function savePkg() {
 }
 
 // ── Models ────────────────────────────────────────────────────────
+let _allModels = [];
+
 async function loadModels() {
+  document.getElementById('modelsBody').innerHTML = '<tr><td colspan="8" class="loading-placeholder">Loading models...</td></tr>';
   const res = await apiFetch('/admin/models/registry');
   const data = await res.json();
-  document.getElementById('modelsBody').innerHTML = (data.models||[]).map(m => {
+  _allModels = data.models || [];
+  // Populate provider dropdown dynamically
+  const providers = [...new Set(_allModels.map(m => m.provider))].sort();
+  const sel = document.getElementById('filterProvider');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All Providers</option>' +
+    providers.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  sel.value = cur;
+  renderModels();
+}
+
+function filterModels() {
+  const provider = document.getElementById('filterProvider').value;
+  const status = document.getElementById('filterStatus').value;
+  const price = document.getElementById('filterPrice').value;
+  const search = document.getElementById('filterSearch').value.toLowerCase().trim();
+  return _allModels.filter(m => {
+    if (provider && m.provider !== provider) return false;
+    if (status && (m.status || 'active') !== status) return false;
+    if (price === 'has' && m.userPriceInput == null) return false;
+    if (price === 'no' && m.userPriceInput != null) return false;
+    if (search && !(m.modelId||'').toLowerCase().includes(search) &&
+        !(m.displayName||'').toLowerCase().includes(search)) return false;
+    return true;
+  });
+}
+
+function renderModels() {
+  const filtered = filterModels();
+  document.getElementById('modelsBody').innerHTML = filtered.map(m => {
     const uuid = m.id||'';
     const mid = m.modelId||'';
+    const st = m.status||'active';
+    const stColor = { active:'var(--green)', beta:'var(--blue)', deprecated:'var(--yellow)', disabled:'var(--muted)' }[st] || 'var(--muted)';
+    const nextSt = st === 'active' ? 'disabled' : 'active';
     return `<tr>
       <td><code>${esc(mid)}</code></td>
       <td>${esc(m.displayName||'')}</td>
       <td>${esc(m.provider||'')}</td>
-      <td><span class="badge" style="background:var(--surface2)">${m.status||'active'}</span></td>
+      <td>
+        <button class="badge" style="background:${stColor}20;color:${stColor};cursor:pointer;border:none;font:inherit;padding:2px 8px;border-radius:4px"
+                onclick="toggleModelStatus('${esc(uuid)}','${nextSt}',this)"
+                title="Click to ${nextSt === 'active' ? 'enable' : 'disable'}">
+          ${st}
+        </button>
+      </td>
       <td>${esc(m.tier||'flagship')}</td>
       <td>${m.userPriceInput != null ? '$'+Number(m.userPriceInput).toFixed(2) : '-'}</td>
       <td>${m.userPriceOutput != null ? '$'+Number(m.userPriceOutput).toFixed(2) : '-'}</td>
@@ -1040,6 +1286,34 @@ async function loadModels() {
       </td>
     </tr>`;
   }).join('');
+}
+
+async function toggleModelStatus(uuid, newStatus, btn) {
+  btn.disabled = true; btn.style.opacity = '0.5';
+  try {
+    const res = await apiFetch(`/admin/models/registry/${encodeURIComponent(uuid)}`, {
+      method: 'PATCH', body: JSON.stringify({ status: newStatus })
+    });
+    if (res.ok) {
+      toast(`Status → ${newStatus}`);
+      loadModels();
+    } else {
+      const err = await res.json();
+      toast(err.error?.message || 'Failed', 'error');
+      btn.disabled = false; btn.style.opacity = '1';
+    }
+  } catch(e) {
+    toast('Network error', 'error');
+    btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+
+function clearModelFilters() {
+  document.getElementById('filterProvider').value = '';
+  document.getElementById('filterStatus').value = '';
+  document.getElementById('filterPrice').value = '';
+  document.getElementById('filterSearch').value = '';
+  renderModels();
 }
 
 function showAddModel() {
@@ -1327,8 +1601,8 @@ async function loadAuditLog() {
       <td>${fmtDateTime(e.createdAt)}</td>
       <td class="truncate">${esc(e.adminEmail)}</td>
       <td><span class="badge" style="background:var(--surface2)">${esc(e.action)}</span></td>
-      <td style="font-size:11px">${e.targetUserId ? esc(e.targetUserId.slice(0,8))+'...' : '-'}</td>
-      <td class="truncate" style="max-width:280px;font-size:11px">${esc(JSON.stringify(e.details||{}))}</td>
+      <td style="font-size:11px;cursor:${e.targetUserId ? 'pointer' : 'default'}" title="${e.targetUserId || ''}" onclick="${e.targetUserId ? `copyId('${e.targetUserId}')` : ''}">${e.targetUserId ? esc(e.targetUserId.slice(0,8))+'...' : '-'}</td>
+      <td class="truncate" style="max-width:280px;font-size:11px" title="${esc(JSON.stringify(e.details||{}))}">${fmtDetails(e.details)}</td>
     </tr>
   `).join('') || '<tr><td colspan="5" class="text-muted">No audit log entries</td></tr>';
   document.getElementById('auditPagInfo').textContent = `${data.total === 0 ? 0 : auditOffset+1}-${Math.min(auditOffset+AUDIT_LIMIT, data.total)} of ${data.total}`;
@@ -1375,31 +1649,45 @@ async function banUser() {
 
 // ── Provider Health ──────────────────────────────────────────────
 let healthInterval = null;
+let healthLastSuccess = null;
+let healthStalenessInterval = null;
+
+function updateHealthStaleness() {
+  const el = document.getElementById('healthLastUpdated');
+  if (!el) return;
+  if (!healthLastSuccess) { el.textContent = 'Loading...'; return; }
+  const ago = Math.round((Date.now() - healthLastSuccess) / 1000);
+  el.textContent = `Last updated: ${ago}s ago`;
+  el.style.color = ago > 30 ? 'var(--red)' : 'var(--muted)';
+}
 
 async function loadProviderHealth() {
   clearInterval(healthInterval);
+  clearInterval(healthStalenessInterval);
   await renderProviderHealth();
   loadAlertInfo();
   healthInterval = setInterval(renderProviderHealth, 10000);
+  healthStalenessInterval = setInterval(updateHealthStaleness, 1000);
 }
 
 async function loadAlertInfo() {
   try {
     // Show admin emails (from a simple config indicator)
     document.getElementById('alertEmails').textContent = 'Configured via ADMIN_EMAILS env var';
-    // Load recent alert-related audit log entries
-    const res = await apiFetch('/admin/audit-log?limit=10');
+    // Load recent provider-health-relevant audit log entries
+    const res = await apiFetch('/admin/audit-log?limit=20');
     const data = await res.json();
     const alertEntries = (data.entries || []).filter(e =>
-      e.action === 'suspend_user' || e.action === 'ban_user' || e.action === 'unsuspend_user'
+      e.action === 'update_provider_access' || e.action === 'create_provider_key' ||
+      e.action === 'update_provider_key' || e.action === 'delete_provider_key'
     );
     document.getElementById('alertHistory').innerHTML = alertEntries.length > 0
       ? alertEntries.map(e => `<tr>
           <td>${fmtDateTime(e.createdAt)}</td>
           <td><span class="badge" style="background:var(--surface2)">${e.action}</span></td>
-          <td class="text-muted" style="font-size:12px">${esc(JSON.stringify(e.details || {}))}</td>
+          <td class="text-muted" style="font-size:12px">${fmtDetails(e.details)}</td>
         </tr>`).join('')
-      : '<tr><td colspan="3" class="text-muted">No recent alert actions</td></tr>';
+      : '<tr><td colspan="3" class="text-muted">Provider alerts are delivered to admin emails.</td></tr>';
   } catch (e) {
     console.error('Alert info fetch failed', e);
   }
@@ -1412,10 +1700,14 @@ async function renderProviderHealth() {
     const breakers = data.breakers || [];
     const emptyEl = document.getElementById('healthEmpty');
     if (breakers.length === 0) {
+      healthLastSuccess = Date.now();
+      updateHealthStaleness();
       document.getElementById('healthBody').innerHTML = '';
       emptyEl.style.display = 'block';
       return;
     }
+    healthLastSuccess = Date.now();
+    updateHealthStaleness();
     emptyEl.style.display = 'none';
     document.getElementById('healthBody').innerHTML = breakers.map(b => {
       const stateColors = { closed: 'var(--green)', half_open: 'var(--yellow)', open: 'var(--red)' };
@@ -1465,7 +1757,7 @@ function esc(s) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────
-document.getElementById('userSearch').addEventListener('keydown', e => { if (e.key === 'Enter') loadUsers(); });
+document.getElementById('userSearch').addEventListener('keydown', e => { if (e.key === 'Enter') { usersOffset = 0; loadUsers(); } });
 checkAuth();
 </script>
 </body>

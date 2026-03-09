@@ -19,7 +19,7 @@ export async function signToken(
   return new SignJWT({ sub: userId, email })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime("24h")
     .setIssuer("routebox-cloud")
     .sign(JWT_SECRET);
 }

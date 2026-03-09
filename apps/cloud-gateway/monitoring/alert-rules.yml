@@ -40,3 +40,43 @@ groups:
         annotations:
           summary: "Provider P95 latency > 10s for 5 minutes"
           description: "Upstream LLM provider responses are taking too long."
+
+      # ── Gateway down alert ──────────────────────────────────────────
+      - alert: GatewayDown
+        expr: up{job="cloud-gateway"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cloud gateway is down"
+          description: "The cloud gateway health check has been failing for over 1 minute."
+
+      # ── All providers failing ───────────────────────────────────────
+      - alert: AllProvidersFailing
+        expr: rate(errors_total{type="all_providers_failed"}[5m]) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "All LLM providers are failing"
+          description: "No provider can serve requests — all fallbacks exhausted."
+
+      # ── Stream abort rate ───────────────────────────────────────────
+      - alert: HighStreamAbortRate
+        expr: rate(stream_aborted_total[5m]) / rate(http_requests_total{method="POST"}[5m]) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stream abort rate > 30%"
+          description: "A high percentage of streaming requests are being aborted by clients."
+
+      # ── Database health ─────────────────────────────────────────────
+      - alert: DatabaseUnhealthy
+        expr: up{job="postgres"} == 0 or pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database is unreachable"
+          description: "PostgreSQL health check has been failing for over 1 minute."

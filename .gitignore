@@ -37,3 +37,7 @@ RouteBox.xcodeproj/
 routebox.db
 routebox.db-wal
 routebox.db-shm
+
+# Tauri signing key — NEVER commit (C1)
+routebox-signer.key
+*.key

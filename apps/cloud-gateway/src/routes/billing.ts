@@ -161,6 +161,27 @@ app.post("/webhook", async (c) => {
   try {
     const event = constructWebhookEvent(rawBody, headers);
 
+    // C2: Atomic webhook dedup — INSERT ... ON CONFLICT DO NOTHING + RETURNING
+    const webhookId = headers["webhook-id"];
+    try {
+      const [inserted] = await sql`
+        INSERT INTO webhook_events (webhook_id, event_type, payload, status)
+        VALUES (${webhookId}, ${event.type}, ${rawBody}, 'processing')
+        ON CONFLICT (webhook_id) DO NOTHING
+        RETURNING id
+      `;
+      if (!inserted) {
+        log.info("webhook_duplicate_skipped", { webhookId, type: event.type });
+        return c.json({ received: true });
+      }
+    } catch (err) {
+      // Table may not exist yet — log and continue (non-blocking)
+      log.warn("webhook_event_persist_failed", {
+        webhookId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     // ── Order paid — credit purchase completed ──
     if (event.type === "order.paid") {
       const order = event.data as {
@@ -293,22 +314,44 @@ app.post("/webhook", async (c) => {
       }
     }
 
-    // ── Subscription updated ──
+    // ── Subscription updated (plan change, status change, renewal) ──
     if (event.type === "subscription.updated") {
       const sub = event.data as {
         id: string;
         status: string;
+        metadata?: Record<string, string>;
         current_period_start?: string;
         current_period_end?: string;
       };
+      const metadata = (sub.metadata ?? {}) as Record<string, string>;
+
       await sql`
         UPDATE subscriptions
         SET status = ${sub.status},
+            plan = COALESCE(${metadata.planId ?? null}, plan),
             current_period_start = ${sub.current_period_start ? new Date(sub.current_period_start) : null},
             current_period_end = ${sub.current_period_end ? new Date(sub.current_period_end) : null},
             updated_at = now()
         WHERE polar_subscription_id = ${sub.id}
       `;
+
+      // Sync user plan if metadata contains planId
+      if (metadata.planId) {
+        const [subRow] = await sql`
+          SELECT user_id FROM subscriptions WHERE polar_subscription_id = ${sub.id}
+        `;
+        if (subRow) {
+          await sql`
+            UPDATE users SET plan = ${metadata.planId}, updated_at = now()
+            WHERE id = ${subRow.user_id as string}
+          `;
+          log.info("subscription_plan_synced", {
+            userId: subRow.user_id as string,
+            planId: metadata.planId,
+            status: sub.status,
+          });
+        }
+      }
     }
 
     // ── Subscription canceled or revoked ──
@@ -330,6 +373,14 @@ app.post("/webhook", async (c) => {
       }
     }
 
+    // Mark webhook event as processed
+    try {
+      await sql`
+        UPDATE webhook_events SET status = 'processed', processed_at = now()
+        WHERE webhook_id = ${webhookId}
+      `;
+    } catch { /* non-blocking */ }
+
     return c.json({ received: true });
   } catch (err: unknown) {
     if (err instanceof WebhookVerificationError) {
@@ -338,6 +389,13 @@ app.post("/webhook", async (c) => {
     }
     const msg = err instanceof Error ? err.message : String(err);
     log.error("webhook_error", { error: msg });
+    // Mark webhook event as failed
+    try {
+      await sql`
+        UPDATE webhook_events SET status = 'failed', error = ${msg.slice(0, 500)}, processed_at = now()
+        WHERE webhook_id = ${headers["webhook-id"]}
+      `;
+    } catch { /* non-blocking */ }
     return c.json({ error: "Webhook processing error" }, 500);
   }
 });
