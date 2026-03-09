@@ -10,7 +10,7 @@ import { jwtAuth } from "../middleware/jwt-auth";
 import { sql } from "../lib/db-cloud";
 import { sendPasswordResetEmail } from "../lib/email";
 import { sha256Hex } from "../lib/crypto";
-import { rateLimitForgotPassword } from "../middleware/rate-limit";
+import { rateLimitForgotPassword, rateLimitResetPassword, rateLimitForgotPasswordByEmail } from "../middleware/rate-limit";
 import { log } from "../lib/logger";
 import type { CloudEnv } from "../types";
 
@@ -189,6 +189,13 @@ app.post("/forgot-password", rateLimitForgotPassword, async (c) => {
     );
   }
 
+  // H4: Per-email rate limit (3 req/hour) — prevents email bombing from multiple IPs
+  const emailLimitResult = await rateLimitForgotPasswordByEmail(body.email);
+  if (!emailLimitResult.allowed) {
+    // Still return success to prevent email enumeration
+    return c.json({ success: true });
+  }
+
   // Always return success to prevent email enumeration
   const respond = () => c.json({ success: true });
 
@@ -202,7 +209,7 @@ app.post("/forgot-password", rateLimitForgotPassword, async (c) => {
       });
     });
 
-    // Rate limit: 1 request per email per 10 minutes
+    // Rate limit: 1 request per email per 10 minutes (DB-based dedup)
     const [recent] = await sql`
       SELECT 1 FROM password_reset_tokens prt
       JOIN users u ON u.id = prt.user_id
@@ -247,7 +254,7 @@ app.post("/forgot-password", rateLimitForgotPassword, async (c) => {
 
 // ── POST /reset-password ────────────────────────────────────────────────────
 
-app.post("/reset-password", async (c) => {
+app.post("/reset-password", rateLimitResetPassword, async (c) => {
   const body = await c.req.json<{ token: string; newPassword: string }>();
 
   if (!body.token || !body.newPassword) {
@@ -302,7 +309,7 @@ app.post("/reset-password", async (c) => {
   // Hash new password and update
   const passwordHash = await Bun.password.hash(body.newPassword, {
     algorithm: "bcrypt",
-    cost: 10,
+    cost: 12,
   });
 
   await sql`UPDATE users SET password_hash = ${passwordHash} WHERE id = ${resetToken.user_id}`;

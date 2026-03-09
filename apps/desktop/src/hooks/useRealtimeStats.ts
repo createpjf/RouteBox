@@ -48,6 +48,7 @@ export function useRealtimeStats(ready = true) {
   const [alert, setAlert] = useState<AlertInfo | null>(null);
   const wsRef = useRef<RouteBoxWebSocket | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gatewayMode = getGatewayMode();
 
   // Load cached stats as initial state (only before live data arrives)
   const connectedRef = useRef(false);
@@ -62,7 +63,7 @@ export function useRealtimeStats(ready = true) {
 
   // ── Cloud mode: REST polling ─────────────────────────────────────────────
   useEffect(() => {
-    if (!ready || getGatewayMode() !== "cloud") return;
+    if (!ready || gatewayMode !== "cloud") return;
 
     let cancelled = false;
     let lastId: string | undefined;
@@ -115,11 +116,11 @@ export function useRealtimeStats(ready = true) {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [ready]);
+  }, [ready, gatewayMode]);
 
   // ── Local mode: WebSocket ────────────────────────────────────────────────
   useEffect(() => {
-    if (!ready || getGatewayMode() === "cloud") return;
+    if (!ready || gatewayMode === "cloud") return;
 
     // Pass a function so each connect/reconnect gets the latest token URL
     const ws = new RouteBoxWebSocket(() => getWsUrl());
@@ -187,7 +188,7 @@ export function useRealtimeStats(ready = true) {
       ws.disconnect();
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [ready]);
+  }, [ready, gatewayMode]);
 
   const disconnect = useCallback(() => {
     wsRef.current?.disconnect();

@@ -25,7 +25,9 @@ async function request<T>(
       const res = await fetch(`${getGatewayUrl()}${path}`, {
         ...options,
         headers,
-        signal: options?.signal ?? AbortSignal.timeout(10_000),
+        signal: options?.signal
+          ? AbortSignal.any([options.signal, AbortSignal.timeout(10_000)])
+          : AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -202,6 +204,7 @@ export interface CloudModelEntry {
   display_name?: string;
   tier?: string;
   status?: string;
+  pricing?: { input: number; output: number };
 }
 
 export interface CloudModelsResponse {
@@ -314,6 +317,18 @@ export interface CloudSubscriptionPlan {
 
 export interface CloudPlansResponse {
   plans: CloudSubscriptionPlan[];
+}
+
+export interface CloudSubscriptionInfo {
+  plan: string;
+  status: string;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  createdAt: string;
+}
+
+export interface CloudSubscriptionResponse {
+  subscription: CloudSubscriptionInfo | null;
 }
 
 export interface CloudApiKey {
@@ -622,6 +637,34 @@ export const api = {
   cloudDeleteApiKey: (id: string) =>
     request<{ success: boolean }>(`/account/api-keys/${id}`, {
       method: "DELETE",
+      retries: 0,
+    }),
+
+  // ── Cloud Account Management ────────────────────────────────────────────
+  cloudChangePassword: (currentPassword: string, newPassword: string) =>
+    request<{ success: boolean }>("/account/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+      retries: 0,
+    }),
+  cloudUpdateProfile: (data: { displayName?: string; email?: string }) =>
+    request<{ displayName: string | null; email: string }>("/account/profile", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      retries: 0,
+    }),
+  cloudGetSubscription: () =>
+    request<CloudSubscriptionResponse>("/account/subscription"),
+  cloudDeleteAccount: (password: string) =>
+    request<{ success: boolean }>("/account", {
+      method: "DELETE",
+      body: JSON.stringify({ password }),
+      retries: 0,
+    }),
+  cloudRenameApiKey: (id: string, name: string) =>
+    request<{ success: boolean; name: string }>(`/account/api-keys/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
       retries: 0,
     }),
 

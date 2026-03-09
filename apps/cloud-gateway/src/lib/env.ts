@@ -9,7 +9,6 @@ export function validateEnv(): void {
     "DATABASE_URL",
     "JWT_SECRET",
     "POLAR_ACCESS_TOKEN",
-    "POLAR_WEBHOOK_SECRET",
   ];
 
   const missing = required.filter((k) => !process.env[k]);
@@ -44,6 +43,10 @@ export function validateEnv(): void {
   }
 
   if (!process.env.RESEND_API_KEY) {
+    if (process.env.NODE_ENV === "production") {
+      log.fatal("missing_resend_key", { message: "RESEND_API_KEY is required in production for password reset emails" });
+      process.exit(1);
+    }
     log.warn("resend_disabled", { message: "RESEND_API_KEY not set, password reset emails will not be sent" });
   }
 

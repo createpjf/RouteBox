@@ -36,6 +36,15 @@ export const ChatWindow: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const savedRef = useRef(false);
+  const streamedTextRef = useRef(streamedText);
+  const metaRef = useRef(meta);
+  const modelRef = useRef(model);
+  const activeConvIdRef = useRef(activeConvId);
+  streamedTextRef.current = streamedText;
+  metaRef.current = meta;
+  modelRef.current = model;
+  activeConvIdRef.current = activeConvId;
 
   // Load conversations
   const loadConversations = useCallback(async () => {
@@ -92,36 +101,45 @@ export const ChatWindow: React.FC = () => {
 
   // Append streamed response to messages when done
   useEffect(() => {
-    if (!streaming && streamedText && activeConvId) {
-      api.sendMessage(activeConvId, {
-        role: "assistant",
-        content: streamedText,
-        model: meta?.model ?? model,
-        provider: meta?.provider,
-        cost: meta?.cost ?? 0,
-        inputTokens: meta?.usage.prompt_tokens ?? 0,
-        outputTokens: meta?.usage.completion_tokens ?? 0,
-        latencyMs: meta?.latency_ms ?? 0,
-      }).then((savedMsg) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: savedMsg.id,
-            role: "assistant",
-            content: streamedText,
-            model: meta?.model ?? model,
-            provider: meta?.provider,
-            cost: meta?.cost ?? 0,
-            latency_ms: meta?.latency_ms ?? 0,
-            input_tokens: meta?.usage.prompt_tokens ?? 0,
-            output_tokens: meta?.usage.completion_tokens ?? 0,
-          },
-        ]);
-        loadConversations();
-        clearStream();
-      }).catch(() => {});
+    if (streaming) {
+      savedRef.current = false;
+      return;
     }
-  }, [streaming]);
+    const text = streamedTextRef.current;
+    const curMeta = metaRef.current;
+    const curModel = modelRef.current;
+    const convId = activeConvIdRef.current;
+    if (!text || !convId || savedRef.current) return;
+    savedRef.current = true;
+
+    api.sendMessage(convId, {
+      role: "assistant",
+      content: text,
+      model: curMeta?.model ?? curModel,
+      provider: curMeta?.provider,
+      cost: curMeta?.cost ?? 0,
+      inputTokens: curMeta?.usage.prompt_tokens ?? 0,
+      outputTokens: curMeta?.usage.completion_tokens ?? 0,
+      latencyMs: curMeta?.latency_ms ?? 0,
+    }).then((savedMsg) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: savedMsg.id,
+          role: "assistant",
+          content: text,
+          model: curMeta?.model ?? curModel,
+          provider: curMeta?.provider,
+          cost: curMeta?.cost ?? 0,
+          latency_ms: curMeta?.latency_ms ?? 0,
+          input_tokens: curMeta?.usage.prompt_tokens ?? 0,
+          output_tokens: curMeta?.usage.completion_tokens ?? 0,
+        },
+      ]);
+      loadConversations();
+      clearStream();
+    }).catch(() => {});
+  }, [streaming, loadConversations, clearStream]);
 
   // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -134,6 +152,9 @@ export const ChatWindow: React.FC = () => {
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
 
+    // L15: Remove previous error messages before sending
+    setMessages((prev) => prev.filter((m) => !m.id.startsWith("error-")));
+
     let convId = activeConvId;
 
     if (!convId) {
@@ -142,7 +163,13 @@ export const ChatWindow: React.FC = () => {
         convId = conv.id;
         setActiveConvId(conv.id);
         loadConversations();
-      } catch {
+      } catch (err) {
+        // M4: Show error feedback instead of silently failing
+        setMessages((prev) => [...prev, {
+          id: `error-${Date.now()}`,
+          role: "assistant" as const,
+          content: `Failed to create conversation: ${err instanceof Error ? err.message : "Unknown error"}. Please try again.`,
+        }]);
         return;
       }
     }

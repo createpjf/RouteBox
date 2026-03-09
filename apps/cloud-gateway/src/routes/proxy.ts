@@ -20,7 +20,7 @@ import { deductCredits, recordCloudRequest } from "../lib/credits";
 import { getMarkupForPlan } from "../lib/polar";
 import { getRegistryEntry, getActiveModels } from "../lib/model-registry";
 import { resolveStrategy } from "../lib/routing-config";
-import { checkDailyQuota, incrementDailyQuota } from "../lib/quota";
+import { checkDailyQuota, decrementDailyQuota } from "../lib/quota";
 import { log } from "../lib/logger";
 import { incCounter, observeHistogram, incGauge, decGauge } from "../lib/metrics";
 import { creditsCheck } from "../middleware/credits-check";
@@ -237,8 +237,12 @@ function anthropicStreamToOpenAI(
   let messageId = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let streamedChars = 0; // Track streamed content for token estimation on abort
   let doneCalled = false;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Resolve final output token count — use provider-reported value, or estimate from streamed chars */
+  const resolveOutputTokens = () => outputTokens > 0 ? outputTokens : Math.ceil(streamedChars / 4);
 
   const callOnDone = (usage: { input: number; output: number }) => {
     if (doneCalled) return;
@@ -261,7 +265,7 @@ function anthropicStreamToOpenAI(
             log.warn("stream_idle_cancel_failed", { error: err instanceof Error ? err.message : String(err) });
           });
           try { controller.close(); } catch { /* already closed */ }
-          callOnDone({ input: inputTokens, output: outputTokens });
+          callOnDone({ input: inputTokens, output: resolveOutputTokens() });
         }, STREAM_IDLE_TIMEOUT_MS);
       };
 
@@ -273,7 +277,14 @@ function anthropicStreamToOpenAI(
           if (done) break;
           resetIdleTimer();
           buffer += decoder.decode(value, { stream: true });
-          if (buffer.length > MAX_STREAM_BUFFER) break;
+          // H1: Buffer overflow — send error event and close stream
+          if (buffer.length > MAX_STREAM_BUFFER) {
+            push(JSON.stringify({
+              error: { message: "Stream buffer overflow — response truncated", type: "server_error", code: "stream_overflow" },
+            }));
+            log.warn("stream_buffer_overflow", { model, provider: streamMeta.provider, bufferLen: buffer.length });
+            break;
+          }
           const lines = buffer.split("\n");
           buffer = lines.pop()!;
           for (const line of lines) {
@@ -286,6 +297,7 @@ function anthropicStreamToOpenAI(
                 messageId = evt.message?.id ?? `chatcmpl-${Date.now()}`;
                 inputTokens = evt.message?.usage?.input_tokens ?? 0;
               } else if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+                streamedChars += (evt.delta.text as string).length;
                 push(JSON.stringify({
                   id: messageId, object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000), model,
@@ -309,13 +321,14 @@ function anthropicStreamToOpenAI(
       if (idleTimer) clearTimeout(idleTimer);
 
       // Inject routebox.meta
-      const totalTok = inputTokens + outputTokens;
-      const cost = calculateCost(model, inputTokens, outputTokens);
+      const finalOutput = resolveOutputTokens();
+      const totalTok = inputTokens + finalOutput;
+      const cost = calculateCost(model, inputTokens, finalOutput);
       const metaObj: Record<string, unknown> = {
         object: "routebox.meta",
         provider: streamMeta.provider.toLowerCase(),
         model, requested_model: streamMeta.originalRequestedModel ?? streamMeta.requestedModel,
-        usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
+        usage: { prompt_tokens: inputTokens, completion_tokens: finalOutput, total_tokens: totalTok },
         cost, latency_ms: Math.round(performance.now() - streamMeta.startMs),
         is_fallback: streamMeta.isFallback,
       };
@@ -323,7 +336,7 @@ function anthropicStreamToOpenAI(
       push(JSON.stringify(metaObj));
       push("[DONE]");
       try { controller.close(); } catch { /* already closed */ }
-      callOnDone({ input: inputTokens, output: outputTokens });
+      callOnDone({ input: inputTokens, output: finalOutput });
     },
   });
 }
@@ -341,9 +354,13 @@ function openaiStreamPassthrough(
   let buffer = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let streamedChars = 0; // Track streamed content for token estimation on abort
   let metaInjected = false;
   let doneCalled = false;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Resolve final output token count — use provider-reported value, or estimate from streamed chars */
+  const resolveOutputTokens = () => outputTokens > 0 ? outputTokens : Math.ceil(streamedChars / 4);
 
   const callOnDone = (usage: { input: number; output: number }) => {
     if (doneCalled) return;
@@ -368,7 +385,7 @@ function openaiStreamPassthrough(
             log.warn("stream_idle_cancel_failed", { error: err instanceof Error ? err.message : String(err) });
           });
           try { controller.close(); } catch { /* already closed */ }
-          callOnDone({ input: inputTokens, output: outputTokens });
+          callOnDone({ input: inputTokens, output: resolveOutputTokens() });
         }, STREAM_IDLE_TIMEOUT_MS);
       };
 
@@ -380,7 +397,14 @@ function openaiStreamPassthrough(
           if (done) break;
           resetIdleTimer();
           buffer += decoder.decode(value, { stream: true });
-          if (buffer.length > MAX_STREAM_BUFFER) break;
+          // H1: Buffer overflow — send error event and close stream
+          if (buffer.length > MAX_STREAM_BUFFER) {
+            enqueue(encoder.encode(`data: ${JSON.stringify({
+              error: { message: "Stream buffer overflow — response truncated", type: "server_error", code: "stream_overflow" },
+            })}\n\n`));
+            log.warn("stream_buffer_overflow", { model: streamMeta.requestedModel, provider: streamMeta.provider, bufferLen: buffer.length });
+            break;
+          }
           const lines = buffer.split("\n");
           buffer = lines.pop()!;
           for (const line of lines) {
@@ -405,6 +429,9 @@ function openaiStreamPassthrough(
               } else {
                 try {
                   const chunk = JSON.parse(line.slice(6));
+                  // Track streamed content chars for token estimation on abort
+                  const delta = chunk.choices?.[0]?.delta;
+                  if (delta?.content) streamedChars += (delta.content as string).length;
                   if (chunk.usage) {
                     inputTokens = chunk.usage.prompt_tokens ?? inputTokens;
                     outputTokens = chunk.usage.completion_tokens ?? outputTokens;
@@ -424,14 +451,15 @@ function openaiStreamPassthrough(
 
       // Fallback meta injection
       if (!metaInjected) {
-        const totalTok = inputTokens + outputTokens;
-        const cost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens);
+        const finalOutput = resolveOutputTokens();
+        const totalTok = inputTokens + finalOutput;
+        const cost = calculateCost(streamMeta.requestedModel, inputTokens, finalOutput);
         const metaObj: Record<string, unknown> = {
           object: "routebox.meta",
           provider: streamMeta.provider.toLowerCase(),
           model: streamMeta.requestedModel,
           requested_model: streamMeta.originalRequestedModel ?? streamMeta.requestedModel,
-          usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
+          usage: { prompt_tokens: inputTokens, completion_tokens: finalOutput, total_tokens: totalTok },
           cost, latency_ms: Math.round(performance.now() - streamMeta.startMs),
           is_fallback: streamMeta.isFallback,
         };
@@ -440,7 +468,7 @@ function openaiStreamPassthrough(
         enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
       }
       try { controller.close(); } catch { /* already closed */ }
-      callOnDone({ input: inputTokens, output: outputTokens });
+      callOnDone({ input: inputTokens, output: resolveOutputTokens() });
     },
   });
 }
@@ -477,7 +505,7 @@ export async function modelsHandler(c: Context<CloudEnv>) {
   }
 
   const seen = new Set<string>();
-  const data: { id: string; object: "model"; created: number; owned_by: string; display_name: string; tier: string; status: string }[] = [];
+  const data: { id: string; object: "model"; created: number; owned_by: string; display_name: string; tier: string; status: string; pricing?: { input: number; output: number } }[] = [];
 
   // 2. Registry models — check that at least one provider config exists
   for (const rm of registryModels) {
@@ -488,6 +516,7 @@ export async function modelsHandler(c: Context<CloudEnv>) {
     );
     if (!hasProvider) continue;
     seen.add(rm.modelId);
+    const price = await getModelUserPrice(rm.modelId, userPlan);
     data.push({
       id: rm.modelId,
       object: "model",
@@ -496,6 +525,10 @@ export async function modelsHandler(c: Context<CloudEnv>) {
       display_name: rm.displayName,
       tier: rm.tier,
       status: rm.status,
+      pricing: {
+        input: Math.round(price.input * price.markup * 100) / 100,
+        output: Math.round(price.output * price.markup * 100) / 100,
+      },
     });
   }
 
@@ -506,6 +539,7 @@ export async function modelsHandler(c: Context<CloudEnv>) {
       if (seen.has(modelId)) continue;
       if (p.prefixes.some((pfx) => modelId.startsWith(pfx))) {
         seen.add(modelId);
+        const price = await getModelUserPrice(modelId, userPlan);
         data.push({
           id: modelId,
           object: "model",
@@ -514,6 +548,10 @@ export async function modelsHandler(c: Context<CloudEnv>) {
           display_name: modelId,
           tier: "fast",
           status: "active",
+          pricing: {
+            input: Math.round(price.input * price.markup * 100) / 100,
+            output: Math.round(price.output * price.markup * 100) / 100,
+          },
         });
       }
     }
@@ -993,6 +1031,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     clearTimeout(requestTimeout);
     clientSignal?.removeEventListener("abort", onClientAbort);
     incCounter("errors_total", { type: "all_providers_failed" });
+    // Roll back the atomic quota increment since the request completely failed
+    decrementDailyQuota(userId, requestedModel).catch(() => {});
     return c.json({
       error: {
         message: lastError?.message ?? "All providers failed",
@@ -1061,6 +1101,16 @@ app.post("/chat/completions", creditsCheck, async (c) => {
             requestId, userId, model: requestedModel, costCents,
             error: err instanceof Error ? err.message : String(err),
           });
+          // H1: Persist pending deduction so it can be retried later
+          sql`
+            INSERT INTO pending_deductions (user_id, cost_cents, model, provider, input_tokens, output_tokens, request_id)
+            VALUES (${userId}, ${costCents}, ${requestedModel}, ${finalProvider.name}, ${usage.input}, ${usage.output}, ${requestId})
+          `.catch((dbErr) => {
+            log.error("pending_deduction_persist_failed", {
+              requestId, userId, costCents,
+              error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+            });
+          });
           return null;
         });
         if (deductResult && !deductResult.success) {
@@ -1068,14 +1118,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
         }
       }
 
-      // Increment daily quota — skip on zero-token responses
-      if (usage.input + usage.output > 0) {
-        try {
-          await incrementDailyQuota(userId, requestedModel);
-        } catch (err) {
-          log.error("quota_increment_failed", { userId, model: requestedModel, error: err instanceof Error ? err.message : String(err) });
-        }
-      }
+      // Quota already incremented atomically in checkDailyQuota
 
       // Record request
       const status = clientSignal?.aborted && !wasAborted ? "aborted" : "ok";
@@ -1141,14 +1184,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     }
   }
 
-  // Increment daily quota — skip on zero-token responses
-  if (inputTokens + outputTokens > 0) {
-    try {
-      await incrementDailyQuota(userId, requestedModel);
-    } catch (err) {
-      log.error("quota_increment_failed", { userId, model: requestedModel, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
+  // Quota already incremented atomically in checkDailyQuota
 
   // Record request
   await recordCloudRequest(

@@ -123,9 +123,10 @@ app.route("/billing", billingRoutes);
 // ── Admin routes (own auth — checks ADMIN_EMAILS) ───────────────────────────
 app.route("/admin", adminRoutes);
 
-// ── Admin dashboard (HTML — auth is handled client-side via JWT) ─────────────
+// ── Admin dashboard (HTML — protected by adminAuth middleware) ────────────────
 import { adminHtml } from "./lib/admin-page";
-app.get("/admin-panel", (c) => {
+import { adminAuth } from "./middleware/admin-auth";
+app.get("/admin-panel", adminAuth, (c) => {
   c.header("X-Frame-Options", "SAMEORIGIN");
   c.header("Cache-Control", "no-store");
   return c.html(adminHtml);
@@ -179,7 +180,7 @@ app.get("/health", async (c) => {
   const dbOk = await checkDbHealth();
   const redisOk = await checkRedisHealth() ?? false;
   const status = dbOk ? "ok" : "degraded";
-  healthCache = { result: { status, db: dbOk, redis: redisOk }, expiresAt: now + 3_000 };
+  healthCache = { result: { status, db: dbOk, redis: redisOk }, expiresAt: now + 1_000 };
   return c.json(
     { status, timestamp: new Date().toISOString(), db: dbOk, redis: redisOk },
     dbOk ? 200 : 503,
@@ -208,7 +209,12 @@ log.info("gateway_starting");
 // Validate environment variables (fail-fast)
 validateEnv();
 
+// H5: Fail-fast if webhook secret is missing in production
 if (!process.env.POLAR_WEBHOOK_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    log.error("POLAR_WEBHOOK_SECRET not set — refusing to start in production");
+    process.exit(1);
+  }
   log.warn("POLAR_WEBHOOK_SECRET not set — webhook endpoint will reject all events");
 }
 
@@ -275,6 +281,64 @@ try {
   });
 }
 
+// ── L4: Pending deductions retry worker (every 5 minutes) ───────────────────
+const RETRY_INTERVAL_MS = 5 * 60 * 1000;
+const MAX_DEDUCTION_RETRIES = 3;
+let retryTimer: ReturnType<typeof setInterval> | null = null;
+
+async function processPendingDeductions() {
+  try {
+    const pending = await sql`
+      SELECT id, user_id, cost_cents, model, provider, input_tokens, output_tokens, request_id, retries
+      FROM pending_deductions
+      WHERE status = 'pending' AND retries < ${MAX_DEDUCTION_RETRIES}
+      ORDER BY created_at ASC
+      LIMIT 50
+    `;
+
+    for (const row of pending) {
+      try {
+        const { deductCredits } = await import("./lib/credits");
+        const result = await deductCredits(row.user_id, row.cost_cents, {
+          model: row.model,
+          provider: row.provider,
+          inputTokens: row.input_tokens,
+          outputTokens: row.output_tokens,
+        });
+        if (result.success) {
+          await sql`UPDATE pending_deductions SET status = 'resolved', resolved_at = now() WHERE id = ${row.id}`;
+          log.info("pending_deduction_resolved", { id: row.id, userId: row.user_id, costCents: row.cost_cents });
+        } else {
+          await sql`UPDATE pending_deductions SET retries = retries + 1 WHERE id = ${row.id}`;
+        }
+      } catch {
+        const newRetries = (row.retries as number) + 1;
+        if (newRetries >= MAX_DEDUCTION_RETRIES) {
+          await sql`UPDATE pending_deductions SET status = 'failed', retries = ${newRetries} WHERE id = ${row.id}`;
+          log.warn("pending_deduction_failed_permanently", { id: row.id, userId: row.user_id });
+        } else {
+          await sql`UPDATE pending_deductions SET retries = ${newRetries} WHERE id = ${row.id}`;
+        }
+      }
+    }
+
+    // L14: Clean up processed webhook events older than 30 days
+    await sql`
+      DELETE FROM webhook_events WHERE status = 'processed' AND created_at < now() - interval '30 days'
+    `.catch((err) => {
+      log.warn("webhook_cleanup_failed", { error: err instanceof Error ? err.message : String(err) });
+    });
+  } catch (err) {
+    log.error("pending_deductions_worker_error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+retryTimer = setInterval(processPendingDeductions, RETRY_INTERVAL_MS);
+// Run once on startup after a short delay
+setTimeout(processPendingDeductions, 10_000);
+
 // ── Graceful shutdown ────────────────────────────────────────────────────────
 let shuttingDown = false;
 
@@ -282,6 +346,9 @@ async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info("shutdown_initiated", { signal });
+
+  // Stop retry worker
+  if (retryTimer) clearInterval(retryTimer);
 
   // Stop alert timers
   try {
@@ -318,6 +385,14 @@ async function shutdown(signal: string) {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
+// H2: Catch unhandled promise rejections (fire-and-forget async tasks)
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? reason.stack : undefined;
+  log.error("unhandled_rejection", { error: msg, stack });
+  Sentry.captureException(reason);
+});
 
 const port = Number(process.env.PORT ?? 3001);
 log.info("gateway_listening", { port });

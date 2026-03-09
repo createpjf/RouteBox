@@ -4,10 +4,24 @@
 
 import { sql } from "./db-cloud";
 
-/** Daily request limits per model for Starter users */
+/** Daily request limits per model for Starter users.
+ *  Models not listed here have no quota restriction for Starter. */
 const STARTER_DAILY_QUOTA: Record<string, number> = {
-  "kimi-k2.5": 50,
-  "kimi-k2":   30,
+  // Expensive models — tight limits for free tier
+  "gpt-4o":          20,
+  "gpt-4":           10,
+  "claude-3-5":      20,
+  "claude-3-opus":   5,
+  "claude-opus":     5,
+  "gemini-1.5-pro":  20,
+  "gemini-2":        20,
+  // Mid-tier models
+  "deepseek":        50,
+  "kimi-k2.5":       50,
+  "kimi-k2":         30,
+  // Cheap models — generous limits
+  "gpt-3.5":         100,
+  "minimax":         100,
 };
 
 export interface QuotaResult {
@@ -40,40 +54,52 @@ export async function checkDailyQuota(
     }
   }
 
-  // Model has no quota restriction for Starter
+  // M1: Unknown models get a conservative default limit (prevents quota bypass via new model versions)
   if (limit === undefined) {
-    const resetAt = new Date();
-    resetAt.setUTCDate(resetAt.getUTCDate() + 1);
-    resetAt.setUTCHours(0, 0, 0, 0);
-    return { allowed: true, remaining: Infinity, resetAt };
+    limit = 5;
   }
 
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // Atomic check-and-increment: INSERT or UPDATE and RETURN the new count
+  // This prevents concurrent requests from all passing the check
   const [row] = await sql`
-    SELECT used_count FROM daily_quota_usage
-    WHERE user_id = ${userId} AND quota_date = ${today} AND model_id = ${model}
+    INSERT INTO daily_quota_usage (user_id, quota_date, model_id, used_count)
+    VALUES (${userId}, ${today}, ${model}, 1)
+    ON CONFLICT (user_id, quota_date, model_id)
+    DO UPDATE SET used_count = daily_quota_usage.used_count + 1
+    RETURNING used_count
   `;
-  const used = (row?.used_count as number) ?? 0;
+  const newCount = (row?.used_count as number) ?? 1;
 
   const resetAt = new Date();
   resetAt.setUTCDate(resetAt.getUTCDate() + 1);
   resetAt.setUTCHours(0, 0, 0, 0); // next midnight UTC
 
+  if (newCount > limit) {
+    // Over limit — roll back the increment
+    await sql`
+      UPDATE daily_quota_usage
+      SET used_count = used_count - 1
+      WHERE user_id = ${userId} AND quota_date = ${today} AND model_id = ${model}
+    `;
+    return { allowed: false, remaining: 0, resetAt };
+  }
+
   return {
-    allowed: used < limit,
-    remaining: Math.max(0, limit - used),
+    allowed: true,
+    remaining: Math.max(0, limit - newCount),
     resetAt,
   };
 }
 
-/** Increment daily quota counter after a successful request. */
-export async function incrementDailyQuota(userId: string, model: string): Promise<void> {
+/** Decrement daily quota counter (call if request fails after check). */
+export async function decrementDailyQuota(userId: string, model: string): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   await sql`
-    INSERT INTO daily_quota_usage (user_id, quota_date, model_id, used_count)
-    VALUES (${userId}, ${today}, ${model}, 1)
-    ON CONFLICT (user_id, quota_date, model_id)
-    DO UPDATE SET used_count = daily_quota_usage.used_count + 1
+    UPDATE daily_quota_usage
+    SET used_count = GREATEST(used_count - 1, 0)
+    WHERE user_id = ${userId} AND quota_date = ${today} AND model_id = ${model}
   `;
 }
 

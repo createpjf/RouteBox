@@ -10,6 +10,8 @@ export async function createUser(
   password: string,
   displayName?: string,
 ): Promise<{ id: string; email: string; displayName: string | null; plan: string; uid: string }> {
+  email = email.trim().toLowerCase();
+
   // Hash password with Bun's built-in bcrypt
   const passwordHash = await Bun.password.hash(password, {
     algorithm: "bcrypt",
@@ -41,6 +43,8 @@ export async function authenticateUser(
   email: string,
   password: string,
 ): Promise<{ id: string; email: string; displayName: string | null; plan: string; uid: string } | null> {
+  email = email.trim().toLowerCase();
+
   const [user] = await sql`
     SELECT id, email, password_hash, display_name, plan, uid
     FROM users WHERE email = ${email}

@@ -30,9 +30,16 @@ export const SpotlightWindow: React.FC = () => {
     inputRef.current?.focus();
   }, []);
 
+  // M3: Use ref for model to avoid re-registering listener on model changes
+  const modelRef = useRef(model);
+  useEffect(() => { modelRef.current = model; }, [model]);
+
   // Listen for clipboard action events from Tauri
   useEffect(() => {
-    const unlisten = listen<{ action: string; text: string }>("spotlight-action", (event) => {
+    let unlistenFn: (() => void) | null = null;
+    let mounted = true;
+
+    listen<{ action: string; text: string }>("spotlight-action", (event) => {
       const { action, text } = event.payload;
       if (!text) return;
       const prefill = action === "translate"
@@ -43,9 +50,19 @@ export const SpotlightWindow: React.FC = () => {
       setPrompt(prefill);
       // Auto-send
       handleSend(prefill);
+    }).then((fn) => {
+      if (mounted) {
+        unlistenFn = fn;
+      } else {
+        fn(); // Already unmounted, clean up immediately
+      }
     });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [model]);
+
+    return () => {
+      mounted = false;
+      unlistenFn?.();
+    };
+  }, []);
 
   const handleSend = useCallback(
     async (overridePrompt?: string) => {
@@ -273,6 +290,15 @@ export const SpotlightWindow: React.FC = () => {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Shortcut hint — always visible when no response (F1+F4) */}
+      {!hasResponse && (
+        <div style={{ marginTop: recents.length > 0 ? 8 : "auto", paddingTop: 8, textAlign: "center" }}>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
+            Tip: Use <kbd style={{ background: "rgba(255,255,255,0.08)", padding: "1px 4px", borderRadius: 3, fontSize: 9, border: "1px solid rgba(255,255,255,0.1)" }}>⌘⇧X</kbd> to toggle Spotlight from anywhere
+          </span>
         </div>
       )}
     </div>

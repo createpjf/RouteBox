@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, test, expect, beforeEach } from "bun:test";
-import { checkDailyQuota, incrementDailyQuota, getUserQuotaUsage } from "./quota";
+import { checkDailyQuota, decrementDailyQuota, getUserQuotaUsage } from "./quota";
 
 beforeEach(() => {
   // @ts-ignore
@@ -50,49 +50,56 @@ describe("checkDailyQuota — non-starter plans", () => {
 // ── Starter user — non-restricted model ────────────────────────────────────
 
 describe("checkDailyQuota — Starter, non-restricted model", () => {
-  test("gpt-4o has no quota restriction for Starter", async () => {
-    const result = await checkDailyQuota("user-1", "gpt-4o", "starter");
+  test("unknown-model gets conservative default quota for Starter (M1)", async () => {
+    // Atomic upsert returns used_count=1 (first use)
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [[{ used_count: 1 }]];
+    const result = await checkDailyQuota("user-1", "unknown-model-xyz", "starter");
     expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(Infinity);
+    expect(result.remaining).toBe(4); // default limit 5, used 1
   });
 
-  test("claude-3-5-sonnet has no quota restriction for Starter", async () => {
+  test("gpt-4o now has a quota for Starter (prefix match)", async () => {
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [[{ used_count: 1 }]];
+    const result = await checkDailyQuota("user-1", "gpt-4o", "starter");
+    expect(result.allowed).toBe(true);
+    expect(result.remaining).toBe(19); // limit 20, used 1
+  });
+
+  test("claude-3-5-sonnet now has a quota for Starter (prefix match)", async () => {
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [[{ used_count: 1 }]];
     const result = await checkDailyQuota("user-1", "claude-3-5-sonnet", "starter");
     expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(Infinity);
+    expect(result.remaining).toBe(19); // limit 20, used 1
   });
 });
 
 // ── Starter user — kimi-k2.5 quota (limit = 50) ────────────────────────────
 
 describe("checkDailyQuota — Starter, kimi-k2.5 (limit 50)", () => {
-  test("no record yet → used=0 → allowed", async () => {
+  test("first use → used_count=1 → allowed", async () => {
+    // Atomic upsert returns used_count=1 after incrementing
     // @ts-ignore
-    globalThis.__dbMockSqlResults = [[]]; // empty result = no row
+    globalThis.__dbMockSqlResults = [[{ used_count: 1 }]];
     const result = await checkDailyQuota("user-1", "kimi-k2.5", "starter");
     expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(50);
+    expect(result.remaining).toBe(49);
   });
 
-  test("used = 49 (limit-1) → allowed", async () => {
-    // @ts-ignore
-    globalThis.__dbMockSqlResults = [[{ used_count: 49 }]];
-    const result = await checkDailyQuota("user-1", "kimi-k2.5", "starter");
-    expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(1);
-  });
-
-  test("used = 50 (at limit) → not allowed", async () => {
+  test("used_count = 50 (at limit) → allowed (50th request)", async () => {
     // @ts-ignore
     globalThis.__dbMockSqlResults = [[{ used_count: 50 }]];
     const result = await checkDailyQuota("user-1", "kimi-k2.5", "starter");
-    expect(result.allowed).toBe(false);
+    expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(0);
   });
 
-  test("used = 55 (over limit) → not allowed, remaining = 0", async () => {
+  test("used_count = 51 (over limit) → not allowed, decremented", async () => {
+    // Atomic upsert returns 51 (over limit=50), then decrement is called
     // @ts-ignore
-    globalThis.__dbMockSqlResults = [[{ used_count: 55 }]];
+    globalThis.__dbMockSqlResults = [[{ used_count: 51 }], []]; // upsert result + decrement result
     const result = await checkDailyQuota("user-1", "kimi-k2.5", "starter");
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
@@ -111,13 +118,13 @@ describe("checkDailyQuota — Starter, kimi-k2.5 (limit 50)", () => {
   });
 });
 
-// ── incrementDailyQuota ──────────────────────────────────────────────────────
+// ── decrementDailyQuota ──────────────────────────────────────────────────────
 
-describe("incrementDailyQuota", () => {
-  test("calls sql with INSERT ON CONFLICT upsert", async () => {
+describe("decrementDailyQuota", () => {
+  test("calls sql UPDATE to decrement", async () => {
     // @ts-ignore
-    globalThis.__dbMockSqlResults = [[]]; // INSERT result
-    await incrementDailyQuota("user-1", "kimi-k2.5");
+    globalThis.__dbMockSqlResults = [[]];
+    await decrementDailyQuota("user-1", "kimi-k2.5");
     // @ts-ignore
     const calls = globalThis.__dbMockSqlCalls as unknown[][];
     expect(calls.length).toBe(1);
@@ -125,10 +132,10 @@ describe("incrementDailyQuota", () => {
     expect(calls[0]).toContain("kimi-k2.5");
   });
 
-  test("does not throw on empty result (upsert success)", async () => {
+  test("does not throw on empty result", async () => {
     // @ts-ignore
     globalThis.__dbMockSqlResults = [[]];
-    await expect(incrementDailyQuota("user-1", "kimi-k2.5")).resolves.toBeUndefined();
+    await expect(decrementDailyQuota("user-1", "kimi-k2.5")).resolves.toBeUndefined();
   });
 });
 
@@ -163,8 +170,15 @@ describe("getUserQuotaUsage", () => {
 
   test("limit is 0 for unknown model (not in STARTER_DAILY_QUOTA)", async () => {
     // @ts-ignore
-    globalThis.__dbMockSqlResults = [[{ model_id: "gpt-4o", used_count: 5 }]];
+    globalThis.__dbMockSqlResults = [[{ model_id: "some-unknown-model", used_count: 5 }]];
     const result = await getUserQuotaUsage("user-1");
     expect(result[0]!.limit).toBe(0);
+  });
+
+  test("gpt-4o returns correct limit from STARTER_DAILY_QUOTA", async () => {
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [[{ model_id: "gpt-4o", used_count: 5 }]];
+    const result = await getUserQuotaUsage("user-1");
+    expect(result[0]!.limit).toBe(20);
   });
 });
