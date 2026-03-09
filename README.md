@@ -2,7 +2,7 @@
   <img src="docs/images/routebox_icon.png" alt="RouteBox-Beta" width="160" />
 </p>
 
-<h1 align="center">RouteBox</h1>
+<h1 align="center">RouteBox-beta</h1>
 
 <p align="center">
   <em>One proxy. Every model. Your rules.</em><br/>
