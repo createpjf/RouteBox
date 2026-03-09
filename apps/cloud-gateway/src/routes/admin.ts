@@ -27,12 +27,19 @@ import {
 import { sql } from "../lib/db-cloud";
 import { processMonthlyReferralEarnings } from "../lib/referrals";
 import { log } from "../lib/logger";
+import { adminHtml } from "../lib/admin-page";
 import type { CloudEnv } from "../types";
 
 const app = new Hono<CloudEnv>();
 
 // All admin routes require admin auth
 app.use("/*", adminAuth);
+
+// Serve admin dashboard HTML at /admin/
+app.get("/", (c) => {
+  c.header("Cache-Control", "no-store");
+  return c.html(adminHtml);
+});
 
 /** Insert an admin audit log entry (fire-and-forget) */
 function auditLog(
