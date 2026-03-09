@@ -120,17 +120,17 @@ app.use("/billing/*", rateLimitBilling);
 app.route("/auth", authRoutes);
 app.route("/billing", billingRoutes);
 
-// ── Admin routes (own auth — checks ADMIN_EMAILS) ───────────────────────────
-app.route("/admin", adminRoutes);
-
-// ── Admin dashboard (HTML — protected by adminAuth middleware) ────────────────
+// ── Admin dashboard HTML (public — page has its own login form) ──────────────
 import { adminHtml } from "./lib/admin-page";
-import { adminAuth } from "./middleware/admin-auth";
-app.get("/admin-panel", adminAuth, (c) => {
-  c.header("X-Frame-Options", "SAMEORIGIN");
+app.get("/admin", (c) => c.redirect("/admin/"));
+app.get("/admin/", (c) => {
   c.header("Cache-Control", "no-store");
+  c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'");
   return c.html(adminHtml);
 });
+
+// ── Admin API routes (own auth — checks ADMIN_EMAILS) ───────────────────────
+app.route("/admin", adminRoutes);
 
 // ── Landing page + static assets ─────────────────────────────────────────────
 import { landingHtml } from "./lib/landing";
