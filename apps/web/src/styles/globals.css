@@ -261,6 +261,13 @@
   border-radius: 6px;
 }
 
+/* Card — clean, minimal border */
+.card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
 /* Glow line */
 .glow-line {
   height: 2px;

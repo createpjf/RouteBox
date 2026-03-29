@@ -1,28 +1,33 @@
-import { useState, useEffect } from "react";
-import { Copy, Check, ExternalLink } from "lucide-react";
-import * as api from "@/lib/api";
+import { useState } from "react";
+import { Copy, Check } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
 
-const CODE_EXAMPLES = {
-  python: `from openai import OpenAI
+const TOOLS = ["Claude Code", "Codex CLI", "OpenAI API", "Python SDK", "cURL"] as const;
+type Tool = (typeof TOOLS)[number];
 
-client = OpenAI(
-    base_url="${API_BASE_URL}/v1",
-    api_key="YOUR_API_KEY"
-)
+const TOOL_CONTENT: Record<Tool, { description: string; code: string }> = {
+  "Claude Code": {
+    description: "Set two environment variables to run Claude Code. All requests will automatically use your API key.",
+    code: `ANTHROPIC_AUTH_TOKEN="your-api-key" \\
+ANTHROPIC_BASE_URL="${API_BASE_URL}/v1" \\
+claude`,
+  },
+  "Codex CLI": {
+    description: "Configure Codex CLI to use RouteBox as the provider.",
+    code: `# Set environment variables
+export OPENAI_API_KEY="your-api-key"
+export OPENAI_BASE_URL="${API_BASE_URL}/v1"
 
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-
-print(response.choices[0].message.content)`,
-
-  javascript: `import OpenAI from "openai";
+# Run Codex CLI
+codex`,
+  },
+  "OpenAI API": {
+    description: "Use RouteBox as a drop-in replacement for the OpenAI API. Works with any OpenAI-compatible client.",
+    code: `import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "${API_BASE_URL}/v1",
-  apiKey: "YOUR_API_KEY",
+  apiKey: "your-api-key",
 });
 
 const response = await client.chat.completions.create({
@@ -31,140 +36,155 @@ const response = await client.chat.completions.create({
 });
 
 console.log(response.choices[0].message.content);`,
+  },
+  "Python SDK": {
+    description: "Use the OpenAI Python SDK with RouteBox. Supports all models across providers.",
+    code: `from openai import OpenAI
 
-  curl: `curl ${API_BASE_URL}/v1/chat/completions \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+client = OpenAI(
+    base_url="${API_BASE_URL}/v1",
+    api_key="your-api-key"
+)
+
+# Use any model — RouteBox routes automatically
+response = client.chat.completions.create(
+    model="claude-sonnet-4-6",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+
+print(response.choices[0].message.content)`,
+  },
+  "cURL": {
+    description: "Make direct HTTP requests to the RouteBox API.",
+    code: `curl ${API_BASE_URL}/v1/chat/completions \\
+  -H "Authorization: Bearer your-api-key" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-4o",
-    "messages": [{"role": "user", "content": "Hello!"}]
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ]
   }'`,
+  },
 };
 
-type Lang = keyof typeof CODE_EXAMPLES;
-
 export function ApiDocs() {
-  const [models, setModels] = useState<{ id: string; owned_by: string }[]>([]);
-  const [selectedLang, setSelectedLang] = useState<Lang>("python");
-  const [copied, setCopied] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [selectedTool, setSelectedTool] = useState<Tool>("Claude Code");
+  const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    api.getModels()
-      .then((res) => setModels(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  function copyText(id: string, text: string) {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
+  function copyCode() {
+    navigator.clipboard.writeText(TOOL_CONTENT[selectedTool].code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
+
+  const content = TOOL_CONTENT[selectedTool];
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">API Documentation</h1>
-        <p className="text-text-secondary mt-1">Get started with the RouteBox Cloud API</p>
-      </div>
+      {/* How to Use */}
+      <div className="card p-6">
+        <h2 className="text-base font-semibold text-text-primary mb-4">How to Use</h2>
 
-      {/* Endpoint */}
-      <div className="glass-card-static p-6">
-        <h2 className="section-header">API Endpoint</h2>
-        <div className="flex items-center gap-3 bg-bg-elevated rounded-lg px-4 py-3">
-          <code className="flex-1 font-mono text-sm text-accent-ember">{API_BASE_URL}/v1</code>
-          <button onClick={() => copyText("endpoint", `${API_BASE_URL}/v1`)} className="btn-ghost h-8 px-2">
-            {copied === "endpoint" ? <Check size={14} className="text-accent-green" /> : <Copy size={14} />}
-          </button>
-        </div>
-        <p className="text-sm text-text-secondary mt-3">
-          RouteBox Cloud is fully OpenAI-compatible. Use it as a drop-in replacement for any OpenAI SDK.
-          Your requests are automatically routed to the best provider based on model, cost, and performance.
-        </p>
-      </div>
-
-      {/* Quick Start */}
-      <div className="glass-card-static p-6">
-        <h2 className="section-header">Quick Start</h2>
-
-        {/* Language tabs */}
-        <div className="flex gap-1 mb-4 bg-bg-elevated rounded-lg p-1 w-fit">
-          {(["python", "javascript", "curl"] as Lang[]).map((lang) => (
+        {/* Tool Tabs */}
+        <div className="flex flex-wrap gap-0 border border-border rounded-xl overflow-hidden mb-6">
+          {TOOLS.map((tool) => (
             <button
-              key={lang}
-              onClick={() => setSelectedLang(lang)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
-                selectedLang === lang
-                  ? "bg-accent-ember text-white"
-                  : "text-text-secondary hover:text-text-primary"
+              key={tool}
+              onClick={() => setSelectedTool(tool)}
+              className={`flex-1 min-w-[120px] px-4 py-3 text-sm font-medium transition-colors border-r border-border last:border-r-0 ${
+                selectedTool === tool
+                  ? "bg-bg-card text-text-primary"
+                  : "bg-bg-elevated/50 text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
               }`}
             >
-              {lang}
+              {tool}
             </button>
           ))}
         </div>
 
+        {/* Description */}
+        <p className="text-sm text-text-secondary mb-4">{content.description}</p>
+
+        {/* Code Block */}
         <div className="relative">
-          <pre className="bg-bg-elevated rounded-xl p-4 overflow-x-auto text-sm font-mono text-text-primary leading-relaxed">
-            {CODE_EXAMPLES[selectedLang]}
+          <pre className="bg-bg-elevated rounded-xl p-5 overflow-x-auto text-sm font-mono text-text-primary leading-relaxed whitespace-pre-wrap">
+            {content.code}
           </pre>
           <button
-            onClick={() => copyText("code", CODE_EXAMPLES[selectedLang])}
-            className="absolute top-3 right-3 btn-ghost h-7 px-2 bg-bg-card/80 backdrop-blur"
+            onClick={copyCode}
+            className="absolute top-3 right-3 btn-ghost h-8 px-3 bg-bg-card/80 backdrop-blur border border-border text-xs"
           >
-            {copied === "code" ? <Check size={13} className="text-accent-green" /> : <Copy size={13} />}
+            {copied ? (
+              <>
+                <Check size={12} className="text-accent-green" /> Copied
+              </>
+            ) : (
+              <>
+                <Copy size={12} /> Copy
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Features */}
-      <div className="glass-card-static p-6">
-        <h2 className="section-header">Key Features</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Supported Models */}
+      <div className="card p-6">
+        <h2 className="text-base font-semibold text-text-primary mb-4">Supported Models</h2>
+        <p className="text-sm text-text-secondary mb-4">
+          RouteBox automatically routes to the best provider. Use any model name — we handle the rest.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
-            { title: "Multi-Provider Routing", desc: "Requests automatically route to OpenAI, Anthropic, Google, DeepSeek, and more" },
-            { title: "OpenAI Compatible", desc: "Drop-in replacement for the OpenAI API — works with any OpenAI SDK" },
-            { title: "Smart Fallback", desc: "Automatic retry and fallback to alternative providers on errors" },
-            { title: "Usage Tracking", desc: "Real-time cost tracking, token usage, and latency monitoring" },
-          ].map((f) => (
-            <div key={f.title} className="p-4 rounded-xl bg-bg-elevated/50">
-              <div className="text-sm font-semibold text-text-primary mb-1">{f.title}</div>
-              <div className="text-xs text-text-secondary">{f.desc}</div>
+            { provider: "Anthropic", models: ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"], color: "var(--color-provider-anthropic)" },
+            { provider: "OpenAI", models: ["gpt-5.4", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini"], color: "var(--color-provider-openai)" },
+            { provider: "Google", models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"], color: "var(--color-provider-google)" },
+            { provider: "DeepSeek", models: ["deepseek-chat", "deepseek-reasoner"], color: "var(--color-provider-deepseek)" },
+            { provider: "MiniMax", models: ["MiniMax-M2.5", "MiniMax-M2.1"], color: "#FF6B35" },
+            { provider: "Kimi", models: ["kimi-k2.5", "kimi-k2", "moonshot-v1-128k"], color: "#6366F1" },
+          ].map((group) => (
+            <div key={group.provider} className="bg-bg-elevated/50 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2 h-2 rounded-full" style={{ background: group.color }} />
+                <span className="text-sm font-semibold text-text-primary">{group.provider}</span>
+              </div>
+              <div className="space-y-1">
+                {group.models.map((m) => (
+                  <div key={m} className="text-xs font-mono text-text-secondary">{m}</div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Available Models */}
-      <div className="glass-card-static p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="section-header mb-0">Available Models</h2>
-          {loading && <div className="h-4 w-20 skeleton" />}
+      {/* API Reference */}
+      <div className="card p-6">
+        <h2 className="text-base font-semibold text-text-primary mb-4">API Reference</h2>
+        <div className="space-y-4">
+          <div className="bg-bg-elevated/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="badge bg-accent-green/15 text-accent-green">GET</span>
+              <code className="font-mono text-sm text-text-primary">/v1/models</code>
+            </div>
+            <p className="text-xs text-text-secondary mt-1">List all available models</p>
+          </div>
+          <div className="bg-bg-elevated/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="badge bg-accent-blue/15 text-accent-blue">POST</span>
+              <code className="font-mono text-sm text-text-primary">/v1/chat/completions</code>
+            </div>
+            <p className="text-xs text-text-secondary mt-1">Create a chat completion (streaming & non-streaming)</p>
+          </div>
+          <div className="bg-bg-elevated/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="badge bg-accent-blue/15 text-accent-blue">POST</span>
+              <code className="font-mono text-sm text-text-primary">/v1/embeddings</code>
+            </div>
+            <p className="text-xs text-text-secondary mt-1">Create text embeddings</p>
+          </div>
         </div>
-
-        {models.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {models.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 py-2 px-3 rounded-lg bg-bg-elevated/50">
-                <code className="flex-1 font-mono text-xs text-text-primary truncate">{m.id}</code>
-                <span className="text-xs text-text-tertiary shrink-0">{m.owned_by}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-text-secondary text-center py-4">
-            {loading ? "Loading models..." : "No models available"}
-          </div>
-        )}
-      </div>
-
-      {/* Links */}
-      <div className="flex gap-4">
-        <a href="https://github.com/createpjf/RouteBox" target="_blank" rel="noopener noreferrer"
-          className="btn-secondary text-sm">
-          <ExternalLink size={14} /> GitHub Repository
-        </a>
       </div>
     </div>
   );
