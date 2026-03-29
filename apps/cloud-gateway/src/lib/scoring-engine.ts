@@ -56,6 +56,12 @@ export interface ScoredCandidate {
   totalScore: number;
   providerConfigs: CloudProviderConfig[];
   isFallback: boolean;
+  /** Marketplace listing metadata (present only for marketplace candidates) */
+  isMarketplace?: boolean;
+  listingId?: string;
+  listingOwnerId?: string;
+  marketplacePriceInputPerM?: number;
+  marketplacePriceOutputPerM?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,4 +240,79 @@ function findProviderConfigs(model: ModelRegistryEntry): CloudProviderConfig[] {
   });
 
   return configs;
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace candidate scoring
+// ---------------------------------------------------------------------------
+
+import { getListingsForModel, type MarketplaceListing } from "./marketplace";
+
+/** Score marketplace listings for a given model and merge with platform candidates */
+export async function scoreWithMarketplace(input: {
+  requestedModel: string;
+  strategy: string;
+  context: RequestContext;
+  userPlan: string;
+  platformCandidates: ScoredCandidate[];
+}): Promise<ScoredCandidate[]> {
+  const { requestedModel, strategy, platformCandidates } = input;
+  const weights = STRATEGY_WEIGHTS[strategy] ?? STRATEGY_WEIGHTS.smart_auto;
+
+  let listings: MarketplaceListing[];
+  try {
+    listings = await getListingsForModel(requestedModel);
+  } catch {
+    // If marketplace query fails, just return platform candidates
+    return platformCandidates;
+  }
+
+  if (listings.length === 0) return platformCandidates;
+
+  const marketplaceCandidates: ScoredCandidate[] = listings.map((listing) => {
+    // Score based on price competitiveness and reliability
+    const avgPlatformPrice = platformCandidates.length > 0
+      ? platformCandidates.reduce((sum, c) => sum + (c.totalScore || 0), 0) / platformCandidates.length
+      : 0.5;
+
+    // Normalize price: lower is better (inverse)
+    const priceScore = Math.max(0, 1 - (listing.priceInputPerM / 20));
+    // Reliability score from success rate
+    const reliabilityScore = listing.successRate / 100;
+    // Latency score (lower is better)
+    const latencyScore = listing.avgLatencyMs
+      ? Math.max(0, 1 - listing.avgLatencyMs / 5000)
+      : 0.5;
+
+    const totalScore =
+      weights.cost * priceScore +
+      weights.quality * reliabilityScore +
+      weights.speed * latencyScore;
+
+    return {
+      modelId: requestedModel,
+      provider: listing.providerName,
+      totalScore: totalScore * 0.95, // Slight preference for platform keys
+      providerConfigs: [], // Will be resolved at forward time via decryption
+      isFallback: false,
+      isMarketplace: true,
+      listingId: listing.id,
+      listingOwnerId: listing.ownerId,
+      marketplacePriceInputPerM: listing.priceInputPerM,
+      marketplacePriceOutputPerM: listing.priceOutputPerM,
+    };
+  });
+
+  // Merge and re-sort
+  const all = [...platformCandidates, ...marketplaceCandidates];
+  all.sort((a, b) => b.totalScore - a.totalScore);
+
+  log.debug("marketplace_scoring", {
+    requestedModel,
+    platformCount: platformCandidates.length,
+    marketplaceCount: marketplaceCandidates.length,
+    topPick: all[0]?.isMarketplace ? "marketplace" : "platform",
+  });
+
+  return all;
 }

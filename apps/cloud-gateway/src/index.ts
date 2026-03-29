@@ -26,6 +26,7 @@ import analyticsRoutes from "./routes/analytics";
 import metricsRoutes from "./routes/metrics";
 import proxyRoutes from "./routes/proxy";
 import adminRoutes from "./routes/admin";
+import marketplaceRoutes from "./routes/marketplace";
 import { jwtAuth } from "./middleware/jwt-auth";
 import type { CloudEnv } from "./types";
 
@@ -40,7 +41,7 @@ app.use("*", requestIdMiddleware);
 // ── CORS — restrict origins (configurable via CORS_ORIGINS env var) ─────────
 const ALLOWED_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",")
-  : ["tauri://localhost", "https://tauri.localhost", "https://api.routebox.dev"];
+  : ["tauri://localhost", "https://tauri.localhost", "https://api.routebox.dev", "https://app.routebox.dev", "http://localhost:5173"];
 
 app.use(
   "*",
@@ -203,6 +204,10 @@ app.route("/account", accountRoutes);
 app.route("/account", analyticsRoutes);
 app.route("/v1", proxyRoutes);
 
+// ── Marketplace (JWT required) ──────────────────────────────────────────
+app.use("/marketplace/*", jwtAuth);
+app.route("/marketplace", marketplaceRoutes);
+
 // ── Startup ─────────────────────────────────────────────────────────────────
 log.info("gateway_starting");
 
@@ -339,6 +344,28 @@ retryTimer = setInterval(processPendingDeductions, RETRY_INTERVAL_MS);
 // Run once on startup after a short delay
 setTimeout(processPendingDeductions, 10_000);
 
+// ── Marketplace settlement worker (every hour) ────────────────────────────
+const SETTLEMENT_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+let settlementTimer: ReturnType<typeof setInterval> | null = null;
+
+async function processSettlements() {
+  try {
+    const { settleOwnerEarnings } = await import("./lib/settlement");
+    const count = await settleOwnerEarnings();
+    if (count > 0) {
+      log.info("marketplace_settlements_processed", { count });
+    }
+  } catch (err) {
+    log.error("marketplace_settlement_worker_error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+settlementTimer = setInterval(processSettlements, SETTLEMENT_INTERVAL_MS);
+// First settlement run after 30 seconds
+setTimeout(processSettlements, 30_000);
+
 // ── Graceful shutdown ────────────────────────────────────────────────────────
 let shuttingDown = false;
 
@@ -347,8 +374,9 @@ async function shutdown(signal: string) {
   shuttingDown = true;
   log.info("shutdown_initiated", { signal });
 
-  // Stop retry worker
+  // Stop workers
   if (retryTimer) clearInterval(retryTimer);
+  if (settlementTimer) clearInterval(settlementTimer);
 
   // Stop alert timers
   try {
