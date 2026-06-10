@@ -25,8 +25,11 @@ function resolveToken(): string {
 
 const ROUTEBOX_TOKEN = resolveToken();
 
-// Print token on startup so the user can configure their clients
-console.log(`  ROUTEBOX_TOKEN=${ROUTEBOX_TOKEN}`);
+// C2a: 不在日志中打印完整 token;只显示掩码前缀供识别
+const masked = ROUTEBOX_TOKEN.length > 10
+  ? `${ROUTEBOX_TOKEN.slice(0, 6)}…${ROUTEBOX_TOKEN.slice(-4)}`
+  : "****";
+console.log(`  ROUTEBOX_TOKEN=${masked} (full token in Settings / keychain)`);
 
 export function verifyToken(token: string): boolean {
   // C3: 常量时间比较,避免 token 计时侧信道
