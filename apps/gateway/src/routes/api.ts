@@ -200,7 +200,12 @@ app.put("/local-providers/:name/url", async (c) => {
   const body = await c.req.json<{ baseUrl: string; apiKey?: string }>();
   if (!body.baseUrl?.trim()) return c.json({ error: "baseUrl is required" }, 400);
 
-  const updated = await updateLocalProviderUrl(name, body.baseUrl.trim(), body.apiKey?.trim());
+  let updated;
+  try {
+    updated = await updateLocalProviderUrl(name, body.baseUrl.trim(), body.apiKey?.trim());
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400); // H2-sec: 非法 baseUrl
+  }
   if (!updated) return c.json({ error: "Unknown local provider" }, 404);
 
   metrics.syncProviders();
