@@ -172,6 +172,18 @@ pub async fn spawn_gateway(
             t
         });
 
+    // M4-sec: 获取或生成 provider-key 静态加密密钥(64 hex = 32 bytes)
+    let db_key = keychain::get_db_key()
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| {
+            let mut bytes = [0u8; 32];
+            getrandom::getrandom(&mut bytes).expect("failed to generate db key");
+            let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+            let _ = keychain::store_db_key(&hex);
+            hex
+        });
+
     let bun_path = which_bun().ok_or_else(|| {
         eprintln!("[RouteBox] bun not found in any known path");
         "bun not found. Install from https://bun.sh or add to PATH".to_string()
@@ -263,6 +275,7 @@ pub async fn spawn_gateway(
         .current_dir(entry.parent().unwrap_or(&resource_dir))
         .env("PORT", gateway_port.to_string())
         .env("ROUTEBOX_TOKEN", &token)
+        .env("ROUTEBOX_DB_KEY", &db_key)
         .env("ROUTEBOX_DB_PATH", db_path.to_string_lossy().to_string())
         .env("HOME", &real_home)
         .env("PATH", &child_path)
