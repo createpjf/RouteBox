@@ -126,6 +126,7 @@ process.on("SIGINT", () => { console.log("Shutting down..."); process.exit(0); }
 
 export default {
   port,
+  hostname: "127.0.0.1", // C1: 仅监听 loopback,禁止局域网访问本地代理
   fetch: app.fetch,
   websocket,
 };
