@@ -29,7 +29,11 @@ const ROUTEBOX_TOKEN = resolveToken();
 console.log(`  ROUTEBOX_TOKEN=${ROUTEBOX_TOKEN}`);
 
 export function verifyToken(token: string): boolean {
-  return token === ROUTEBOX_TOKEN;
+  // C3: 常量时间比较,避免 token 计时侧信道
+  const a = Buffer.from(token);
+  const b = Buffer.from(ROUTEBOX_TOKEN);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 export const authMiddleware = createMiddleware(async (c, next) => {
