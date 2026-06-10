@@ -144,18 +144,24 @@ export async function loadDbProviderKeys(): Promise<CloudProviderConfig[]> {
       continue;
     }
 
-    const idx = counterByProvider.get(providerName) ?? 0;
-    counterByProvider.set(providerName, idx + 1);
+    try {
+      const apiKey = decryptSecret(r.api_key as string);
+      const idx = counterByProvider.get(providerName) ?? 0;
+      counterByProvider.set(providerName, idx + 1);
 
-    configs.push({
-      name: providerName,
-      baseUrl: (r.base_url as string) || tmpl.defaultBaseUrl,
-      apiKey: decryptSecret(r.api_key as string),
-      prefixes: tmpl.prefixes,
-      format: tmpl.format,
-      authHeader: tmpl.authHeader,
-      instanceId: `${providerName}:db:${idx}`,
-    });
+      configs.push({
+        name: providerName,
+        baseUrl: (r.base_url as string) || tmpl.defaultBaseUrl,
+        apiKey,
+        prefixes: tmpl.prefixes,
+        format: tmpl.format,
+        authHeader: tmpl.authHeader,
+        instanceId: `${providerName}:db:${idx}`,
+      });
+    } catch {
+      log.warn("provider_key_decrypt_failed", { providerName });
+      continue;
+    }
   }
 
   if (configs.length > 0) {

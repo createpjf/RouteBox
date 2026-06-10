@@ -263,8 +263,16 @@ export function loadProviderKey(name: string): ProviderKeyRow | null {
 
 export function loadAllProviderKeys(): ProviderKeyRow[] {
   const rows = getAllProviderKeysStmt.all() as ProviderKeyRow[];
-  for (const r of rows) r.api_key = decryptSecret(r.api_key);
-  return rows;
+  const out: ProviderKeyRow[] = [];
+  for (const r of rows) {
+    try {
+      r.api_key = decryptSecret(r.api_key);
+      out.push(r);
+    } catch {
+      console.warn(`  Skipping provider key for "${r.provider_name}": decryption failed (missing/incorrect ROUTEBOX_DB_KEY?)`);
+    }
+  }
+  return out;
 }
 
 export function updateProviderKeyValidation(name: string) {
