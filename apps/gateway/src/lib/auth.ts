@@ -1,5 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { loadSetting, saveSetting } from "./db";
+import { encryptSecret, decryptSecret } from "./secrets";
 import crypto from "crypto";
 
 function resolveToken(): string {
@@ -13,12 +14,12 @@ function resolveToken(): string {
   const dbToken = loadSetting("routebox_token");
   if (dbToken) {
     console.log("  Auth token loaded from database.");
-    return dbToken;
+    return decryptSecret(dbToken); // C2c: 库内为密文(无密钥时 decrypt 透传旧明文)
   }
 
   // 3. Generate a new random token and persist it
   const newToken = `rb_${crypto.randomBytes(24).toString("hex")}`;
-  saveSetting("routebox_token", newToken);
+  saveSetting("routebox_token", encryptSecret(newToken)); // C2c
   console.log("  Generated new auth token (saved to database).");
   return newToken;
 }

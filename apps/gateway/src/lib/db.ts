@@ -4,6 +4,7 @@
 
 import { Database } from "bun:sqlite";
 import type { RequestRecord } from "./metrics";
+import { encryptSecret, decryptSecret } from "./secrets";
 
 const DB_PATH = process.env.ROUTEBOX_DB_PATH || "routebox.db";
 
@@ -247,7 +248,7 @@ export interface ProviderKeyRow {
 }
 
 export function saveProviderKey(name: string, apiKey: string) {
-  upsertProviderKey.run({ $name: name, $key: apiKey, $now: Date.now() });
+  upsertProviderKey.run({ $name: name, $key: encryptSecret(apiKey), $now: Date.now() });
 }
 
 export function removeProviderKey(name: string) {
@@ -255,11 +256,15 @@ export function removeProviderKey(name: string) {
 }
 
 export function loadProviderKey(name: string): ProviderKeyRow | null {
-  return (getProviderKeyStmt.get(name) as ProviderKeyRow | null) ?? null;
+  const row = (getProviderKeyStmt.get(name) as ProviderKeyRow | null) ?? null;
+  if (row) row.api_key = decryptSecret(row.api_key);
+  return row;
 }
 
 export function loadAllProviderKeys(): ProviderKeyRow[] {
-  return getAllProviderKeysStmt.all() as ProviderKeyRow[];
+  const rows = getAllProviderKeysStmt.all() as ProviderKeyRow[];
+  for (const r of rows) r.api_key = decryptSecret(r.api_key);
+  return rows;
 }
 
 export function updateProviderKeyValidation(name: string) {
