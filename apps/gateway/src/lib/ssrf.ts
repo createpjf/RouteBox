@@ -17,7 +17,8 @@ function isPrivateIpv4(host: string): boolean {
   return false;
 }
 
-/** 校验 URL 仅指向本机/私有网络;否则抛错。用于本地 provider 配置与探测。 */
+/** 校验 URL 仅指向本机/私有网络;否则抛错。用于本地 provider 配置与探测。
+ *  注意:基于 hostname 静态判断,不做 DNS 解析,故不防御「域名解析到内网 IP」的 DNS rebinding。 */
 export function assertSafeLocalUrl(rawUrl: string): void {
   let url: URL;
   try {

@@ -86,6 +86,7 @@ async function forwardOpenAI(
     method: "POST",
     headers,
     body: JSON.stringify(body),
+    redirect: "error",
     signal: AbortSignal.timeout(provider.isLocal ? 120_000 : 30_000),
   });
 }
@@ -103,6 +104,7 @@ async function forwardAnthropic(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify(anthropicBody),
+    redirect: "error",
     signal: AbortSignal.timeout(30_000),
   });
 }

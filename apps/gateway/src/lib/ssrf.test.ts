@@ -30,3 +30,22 @@ test("rejects non-http(s) schemes", () => {
 test("rejects malformed urls", () => {
   expect(() => assertSafeLocalUrl("not a url")).toThrow();
 });
+
+test("blocks numeric-encoded metadata addresses (URL-normalized)", () => {
+  // 169.254.169.254 in decimal / hex must still be rejected
+  expect(() => assertSafeLocalUrl("http://2852039166/")).toThrow();
+  expect(() => assertSafeLocalUrl("http://0xa9fea9fe/")).toThrow();
+});
+
+test("ignores userinfo when deciding host", () => {
+  expect(() => assertSafeLocalUrl("http://localhost@evil.com/")).toThrow();
+});
+
+test("blocks IPv4-mapped IPv6 metadata", () => {
+  expect(() => assertSafeLocalUrl("http://[::ffff:169.254.169.254]/")).toThrow();
+});
+
+test("allows numeric-encoded loopback", () => {
+  // 2130706433 === 127.0.0.1
+  expect(() => assertSafeLocalUrl("http://2130706433/")).not.toThrow();
+});
