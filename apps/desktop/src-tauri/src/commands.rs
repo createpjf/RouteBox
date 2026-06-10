@@ -266,7 +266,9 @@ pub async fn spawn_gateway(
         .env("ROUTEBOX_DB_PATH", db_path.to_string_lossy().to_string())
         .env("HOME", &real_home)
         .env("PATH", &child_path)
-        .stdout(std::process::Stdio::piped())
+        // C2b: 丢弃 gateway stdout —— 诊断走 stderr(下方会读取);
+        // 不保留无人读取的管道,避免凭据泄露与管道缓冲写满导致的死锁
+        .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| {
