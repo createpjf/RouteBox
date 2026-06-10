@@ -2,13 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- H4-sec: App Sandbox 暂未开启 —— 网关需 spawn bun 子进程并访问真实 $HOME,
+       完整沙箱化列入后续 backlog(见 docs/superpowers/specs/2026-06-10-routebox-fixes-design.md 非目标)。 -->
   <key>com.apple.security.app-sandbox</key>
   <false/>
+  <!-- 出站请求:访问 LLM provider API -->
   <key>com.apple.security.network.client</key>
   <true/>
+  <!-- 本地代理在 127.0.0.1 监听,macOS 下监听 socket 需要此项 -->
   <key>com.apple.security.network.server</key>
-  <true/>
-  <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
 </dict>
 </plist>
