@@ -46,8 +46,9 @@ app.use(
   "*",
   cors({
     origin: (origin) => {
-      // Non-browser requests (Tauri desktop, curl, server-to-server)
-      if (!origin) return "*";
+      // H3-sec: 非浏览器请求(无 Origin)不下发 ACAO —— CORS 仅约束浏览器,
+      // 浏览器请求必带 Origin,故无需通配
+      if (!origin) return null;
       return ALLOWED_ORIGINS.includes(origin) ? origin : null;
     },
     allowHeaders: ["Content-Type", "Authorization"],
