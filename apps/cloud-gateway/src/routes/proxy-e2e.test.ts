@@ -448,12 +448,26 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
       [], // disabled model check
     ];
 
+    const usage = { prompt_tokens: 100_000, completion_tokens: 50_000, total_tokens: 150_000 };
+    const requestedModelCost = calculateUserCostCents(
+      usage.prompt_tokens,
+      usage.completion_tokens,
+      { ...pricingFor("minimax-m2.5"), markup: 1.08 },
+    );
+    const servedModelCost = calculateUserCostCents(
+      usage.prompt_tokens,
+      usage.completion_tokens,
+      { ...pricingFor("kimi-k2.5"), markup: 1.08 },
+    );
+    expect(servedModelCost).not.toBe(requestedModelCost);
+
     mockFetch(async (_url, init) => {
       const providerBody = JSON.parse(init!.body as string);
       expect(providerBody.model).toBe("kimi-k2.5");
       return new Response(JSON.stringify({
         ...PROVIDER_JSON_RESPONSE,
         model: providerBody.model,
+        usage,
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -472,8 +486,11 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
     expect(body._routebox.routed_model).toBe("kimi-k2.5");
     expect(body._routebox.requested_model).toBe("minimax-m2.5");
     expect(body._routebox.is_fallback).toBe(true);
+    expect(body._routebox.user_cost_cents).toBe(servedModelCost);
 
     expect(deductCalls).toHaveLength(1);
+    expect(deductCalls[0][1]).toBe(servedModelCost);
+    expect(deductCalls[0][1]).not.toBe(requestedModelCost);
     expect((deductCalls[0][2] as any).model).toBe("kimi-k2.5");
 
     expect(recordCalls).toHaveLength(1);
@@ -676,6 +693,90 @@ describe("T5: Streaming full chain", () => {
 
     // recordCloudRequest should have been called
     expect(recordCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("streaming scoring fallback uses served-model metadata and accounting", async () => {
+    const app = createApp({ userPlan: "pro" });
+
+    const providerConfig = {
+      name: "TestProvider",
+      instanceId: "test-1",
+      baseUrl: "http://localhost:9999",
+      apiKey: "test-key",
+      format: "openai",
+      prefixes: ["minimax-", "kimi-"],
+    };
+    mockScoredCandidates = [
+      {
+        modelId: "kimi-k2.5",
+        providerConfigs: [providerConfig],
+        isFallback: true,
+        totalScore: 0.99,
+      },
+    ];
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    const encoder = new TextEncoder();
+    mockFetch(async (_url, init) => {
+      const providerBody = JSON.parse(init!.body as string);
+      expect(providerBody.model).toBe("kimi-k2.5");
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({
+              id: "chatcmpl-stream",
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: { content: "Hi" }, finish_reason: null }],
+            })}\n\n`,
+          ));
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({
+              id: "chatcmpl-stream",
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+              usage: { prompt_tokens: 100_000, completion_tokens: 50_000, total_tokens: 150_000 },
+            })}\n\n`,
+          ));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...CHAT_BODY, stream: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-RouteBox-Model")).toBe("kimi-k2.5");
+
+    const text = await res.text();
+    const metaLine = text.split("\n").find(
+      (line) => line.startsWith("data: ") && line.includes("\"object\":\"routebox.meta\""),
+    );
+    expect(metaLine).toBeTruthy();
+    const streamMeta = JSON.parse(metaLine!.slice("data: ".length));
+    expect(streamMeta.model).toBe("kimi-k2.5");
+    expect(streamMeta.requested_model).toBe("minimax-m2.5");
+    expect(streamMeta.is_fallback).toBe(true);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(deductCalls).toHaveLength(1);
+    expect((deductCalls[0][2] as any).model).toBe("kimi-k2.5");
+
+    expect(recordCalls).toHaveLength(1);
+    expect(recordCalls[0][1]).toBe("kimi-k2.5");
   });
 });
 
