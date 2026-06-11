@@ -16,6 +16,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   const [keyInput, setKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [successProvider, setSuccessProvider] = useState<string | null>(null);
   const [editingLocalUrl, setEditingLocalUrl] = useState<string | null>(null);
   const [localUrlInput, setLocalUrlInput] = useState("");
@@ -27,6 +28,8 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   const [customApiKey, setCustomApiKey] = useState("");
   const [customSaving, setCustomSaving] = useState(false);
   const [customError, setCustomError] = useState<string | null>(null);
+  const [fetchFailed, setFetchFailed] = useState(false);
+  const [retriesExhausted, setRetriesExhausted] = useState(false);
 
   const fetchRegistry = useCallback(async () => {
     try {
@@ -36,8 +39,11 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
       ]);
       setProviders(regRes.providers);
       setLocalProviders(localRes.providers);
+      setFetchFailed(false);
+      setRetriesExhausted(false);
     } catch {
-      // silent — may not be connected yet
+      // may not be connected yet — flag for bounded auto-retry
+      setFetchFailed(true);
     } finally {
       setLoading(false);
     }
@@ -46,6 +52,24 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   useEffect(() => {
     fetchRegistry();
   }, [fetchRegistry]);
+
+  // Bounded auto-retry while the gateway is still coming up (e.g. starting).
+  // Polls every 2s, stops on success (fetchFailed→false clears this effect) or
+  // after a cap, after which the user falls back to the manual Refresh button.
+  useEffect(() => {
+    if (!fetchFailed) return;
+    let attempts = 0;
+    const id = setInterval(() => {
+      attempts += 1;
+      if (attempts > 10) {
+        setRetriesExhausted(true);
+        clearInterval(id);
+        return;
+      }
+      fetchRegistry();
+    }, 2000);
+    return () => clearInterval(id);
+  }, [fetchFailed, fetchRegistry]);
 
   const handleSaveKey = useCallback(async (name: string) => {
     if (!keyInput.trim()) return;
@@ -70,6 +94,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
     try {
       await api.deleteProviderKey(name);
       await fetchRegistry();
+      setConfirmingDelete(null);
       onProvidersChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
@@ -143,7 +168,9 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
     return (
       <div className="glass-card-static p-3">
         <p className="text-[11px] text-text-tertiary text-center mb-2">
-          Connect to gateway to manage providers
+          {fetchFailed && !retriesExhausted
+            ? "Gateway not reachable yet — retrying…"
+            : "Connect to gateway to manage providers"}
         </p>
         <button onClick={fetchRegistry} className="flex items-center gap-1 mx-auto text-[11px] text-[#007AFF] hover:underline">
           <RefreshCw size={11} strokeWidth={1.75} />
@@ -408,15 +435,39 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
                       <span className="text-[11px] font-mono text-text-tertiary">
                         {p.maskedKey}
                       </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteKey(p.name);
-                        }}
-                        className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-accent-red/10 transition-colors"
-                      >
-                        <Trash2 size={12} strokeWidth={1.75} className="text-text-tertiary hover:text-accent-red" />
-                      </button>
+                      {confirmingDelete === p.name ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteKey(p.name);
+                            }}
+                            className="text-[10px] text-accent-red font-medium px-1.5 h-6 rounded-md hover:bg-accent-red/10"
+                          >
+                            Delete?
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmingDelete(null);
+                            }}
+                            className="text-[10px] text-text-tertiary px-1.5 h-6 rounded-md hover:bg-bg-input"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setError(null);
+                            setConfirmingDelete(p.name);
+                          }}
+                          className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-accent-red/10 transition-colors"
+                        >
+                          <Trash2 size={12} strokeWidth={1.75} className="text-text-tertiary hover:text-accent-red" />
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -476,6 +527,12 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
           </div>
         );
       })}
+      {error && !editingProvider && !editingLocalUrl && (
+        <div className="flex items-center gap-1.5 px-3 py-2 border-t border-border-light">
+          <AlertCircle size={12} strokeWidth={1.75} className="text-accent-red shrink-0" />
+          <span className="text-[11px] text-accent-red">{error}</span>
+        </div>
+      )}
     </div>
     </div>
   );

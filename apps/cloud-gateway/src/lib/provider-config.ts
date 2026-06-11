@@ -4,6 +4,7 @@
 
 import { sql } from "./db-cloud";
 import { log } from "./logger";
+import { encryptSecret, decryptSecret } from "./crypto";
 import {
   PROVIDER_REGISTRY,
   initCloudProviders,
@@ -38,7 +39,7 @@ export async function listProviderKeys(): Promise<ProviderKeyRow[]> {
   return rows.map((r) => ({
     id: r.id as string,
     providerName: r.provider_name as string,
-    maskedKey: maskKey(r.api_key as string),
+    maskedKey: maskKey(decryptSecret(r.api_key as string)),
     baseUrl: r.base_url as string | null,
     label: r.label as string | null,
     isActive: r.is_active as boolean,
@@ -54,13 +55,13 @@ export async function createProviderKey(
 ): Promise<ProviderKeyRow> {
   const [row] = await sql`
     INSERT INTO provider_keys (provider_name, api_key, base_url, label)
-    VALUES (${providerName}, ${apiKey}, ${baseUrl ?? null}, ${label ?? null})
+    VALUES (${providerName}, ${encryptSecret(apiKey)}, ${baseUrl ?? null}, ${label ?? null})
     RETURNING id, provider_name, api_key, base_url, label, is_active, created_at
   `;
   return {
     id: row.id as string,
     providerName: row.provider_name as string,
-    maskedKey: maskKey(row.api_key as string),
+    maskedKey: maskKey(apiKey),
     baseUrl: row.base_url as string | null,
     label: row.label as string | null,
     isActive: row.is_active as boolean,
@@ -84,7 +85,7 @@ export async function updateProviderKey(
 
   // Use individual updates to avoid SQL injection with dynamic columns
   if (updates.apiKey !== undefined) {
-    await sql`UPDATE provider_keys SET api_key = ${updates.apiKey}, updated_at = now() WHERE id = ${id}`;
+    await sql`UPDATE provider_keys SET api_key = ${encryptSecret(updates.apiKey)}, updated_at = now() WHERE id = ${id}`;
   }
   if (updates.baseUrl !== undefined) {
     await sql`UPDATE provider_keys SET base_url = ${updates.baseUrl}, updated_at = now() WHERE id = ${id}`;
@@ -105,7 +106,7 @@ export async function updateProviderKey(
   return {
     id: row.id as string,
     providerName: row.provider_name as string,
-    maskedKey: maskKey(row.api_key as string),
+    maskedKey: maskKey(decryptSecret(row.api_key as string)),
     baseUrl: row.base_url as string | null,
     label: row.label as string | null,
     isActive: row.is_active as boolean,
@@ -143,18 +144,24 @@ export async function loadDbProviderKeys(): Promise<CloudProviderConfig[]> {
       continue;
     }
 
-    const idx = counterByProvider.get(providerName) ?? 0;
-    counterByProvider.set(providerName, idx + 1);
+    try {
+      const apiKey = decryptSecret(r.api_key as string);
+      const idx = counterByProvider.get(providerName) ?? 0;
+      counterByProvider.set(providerName, idx + 1);
 
-    configs.push({
-      name: providerName,
-      baseUrl: (r.base_url as string) || tmpl.defaultBaseUrl,
-      apiKey: r.api_key as string,
-      prefixes: tmpl.prefixes,
-      format: tmpl.format,
-      authHeader: tmpl.authHeader,
-      instanceId: `${providerName}:db:${idx}`,
-    });
+      configs.push({
+        name: providerName,
+        baseUrl: (r.base_url as string) || tmpl.defaultBaseUrl,
+        apiKey,
+        prefixes: tmpl.prefixes,
+        format: tmpl.format,
+        authHeader: tmpl.authHeader,
+        instanceId: `${providerName}:db:${idx}`,
+      });
+    } catch {
+      log.warn("provider_key_decrypt_failed", { providerName });
+      continue;
+    }
   }
 
   if (configs.length > 0) {

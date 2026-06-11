@@ -18,6 +18,7 @@ import { getCircuitBreaker } from "../lib/circuit-breaker";
 import { sql } from "../lib/db-cloud";
 import { deductCredits, recordCloudRequest } from "../lib/credits";
 import { getMarkupForPlan } from "../lib/polar";
+import { pricingForModel, calculateCost as coreCalculateCost, type ModelPricing } from "@routebox/llm-core";
 import { getRegistryEntry, getActiveModels } from "../lib/model-registry";
 import { resolveStrategy } from "../lib/routing-config";
 import { checkDailyQuota, decrementDailyQuota } from "../lib/quota";
@@ -87,17 +88,17 @@ export function resolveAlias(model: string): string {
   return MODEL_ALIASES[model] ?? model;
 }
 
-export function pricingFor(model: string): { input: number; output: number } {
-  if (MODEL_PRICING[model]) return MODEL_PRICING[model];
-  for (const [key, val] of Object.entries(MODEL_PRICING)) {
-    if (model.startsWith(key)) return val;
-  }
-  return { input: 1, output: 3 };
+export function metricModelLabel(model: string, knownModelIds: Iterable<string>): string {
+  const known = new Set(knownModelIds);
+  return known.has(model) ? model : "other";
+}
+
+export function pricingFor(model: string): ModelPricing {
+  return pricingForModel(model, MODEL_PRICING, { fallback: { input: 1, output: 3 } });
 }
 
 export function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
-  const p = pricingFor(model);
-  return (inputTokens * p.input + outputTokens * p.output) / 1_000_000;
+  return coreCalculateCost(model, inputTokens, outputTokens, MODEL_PRICING, { fallback: { input: 1, output: 3 } });
 }
 
 /** Effective pricing for a model+plan combination.
@@ -782,9 +783,6 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     }
   }
 
-  // ── Pre-resolve effective pricing (after model is finalized) ─────────────
-  const modelPricing = await getModelUserPrice(requestedModel, userPlan);
-
   let providerChain: CloudProviderConfig[];
 
   if (scoredCandidates.length > 0) {
@@ -850,14 +848,35 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // Overall request timeout
   const requestTimeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
+  const rollbackQuota = (model: string) => {
+    if (userPlan !== "starter") return;
+    decrementDailyQuota(userId, model).catch((err) => {
+      log.error("quota_rollback_failed", {
+        requestId,
+        userId,
+        model,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  };
 
   // ── Retry + Fallback Loop ──────────────────────────────────────────────────
   let lastError: { message: string; status?: number; body?: string } | undefined;
   let res: Response | undefined;
   let activeProvider: CloudProviderConfig | undefined;
+  let activeModel = requestedModel;
   let activeProviderLatencyMs = 0;
   let isFallback = false;
   let totalAttempts = 0;
+  const knownMetricModels = new Set<string>();
+  if (!isAutoRoute) {
+    const entry = await getRegistryEntry(requestedModel);
+    if (entry?.modelId) knownMetricModels.add(entry.modelId);
+  }
+  for (const candidate of scoredCandidates) {
+    knownMetricModels.add(candidate.modelId);
+  }
+  let activeMetricModel = metricModelLabel(requestedModel, knownMetricModels);
 
   for (let providerIdx = 0; providerIdx < providerChain.length; providerIdx++) {
     const provider = providerChain[providerIdx]!;
@@ -878,10 +897,12 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
     // If scoring engine selected a different model, rewrite the model ID
     const scored = provider as CloudProviderConfig & { _scoredModelId?: string; _isScoredFallback?: boolean };
+    const servedModel = scored._scoredModelId ?? requestedModel;
     if (scored._scoredModelId) {
-      providerBody.model = scored._scoredModelId;
+      providerBody.model = servedModel;
       if (scored._isScoredFallback) isFallback = true;
     }
+    const metricModel = metricModelLabel(servedModel, knownMetricModels);
     if (isStream && provider.format === "openai") {
       providerBody.stream_options = { include_usage: true };
     }
@@ -901,7 +922,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           cb.onSuccess();
           incCounter("provider_requests_total", {
             provider: provider.name,
-            model: requestedModel,
+            model: metricModel,
             status: "200",
           });
           observeHistogram("provider_request_duration_ms", providerLatencyMs, {
@@ -910,8 +931,10 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
           res = rawRes;
           activeProvider = provider;
+          activeModel = servedModel;
           activeProviderLatencyMs = providerLatencyMs;
-          isFallback = providerIdx > 0;
+          isFallback = providerIdx > 0 || scored._isScoredFallback === true;
+          activeMetricModel = metricModel;
           break; // exit retry loop
 
         } else if (!isRetryableStatus(rawRes.status)) {
@@ -919,7 +942,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           const errBody = await rawRes.text().catch(() => "");
           incCounter("provider_requests_total", {
             provider: provider.name,
-            model: requestedModel,
+            model: metricModel,
             status: String(rawRes.status),
           });
           observeHistogram("provider_request_duration_ms", providerLatencyMs, {
@@ -934,6 +957,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
             status: rawRes.status,
             upstream: errBody.slice(0, 500),
           });
+          rollbackQuota(requestedModel);
           return c.json({
             error: {
               message: `Provider returned ${rawRes.status}`,
@@ -949,7 +973,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           cb.onFailure();
           incCounter("provider_requests_total", {
             provider: provider.name,
-            model: requestedModel,
+            model: metricModel,
             status: String(rawRes.status),
           });
           observeHistogram("provider_request_duration_ms", providerLatencyMs, {
@@ -984,7 +1008,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
         cb.onFailure();
         incCounter("provider_requests_total", {
           provider: provider.name,
-          model: requestedModel,
+          model: metricModel,
           status: "error",
         });
         observeHistogram("provider_request_duration_ms", providerLatencyMs, {
@@ -1032,7 +1056,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     clientSignal?.removeEventListener("abort", onClientAbort);
     incCounter("errors_total", { type: "all_providers_failed" });
     // Roll back the atomic quota increment since the request completely failed
-    decrementDailyQuota(userId, requestedModel).catch(() => {});
+    rollbackQuota(requestedModel);
     return c.json({
       error: {
         message: lastError?.message ?? "All providers failed",
@@ -1044,23 +1068,27 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     }, 502);
   }
 
+  const modelPricing = await getModelUserPrice(activeModel, userPlan);
+
   // Track retry metrics
   if (totalAttempts > 1) {
     incCounter("retry_attempts_total", {
-      model: requestedModel,
+      model: activeMetricModel,
       final_provider: activeProvider.instanceId,
     }, totalAttempts - 1);
   }
 
   // ── Streaming response ──
   if (isStream && res.body) {
+    // Stream has started; the transformer idle timer handles stuck streams.
+    clearTimeout(requestTimeout);
     const streamMetaObj: StreamMeta = {
       provider: activeProvider.name,
-      requestedModel,
+      requestedModel: activeModel,
       startMs,
       isFallback,
       autoRouted: isAutoRoute,
-      originalRequestedModel: isAutoRoute ? "auto" : undefined,
+      originalRequestedModel: isAutoRoute ? "auto" : originalRequestedModel,
     };
 
     // Capture variables for the async onDone closure
@@ -1080,31 +1108,31 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
       // Track if client aborted
       if (clientSignal?.aborted && !wasAborted) {
-        incCounter("stream_aborted_total", { provider: finalProvider.name, model: requestedModel });
+        incCounter("stream_aborted_total", { provider: finalProvider.name, model: activeMetricModel });
       }
 
       const costCents = calculateUserCostCents(usage.input, usage.output, modelPricing);
 
       // Token metrics
-      incCounter("provider_tokens_total", { provider: finalProvider.name, model: requestedModel, direction: "input" }, usage.input);
-      incCounter("provider_tokens_total", { provider: finalProvider.name, model: requestedModel, direction: "output" }, usage.output);
+      incCounter("provider_tokens_total", { provider: finalProvider.name, model: activeMetricModel, direction: "input" }, usage.input);
+      incCounter("provider_tokens_total", { provider: finalProvider.name, model: activeMetricModel, direction: "output" }, usage.output);
 
       // Deduct credits (even for partial streams — bill consumed tokens)
       if (costCents > 0) {
         const deductResult = await deductCredits(userId, costCents, {
-          model: requestedModel,
+          model: activeModel,
           provider: finalProvider.name,
           inputTokens: usage.input,
           outputTokens: usage.output,
         }).catch((err) => {
           log.error("deduct_credits_failed", {
-            requestId, userId, model: requestedModel, costCents,
+            requestId, userId, model: activeModel, costCents,
             error: err instanceof Error ? err.message : String(err),
           });
           // H1: Persist pending deduction so it can be retried later
           sql`
             INSERT INTO pending_deductions (user_id, cost_cents, model, provider, input_tokens, output_tokens, request_id)
-            VALUES (${userId}, ${costCents}, ${requestedModel}, ${finalProvider.name}, ${usage.input}, ${usage.output}, ${requestId})
+            VALUES (${userId}, ${costCents}, ${activeModel}, ${finalProvider.name}, ${usage.input}, ${usage.output}, ${requestId})
           `.catch((dbErr) => {
             log.error("pending_deduction_persist_failed", {
               requestId, userId, costCents,
@@ -1114,7 +1142,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           return null;
         });
         if (deductResult && !deductResult.success) {
-          log.error("deduct_credits_insufficient", { requestId, userId, model: requestedModel, costCents });
+          log.error("deduct_credits_insufficient", { requestId, userId, model: activeModel, costCents });
         }
       }
 
@@ -1123,18 +1151,18 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       // Record request
       const status = clientSignal?.aborted && !wasAborted ? "aborted" : "ok";
       await recordCloudRequest(
-        userId, requestedModel, finalProvider.name,
+        userId, activeModel, finalProvider.name,
         usage.input, usage.output, costCents, latencyMs, status,
       ).catch((err) => {
         log.error("record_request_failed", {
-          requestId, userId, model: requestedModel,
+          requestId, userId, model: activeModel,
           error: err instanceof Error ? err.message : String(err),
         });
       });
     };
 
     const stream = activeProvider.format === "anthropic"
-      ? anthropicStreamToOpenAI(res.body, requestedModel, streamMetaObj, onDone)
+      ? anthropicStreamToOpenAI(res.body, activeModel, streamMetaObj, onDone)
       : openaiStreamPassthrough(res.body, streamMetaObj, onDone);
 
     const streamHeaders: Record<string, string> = {
@@ -1142,7 +1170,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
       "X-RouteBox-Provider": activeProvider.name,
-      "X-RouteBox-Model": requestedModel,
+      "X-RouteBox-Model": activeModel,
     };
     if (isAutoRoute) streamHeaders["X-RouteBox-Auto-Routed"] = "true";
 
@@ -1160,27 +1188,27 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   const inputTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
   const outputTokens = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
   const costCents = calculateUserCostCents(inputTokens, outputTokens, modelPricing);
-  const providerCost = calculateCost(requestedModel, inputTokens, outputTokens);
+  const providerCost = calculateCost(activeModel, inputTokens, outputTokens);
 
   // Token metrics
-  incCounter("provider_tokens_total", { provider: activeProvider.name, model: requestedModel, direction: "input" }, inputTokens);
-  incCounter("provider_tokens_total", { provider: activeProvider.name, model: requestedModel, direction: "output" }, outputTokens);
+  incCounter("provider_tokens_total", { provider: activeProvider.name, model: activeMetricModel, direction: "input" }, inputTokens);
+  incCounter("provider_tokens_total", { provider: activeProvider.name, model: activeMetricModel, direction: "output" }, outputTokens);
 
   // Deduct credits
   if (costCents > 0) {
     const deductResult = await deductCredits(userId, costCents, {
-      model: requestedModel,
+      model: activeModel,
       provider: activeProvider.name,
       inputTokens, outputTokens,
     }).catch((err) => {
       log.error("deduct_credits_failed", {
-        requestId, userId, model: requestedModel, costCents,
+        requestId, userId, model: activeModel, costCents,
         error: err instanceof Error ? err.message : String(err),
       });
       return null;
     });
     if (deductResult && !deductResult.success) {
-      log.error("deduct_credits_insufficient", { requestId, userId, model: requestedModel, costCents });
+      log.error("deduct_credits_insufficient", { requestId, userId, model: activeModel, costCents });
     }
   }
 
@@ -1188,11 +1216,11 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // Record request
   await recordCloudRequest(
-    userId, requestedModel, activeProvider.name,
+    userId, activeModel, activeProvider.name,
     inputTokens, outputTokens, costCents, latencyMs, "ok",
   ).catch((err) => {
     log.error("record_request_failed", {
-      requestId, userId, model: requestedModel,
+      requestId, userId, model: activeModel,
       error: err instanceof Error ? err.message : String(err),
     });
   });
@@ -1206,7 +1234,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       id: (json as { id: string }).id,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
-      model: requestedModel,
+      model: activeModel,
       choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
       usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: inputTokens + outputTokens },
     };
@@ -1214,8 +1242,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // Inject _routebox metadata
   const routeboxMeta: Record<string, unknown> = {
-    routed_model: requestedModel,
-    requested_model: isAutoRoute ? "auto" : requestedModel,
+    routed_model: activeModel,
+    requested_model: isAutoRoute ? "auto" : originalRequestedModel,
     provider: activeProvider.name.toLowerCase(),
     instance_id: activeProvider.instanceId,
     cost: providerCost,
@@ -1229,7 +1257,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   const responseHeaders: Record<string, string> = {
     "X-RouteBox-Provider": activeProvider.name,
-    "X-RouteBox-Model": requestedModel,
+    "X-RouteBox-Model": activeModel,
   };
   if (isAutoRoute) responseHeaders["X-RouteBox-Auto-Routed"] = "true";
 

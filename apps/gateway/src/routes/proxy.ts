@@ -22,6 +22,7 @@ import { braveSearch, formatSearchContext, isSearchEnabled } from "../lib/brave-
 const app = new Hono();
 
 const MAX_STREAM_BUFFER = 1024 * 1024; // 1 MB — reject malformed streams that never emit newlines
+const STREAM_IDLE_TIMEOUT_MS = Number(process.env.ROUTEBOX_STREAM_IDLE_MS) || 30_000; // 无数据超过此时长则关闭流
 
 // ── In-memory rate limiter: 60 requests per minute per auth token ────────
 
@@ -68,6 +69,7 @@ function checkRateLimit(token: string): { allowed: boolean; retryAfterMs: number
 async function forwardOpenAI(
   provider: ProviderConfig,
   body: OpenAIChatRequest,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -86,13 +88,15 @@ async function forwardOpenAI(
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(provider.isLocal ? 120_000 : 30_000),
+    redirect: "error",
+    signal: signal ?? AbortSignal.timeout(provider.isLocal ? 120_000 : 30_000),
   });
 }
 
 async function forwardAnthropic(
   provider: ProviderConfig,
   body: OpenAIChatRequest,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const anthropicBody = toAnthropicRequest(body);
   return fetch(`${provider.baseUrl}/messages`, {
@@ -103,17 +107,19 @@ async function forwardAnthropic(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify(anthropicBody),
-    signal: AbortSignal.timeout(30_000),
+    redirect: "error",
+    signal: signal ?? AbortSignal.timeout(30_000),
   });
 }
 
 async function forward(
   provider: ProviderConfig,
   body: OpenAIChatRequest,
+  signal?: AbortSignal,
 ): Promise<Response> {
   return provider.format === "anthropic"
-    ? forwardAnthropic(provider, body)
-    : forwardOpenAI(provider, body);
+    ? forwardAnthropic(provider, body, signal)
+    : forwardOpenAI(provider, body, signal);
 }
 
 // ── Extract usage from provider response (non-stream) ───────────────────────
@@ -158,22 +164,44 @@ function anthropicStreamToOpenAI(
   let currentToolCallName = "";
   let currentToolCallInput = "";
   let toolCallIndex = -1;
+  let streamedChars = 0;
+  let doneCalled = false;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const resolveOutputTokens = () => (outputTokens > 0 ? outputTokens : Math.ceil(streamedChars / 4));
+  const callOnDone = (usage: { input: number; output: number }) => {
+    if (doneCalled) return;
+    doneCalled = true;
+    if (idleTimer) clearTimeout(idleTimer);
+    onDone(usage);
+  };
 
   return new ReadableStream({
     async start(controller) {
       const reader = upstream.getReader();
 
       function pushChunk(data: string) {
-        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)); } catch { /* closed */ }
       }
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          reader.cancel().catch(() => {});
+          try { controller.close(); } catch { /* already closed */ }
+          callOnDone({ input: inputTokens, output: resolveOutputTokens() });
+        }, STREAM_IDLE_TIMEOUT_MS);
+      };
+      resetIdleTimer();
 
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          resetIdleTimer();
           buffer += decoder.decode(value, { stream: true });
           if (buffer.length > MAX_STREAM_BUFFER) {
-            controller.error(new Error("Stream buffer overflow"));
+            pushChunk(JSON.stringify({
+              error: { message: "Stream buffer overflow — response truncated", type: "server_error", code: "stream_overflow" },
+            }));
             break;
           }
 
@@ -217,6 +245,7 @@ function anthropicStreamToOpenAI(
                   }
                 } else if (evt.type === "content_block_delta") {
                   if (evt.delta?.type === "text_delta" && evt.delta?.text) {
+                    streamedChars += (evt.delta.text as string).length;
                     pushChunk(JSON.stringify({
                       id: messageId,
                       object: "chat.completion.chunk",
@@ -275,22 +304,24 @@ function anthropicStreamToOpenAI(
       }
 
       // Inject routebox.meta before [DONE]
-      const totalTokens = inputTokens + outputTokens;
-      const metaCost = calculateCost(model, inputTokens, outputTokens, streamMeta.provider);
+      if (idleTimer) clearTimeout(idleTimer);
+      const finalOutput = resolveOutputTokens();
+      const totalTokens = inputTokens + finalOutput;
+      const metaCost = calculateCost(model, inputTokens, finalOutput, streamMeta.provider);
       pushChunk(JSON.stringify({
         object: "routebox.meta",
         provider: streamMeta.provider.toLowerCase(),
         model,
         requested_model: streamMeta.requestedModel,
-        usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTokens },
+        usage: { prompt_tokens: inputTokens, completion_tokens: finalOutput, total_tokens: totalTokens },
         cost: metaCost,
         latency_ms: Math.round(performance.now() - streamMeta.startMs),
         is_fallback: streamMeta.isFallback,
       }));
 
       pushChunk("[DONE]");
-      controller.close();
-      onDone({ input: inputTokens, output: outputTokens });
+      try { controller.close(); } catch { /* already closed */ }
+      callOnDone({ input: inputTokens, output: finalOutput });
     },
   });
 }
@@ -307,20 +338,45 @@ function openaiStreamPassthrough(
   let inputTokens = 0;
   let outputTokens = 0;
   let metaInjected = false;
+  let streamedChars = 0;
+  let doneCalled = false;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const resolveOutputTokens = () => (outputTokens > 0 ? outputTokens : Math.ceil(streamedChars / 4));
+  const callOnDone = (usage: { input: number; output: number }) => {
+    if (doneCalled) return;
+    doneCalled = true;
+    if (idleTimer) clearTimeout(idleTimer);
+    onDone(usage);
+  };
 
   return new ReadableStream({
     async start(controller) {
       const reader = upstream.getReader();
       const encoder = new TextEncoder();
+      const enqueue = (data: Uint8Array) => {
+        try { controller.enqueue(data); } catch { /* closed */ }
+      };
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          reader.cancel().catch(() => {});
+          try { controller.close(); } catch { /* already closed */ }
+          callOnDone({ input: inputTokens, output: resolveOutputTokens() });
+        }, STREAM_IDLE_TIMEOUT_MS);
+      };
+      resetIdleTimer();
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          resetIdleTimer();
 
           // Parse for usage and intercept [DONE] to inject _routebox
           buffer += decoder.decode(value, { stream: true });
           if (buffer.length > MAX_STREAM_BUFFER) {
-            controller.error(new Error("Stream buffer overflow"));
+            enqueue(encoder.encode(`data: ${JSON.stringify({
+              error: { message: "Stream buffer overflow — response truncated", type: "server_error", code: "stream_overflow" },
+            })}\n\n`));
             break;
           }
           const lines = buffer.split("\n");
@@ -330,19 +386,21 @@ function openaiStreamPassthrough(
             if (line.startsWith("data: ")) {
               if (line.includes("[DONE]")) {
                 // Inject routebox.meta before [DONE]
-                const totalTok = inputTokens + outputTokens;
-                const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens, streamMeta.provider);
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                const finalOutput = resolveOutputTokens();
+                const totalTok = inputTokens + finalOutput;
+                const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, finalOutput, streamMeta.provider);
+                enqueue(encoder.encode(`data: ${JSON.stringify({
                   object: "routebox.meta",
                   provider: streamMeta.provider.toLowerCase(),
                   model: streamMeta.requestedModel,
                   requested_model: streamMeta.requestedModel,
-                  usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
+                  usage: { prompt_tokens: inputTokens, completion_tokens: finalOutput, total_tokens: totalTok },
                   cost: metaCost,
                   latency_ms: Math.round(performance.now() - streamMeta.startMs),
                   is_fallback: streamMeta.isFallback,
                 })}\n\n`));
-                controller.enqueue(encoder.encode(`${line}\n\n`));
+                enqueue(encoder.encode(`${line}\n\n`));
+                outputTokens = finalOutput;
                 metaInjected = true;
               } else {
                 try {
@@ -351,40 +409,45 @@ function openaiStreamPassthrough(
                     inputTokens = chunk.usage.prompt_tokens ?? inputTokens;
                     outputTokens = chunk.usage.completion_tokens ?? outputTokens;
                   }
+                  const delta = chunk.choices?.[0]?.delta;
+                  if (delta?.content) streamedChars += (delta.content as string).length;
                 } catch { /* skip */ }
-                controller.enqueue(encoder.encode(`${line}\n\n`));
+                enqueue(encoder.encode(`${line}\n\n`));
               }
             } else if (line.trim()) {
               // Pass through non-data lines (e.g. event: lines)
-              controller.enqueue(encoder.encode(`${line}\n`));
+              enqueue(encoder.encode(`${line}\n`));
             }
           }
         }
       } catch (err) {
         // Send SSE error event to the client
         const errorMessage = err instanceof Error ? err.message : "Stream read error";
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: errorMessage, type: "stream_error" } })}\n\n`));
+        enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: errorMessage, type: "stream_error" } })}\n\n`));
       } finally {
         reader.releaseLock();
       }
+      if (idleTimer) clearTimeout(idleTimer);
       // Fallback: if stream ended without [DONE], inject meta now (e.g. local LM Studio)
       if (!metaInjected) {
-        const totalTok = inputTokens + outputTokens;
-        const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens, streamMeta.provider);
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+        const finalOutput = resolveOutputTokens();
+        const totalTok = inputTokens + finalOutput;
+        const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, finalOutput, streamMeta.provider);
+        enqueue(encoder.encode(`data: ${JSON.stringify({
           object: "routebox.meta",
           provider: streamMeta.provider.toLowerCase(),
           model: streamMeta.requestedModel,
           requested_model: streamMeta.requestedModel,
-          usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
+          usage: { prompt_tokens: inputTokens, completion_tokens: finalOutput, total_tokens: totalTok },
           cost: metaCost,
           latency_ms: Math.round(performance.now() - streamMeta.startMs),
           is_fallback: streamMeta.isFallback,
         })}\n\n`));
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        enqueue(encoder.encode("data: [DONE]\n\n"));
+        outputTokens = finalOutput;
       }
-      controller.close();
-      onDone({ input: inputTokens, output: outputTokens });
+      try { controller.close(); } catch { /* already closed */ }
+      callOnDone({ input: inputTokens, output: resolveOutputTokens() });
     },
   });
 }
@@ -526,14 +589,31 @@ app.post("/chat/completions", async (c) => {
   }
 
   const startMs = performance.now();
+  const clientSignal = c.req.raw.signal;
+  const abortController = new AbortController();
+  const upstreamSignal = abortController.signal;
+  const onClientAbort = () => abortController.abort();
+  clientSignal?.addEventListener("abort", onClientAbort, { once: true });
+  const CONNECT_TIMEOUT_MS = Number(process.env.ROUTEBOX_CONNECT_TIMEOUT_MS) || 30_000;
+  let connectTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => abortController.abort(), CONNECT_TIMEOUT_MS);
+  const clearConnectTimer = () => {
+    if (connectTimer) {
+      clearTimeout(connectTimer);
+      connectTimer = null;
+    }
+  };
+  const cleanupUpstreamSignal = () => {
+    clearConnectTimer();
+    clientSignal?.removeEventListener("abort", onClientAbort);
+  };
   let res: Response;
   let retriedProvider: ProviderConfig | undefined;
   let retriedModel: string | undefined;
 
   try {
-    res = await forward(provider, body);
+    res = await forward(provider, body, upstreamSignal);
   } catch (err) {
-    metrics.markProviderDown(provider.name);
+    if (!clientSignal?.aborted) metrics.markProviderDown(provider.name);
     const latencyMs = Math.round(performance.now() - startMs);
     recordRequest(requestedModel, model, provider.name, 0, 0, 0, latencyMs, "error");
 
@@ -546,15 +626,17 @@ app.post("/chat/completions", async (c) => {
           if (isStream && fallback.provider.format === "openai" && !fallback.provider.isLocal) {
             body.stream_options = { include_usage: true };
           }
-          res = await forward(fallback.provider, body);
+          res = await forward(fallback.provider, body, upstreamSignal);
+          Object.assign(route, { provider: fallback.provider, model: fallback.model, isFallback: true });
           retriedProvider = fallback.provider;
           retriedModel = fallback.model;
         } catch {
-          metrics.markProviderDown(fallback.provider.name);
+          if (!clientSignal?.aborted) metrics.markProviderDown(fallback.provider.name);
         }
       }
     }
     if (!res!) {
+      cleanupUpstreamSignal();
       return c.json({
         error: { message: `Provider ${provider.name} unreachable`, type: "server_error" },
       }, 502);
@@ -573,7 +655,7 @@ app.post("/chat/completions", async (c) => {
 
     // Auto-retry on 5xx with a different provider
     if (errStatus >= 500 && !activeIsFallback) {
-      metrics.markProviderDown(activeProvider.name);
+      if (!clientSignal?.aborted) metrics.markProviderDown(activeProvider.name);
       const fallback = selectRoute(requestedModel, "quality_first");
       if (fallback && fallback.provider.name !== activeProvider.name) {
         try {
@@ -581,14 +663,15 @@ app.post("/chat/completions", async (c) => {
           if (isStream && fallback.provider.format === "openai" && !fallback.provider.isLocal) {
             body.stream_options = { include_usage: true };
           }
-          const retryRes = await forward(fallback.provider, body);
-          if (retryRes.ok || retryRes.status < 500) {
+          const retryRes = await forward(fallback.provider, body, upstreamSignal);
+          if (retryRes.ok) {
             // Retry succeeded — continue with this response
             res = retryRes;
             Object.assign(route, { provider: fallback.provider, model: fallback.model, isFallback: true });
             // Fall through to normal response handling below
           } else {
             // Retry also failed
+            cleanupUpstreamSignal();
             recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
             return c.json({
               error: {
@@ -599,7 +682,8 @@ app.post("/chat/completions", async (c) => {
             }, 502);
           }
         } catch {
-          metrics.markProviderDown(fallback.provider.name);
+          if (!clientSignal?.aborted) metrics.markProviderDown(fallback.provider.name);
+          cleanupUpstreamSignal();
           recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
           return c.json({
             error: {
@@ -609,6 +693,7 @@ app.post("/chat/completions", async (c) => {
           }, 502);
         }
       } else {
+        cleanupUpstreamSignal();
         recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
         return c.json({
           error: {
@@ -619,6 +704,7 @@ app.post("/chat/completions", async (c) => {
         }, 502);
       }
     } else {
+      cleanupUpstreamSignal();
       recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
       return c.json({
         error: {
@@ -637,6 +723,7 @@ app.post("/chat/completions", async (c) => {
 
   // ── Streaming response ──
   if (isStream && res!.body) {
+    clearConnectTimer();
     const streamMetaObj: StreamMeta = {
       provider: finalProvider.name,
       requestedModel,
@@ -645,6 +732,7 @@ app.post("/chat/completions", async (c) => {
     };
     const stream = finalProvider.format === "anthropic"
       ? anthropicStreamToOpenAI(res!.body, finalModel, streamMetaObj, (usage) => {
+          cleanupUpstreamSignal();
           const latencyMs = Math.round(performance.now() - startMs);
           recordRequest(
             requestedModel, finalModel, finalProvider.name,
@@ -653,6 +741,7 @@ app.post("/chat/completions", async (c) => {
           );
         })
       : openaiStreamPassthrough(res!.body, streamMetaObj, (usage) => {
+          cleanupUpstreamSignal();
           const latencyMs = Math.round(performance.now() - startMs);
           recordRequest(
             requestedModel, finalModel, finalProvider.name,
@@ -674,6 +763,7 @@ app.post("/chat/completions", async (c) => {
   }
 
   // ── Non-streaming response ──
+  cleanupUpstreamSignal();
   const latencyMs = Math.round(performance.now() - startMs);
   const json = await res!.json() as Record<string, unknown>;
 

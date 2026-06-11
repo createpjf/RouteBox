@@ -29,6 +29,23 @@ export function validateEnv(): void {
     process.exit(1);
   }
 
+  // M4-sec: provider key 静态加密密钥 —— 生产必须配置且为 64 hex(32 字节)
+  const encKey = process.env.PROVIDER_KEY_ENCRYPTION_KEY;
+  if (process.env.NODE_ENV === "production") {
+    if (!encKey) {
+      log.fatal("missing_env_vars", { missing: ["PROVIDER_KEY_ENCRYPTION_KEY"] });
+      process.exit(1);
+    }
+    if (encKey.length !== 64 || !/^[0-9a-fA-F]+$/.test(encKey)) {
+      log.fatal("insecure_encryption_key", { reason: "must be 64 hex chars (32 bytes)" });
+      process.exit(1);
+    }
+  } else if (!encKey) {
+    log.warn("encryption_key_absent", {
+      message: "PROVIDER_KEY_ENCRYPTION_KEY not set — provider keys stored as plaintext (dev only)",
+    });
+  }
+
   // Warn if no LLM provider API keys are configured
   const providerKeys = [
     "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",

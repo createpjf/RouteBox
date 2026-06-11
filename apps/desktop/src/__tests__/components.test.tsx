@@ -11,6 +11,7 @@ vi.mock("lucide-react", async () => {
     Pause: icon, Play: icon, Coins: icon, DollarSign: icon, Sparkles: icon,
     Zap: icon, Loader2: icon, Trash2: icon, ChevronDown: icon,
     LayoutDashboard: icon, Route: icon, ScrollText: icon, Search: icon,
+    User: icon, MessageSquare: icon,
     Wallet: icon, Activity: icon, XCircle: icon,
     Key: icon, Shield: icon, AlertCircle: icon, BookOpen: icon, ArrowRight: icon,
     BarChart3: icon, Pin: icon, Ban: icon, Plus: icon, Square: icon,

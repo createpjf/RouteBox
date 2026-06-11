@@ -9,7 +9,8 @@
     "esModuleInterop": true,
     "types": ["bun"],
     "paths": {
-      "@gateway/*": ["../gateway/src/*"]
+      "@gateway/*": ["../gateway/src/*"],
+      "@routebox/llm-core": ["../../packages/llm-core/src/index.ts"]
     }
   },
   "include": ["src"]

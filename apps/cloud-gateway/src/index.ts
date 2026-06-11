@@ -46,8 +46,9 @@ app.use(
   "*",
   cors({
     origin: (origin) => {
-      // Non-browser requests (Tauri desktop, curl, server-to-server)
-      if (!origin) return "*";
+      // H3-sec: 非浏览器请求(无 Origin)不下发 ACAO —— CORS 仅约束浏览器,
+      // 浏览器请求必带 Origin,故无需通配
+      if (!origin) return null;
       return ALLOWED_ORIGINS.includes(origin) ? origin : null;
     },
     allowHeaders: ["Content-Type", "Authorization"],
@@ -146,7 +147,9 @@ app.get("/static/*", async (c) => {
   const fileName = c.req.path.replace("/static/", "");
   const result = serveStaticFile(fileName);
   if (!result) return c.notFound();
-  return new Response(result.data, {
+  // result.data is a Uint8Array; cast to satisfy TS 5.7's generic-TypedArray
+  // BodyInit typing (valid BodyInit at runtime).
+  return new Response(result.data as BodyInit, {
     status: 200,
     headers: { "Content-Type": result.contentType, "Cache-Control": "public, max-age=86400, immutable" },
   });
@@ -156,7 +159,9 @@ app.get("/static/*", async (c) => {
 app.get("/favicon.ico", async (c) => {
   const result = serveStaticFile("favicon.ico");
   if (!result) return c.notFound();
-  return new Response(result.data, {
+  // result.data is a Uint8Array; cast to satisfy TS 5.7's generic-TypedArray
+  // BodyInit typing (valid BodyInit at runtime).
+  return new Response(result.data as BodyInit, {
     status: 200,
     headers: { "Content-Type": result.contentType, "Cache-Control": "public, max-age=86400, immutable" },
   });

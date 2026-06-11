@@ -4,6 +4,7 @@
 
 import { Database } from "bun:sqlite";
 import type { RequestRecord } from "./metrics";
+import { encryptSecret, decryptSecret } from "./secrets";
 
 const DB_PATH = process.env.ROUTEBOX_DB_PATH || "routebox.db";
 
@@ -137,6 +138,10 @@ const updateProviderKeyValidationStmt = db.prepare(`
   UPDATE provider_keys SET validated_at = ? WHERE provider_name = ?
 `);
 
+const rawProviderKeyStmt = db.prepare(`
+  SELECT api_key FROM provider_keys WHERE provider_name = ?
+`);
+
 // ── Request by ID ───────────────────────────────────────────────────────────
 
 const getRequestByIdStmt = db.prepare(`
@@ -247,7 +252,7 @@ export interface ProviderKeyRow {
 }
 
 export function saveProviderKey(name: string, apiKey: string) {
-  upsertProviderKey.run({ $name: name, $key: apiKey, $now: Date.now() });
+  upsertProviderKey.run({ $name: name, $key: encryptSecret(apiKey), $now: Date.now() });
 }
 
 export function removeProviderKey(name: string) {
@@ -255,15 +260,37 @@ export function removeProviderKey(name: string) {
 }
 
 export function loadProviderKey(name: string): ProviderKeyRow | null {
-  return (getProviderKeyStmt.get(name) as ProviderKeyRow | null) ?? null;
+  const row = (getProviderKeyStmt.get(name) as ProviderKeyRow | null) ?? null;
+  if (row) row.api_key = decryptSecret(row.api_key);
+  return row;
 }
 
 export function loadAllProviderKeys(): ProviderKeyRow[] {
-  return getAllProviderKeysStmt.all() as ProviderKeyRow[];
+  const rows = getAllProviderKeysStmt.all() as ProviderKeyRow[];
+  const out: ProviderKeyRow[] = [];
+  for (const r of rows) {
+    try {
+      r.api_key = decryptSecret(r.api_key);
+      out.push(r);
+    } catch {
+      console.warn(`  Skipping provider key for "${r.provider_name}": decryption failed (missing/incorrect ROUTEBOX_DB_KEY?)`);
+    }
+  }
+  return out;
 }
 
 export function updateProviderKeyValidation(name: string) {
   updateProviderKeyValidationStmt.run(Date.now(), name);
+}
+
+/**
+ * Test-only: read the raw (still-encrypted) api_key directly from the table,
+ * bypassing decryption. Lets tests assert at-rest encryption against the actual
+ * module-level Database singleton, independent of its path or test import order.
+ * Not used in production.
+ */
+export function __rawProviderKeyForTest(name: string): string | undefined {
+  return (rawProviderKeyStmt.get(name) as { api_key: string } | undefined)?.api_key;
 }
 
 // ── Request by ID ───────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@
 
 import type { ProviderConfig } from "./providers";
 import { loadSetting, saveSetting } from "./db";
+import { assertSafeLocalUrl } from "./ssrf";
 
 export interface LocalProviderState {
   name: string;
@@ -49,12 +50,14 @@ export function initLocalProviders() {
 
 export async function probeLocalProvider(state: LocalProviderState): Promise<void> {
   try {
+    assertSafeLocalUrl(state.baseUrl); // H2-sec: 拒绝非本地/私有地址
     const url = `${state.baseUrl}/models`;
     const headers: Record<string, string> = {};
     if (state.apiKey) headers["Authorization"] = `Bearer ${state.apiKey}`;
     const res = await fetch(url, {
       method: "GET",
       headers,
+      redirect: "error", // H2-sec: 禁止跟随重定向,防绕过白名单
       signal: AbortSignal.timeout(2000),
     });
     if (!res.ok) {
@@ -140,7 +143,9 @@ export function getLocalProviderForModel(model: string): ProviderConfig | undefi
 export async function updateLocalProviderUrl(name: string, baseUrl: string, apiKey?: string): Promise<LocalProviderState | undefined> {
   const lp = localProviders.find((p) => p.name === name);
   if (!lp) return undefined;
-  lp.baseUrl = baseUrl.replace(/\/+$/, "");
+  const normalized = baseUrl.replace(/\/+$/, "");
+  assertSafeLocalUrl(normalized); // H2-sec: 保存前校验,非法地址直接抛错
+  lp.baseUrl = normalized;
   saveSetting(`localProvider:${name}:baseUrl`, lp.baseUrl);
   if (apiKey !== undefined) {
     lp.apiKey = apiKey;

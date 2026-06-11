@@ -110,6 +110,26 @@
     .mt-2 { margin-top: 8px; }
     .mb-2 { margin-bottom: 8px; }
     .flex-between { display: flex; align-items: center; justify-content: space-between; }
+
+    /* Mobile responsive (<=768px). Desktop (>768px) unchanged. */
+    @media (max-width: 768px) {
+      .app { display: block; }
+      /* Sidebar becomes a horizontal top bar instead of a fixed 220px column. */
+      .sidebar { position: static; width: 100%; height: auto; bottom: auto; padding: 12px 0; display: flex; flex-wrap: wrap; align-items: center; }
+      .sidebar h1 { width: 100%; padding: 0 16px 12px; }
+      .nav-group { display: flex; flex-wrap: wrap; padding: 4px 8px; }
+      .nav-group + .nav-group { margin-top: 0; border-top: none; padding-top: 4px; }
+      .nav-section { width: 100%; padding: 8px 16px 4px; }
+      .nav-item { margin-right: 0; border-radius: 6px; padding: 7px 12px; }
+      .nav-item.active { border-left: none; padding-left: 12px; }
+      /* Main content no longer offset by the fixed sidebar. */
+      .main { margin-left: 0; padding: 16px; }
+      /* Modals and fixed-width boxes fit the viewport. */
+      .modal { width: calc(100vw - 24px); max-width: 480px; }
+      .auth-box { width: calc(100vw - 24px); max-width: 380px; }
+      /* Wide tables scroll horizontally instead of overflowing. */
+      table { display: block; overflow-x: auto; }
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" onerror="window.__chartJsFailed=true"></script>
 </head>

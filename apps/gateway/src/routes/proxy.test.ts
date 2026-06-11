@@ -3,6 +3,9 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 let mockServer: ReturnType<typeof Bun.serve>;
 
 beforeAll(() => {
+  // Self-contained auth: verifyToken reads ROUTEBOX_TOKEN at call time, so a
+  // sibling test file (e.g. auth.test.ts) cannot leave a stale token behind.
+  process.env.ROUTEBOX_TOKEN = "test-token";
   mockServer = Bun.serve({
     port: 19999,
     fetch(req: Request) {
@@ -12,7 +15,67 @@ beforeAll(() => {
         const authEcho = req.headers.get("authorization") || "";
         const litellmEcho = req.headers.get("x-litellm-api-key") || "";
         return req.json().then((body: any) => {
+          // Deterministic failure injection (M4 test): only triggered when a
+          // request carries the sentinel marker in its first message, so other
+          // tests using the same models are unaffected. The mock returns a
+          // per-model HTTP status read from the marker's status map.
+          const firstContent = typeof body.messages?.[0]?.content === "string"
+            ? body.messages[0].content
+            : "";
+          const failMatch = firstContent.match(/__M4_FAIL__:(\{.*\})/);
+          if (failMatch) {
+            const statusMap = JSON.parse(failMatch[1]) as Record<string, number>;
+            const forced = statusMap[body.model];
+            if (forced) {
+              return Response.json(
+                { error: { message: `mock forced ${forced} for ${body.model}` } },
+                { status: forced },
+              );
+            }
+          }
+
           if (body.stream) {
+            const firstContent = Array.isArray(body.messages) && typeof body.messages[0]?.content === "string"
+              ? body.messages[0].content as string : "";
+            if (firstContent.includes("__OVERFLOW__")) {
+              const huge = "x".repeat(1024 * 1024 + 10);
+              const ovStream = new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode(`data: {"choices":[{"delta":{"content":"${huge}"}}]}`));
+                  controller.close();
+                },
+              });
+              return new Response(ovStream, { headers: { "Content-Type": "text/event-stream" } });
+            }
+            if (firstContent.includes("__SLOWSTREAM__")) {
+              const encoder = new TextEncoder();
+              const slowStream = new ReadableStream({
+                async start(controller) {
+                  const chunk1 = { id: "chatcmpl-slow", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: { role: "assistant", content: "Hello" }, finish_reason: null }] };
+                  const chunk2 = { id: "chatcmpl-slow", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: { content: " world" }, finish_reason: null }] };
+                  const chunk3 = { id: "chatcmpl-slow", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk1)}\n\n`));
+                  await Bun.sleep(120);
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk2)}\n\n`));
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk3)}\n\n`));
+                  controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                  controller.close();
+                },
+              });
+              return new Response(slowStream, { headers: { "Content-Type": "text/event-stream" } });
+            }
+            if (firstContent.includes("__NO_USAGE_STREAM__")) {
+              const encoder = new TextEncoder();
+              const noUsageStream = new ReadableStream({
+                start(controller) {
+                  const chunk = { id: "chatcmpl-no-usage", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: { content: "estimated tokens" }, finish_reason: null }] };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                  controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                  controller.close();
+                },
+              });
+              return new Response(noUsageStream, { headers: { "Content-Type": "text/event-stream" } });
+            }
             // Streaming response
             const encoder = new TextEncoder();
             const stream = new ReadableStream({
@@ -161,6 +224,57 @@ describe("POST /v1/chat/completions", () => {
     expect(text).toContain("world");
   });
 
+  test("H4: stream buffer overflow does not crash; emits error event and [DONE]", async () => {
+    const res = await proxyRequest({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "__OVERFLOW__ please" }],
+      stream: true,
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("stream_overflow");
+    expect(text).toContain("[DONE]");
+  });
+
+  test("H2: streaming response is not killed by the connect timeout once data flows", async () => {
+    const originalTimeout = AbortSignal.timeout;
+    (AbortSignal as any).timeout = () => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 50);
+      return controller.signal;
+    };
+    process.env.ROUTEBOX_CONNECT_TIMEOUT_MS = "50";
+    try {
+      const res = await proxyRequest({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "__SLOWSTREAM__ please" }],
+        stream: true,
+      });
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("[DONE]");
+      expect(text).toContain("world");
+    } finally {
+      (AbortSignal as any).timeout = originalTimeout;
+      delete process.env.ROUTEBOX_CONNECT_TIMEOUT_MS;
+    }
+  });
+
+  test("streaming: estimates routebox.meta tokens when provider omits usage", async () => {
+    const res = await proxyRequest({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "__NO_USAGE_STREAM__ please" }],
+      stream: true,
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const metaLine = text.split("\n").find((line) => line.startsWith("data: {") && line.includes("routebox.meta"));
+    expect(metaLine).toBeTruthy();
+    const meta = JSON.parse(metaLine!.slice("data: ".length));
+    expect(meta.usage.completion_tokens).toBeGreaterThan(0);
+    expect(meta.cost).toBeGreaterThan(0);
+  });
+
   test("401 without auth", async () => {
     const res = await gateway.fetch(new Request("http://localhost/v1/chat/completions", {
       method: "POST",
@@ -208,6 +322,84 @@ describe("POST /v1/chat/completions", () => {
     // FLock.io uses x-litellm-api-key instead of Authorization Bearer
     expect(json._litellm).toBe("test-flock");
     expect(json._auth).toBe("");
+  });
+
+  test("M4: primary 5xx → fallback 4xx returns upstream error, NOT 200", async () => {
+    const { metrics } = await import("../lib/metrics");
+
+    // Arrange: prime OpenAI to failStreak=2 (still UP, threshold is 3) so the
+    // top-level route picks OpenAI (isFallback:false). The handler's single
+    // markProviderDown inside the 5xx branch then trips OpenAI to DOWN, so the
+    // in-branch selectRoute("gpt-4o","quality_first") falls back to FLock.io
+    // (kimi-k2-thinking) — a DIFFERENT provider — and retries it.
+    metrics.markProviderDown("OpenAI");
+    metrics.markProviderDown("OpenAI");
+
+    try {
+      // Mock: gpt-4o (primary, OpenAI) → 503; kimi-k2-thinking (retry, FLock) → 400.
+      const marker = `__M4_FAIL__:${JSON.stringify({ "gpt-4o": 503, "kimi-k2-thinking": 400 })}`;
+      const res = await proxyRequest({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: marker }],
+      });
+
+      // The fallback returned 4xx (not 2xx), so it must NOT be treated as a
+      // success. Pre-fix (retryRes.ok || retryRes.status < 500) returned the
+      // 400 body as a 200. Post-fix the error branch returns 502.
+      expect(res.status).toBe(502);
+      expect(res.status).not.toBe(200);
+      const json = await res.json() as any;
+      expect(json.error?.type).toBe("upstream_error");
+    } finally {
+      // Restore shared singleton state: reset both providers to healthy so
+      // sibling tests (and other test files) see them UP.
+      const reset = (provider: string, model: string) =>
+        metrics.record({
+          id: crypto.randomUUID(), timestamp: Date.now(), provider, model, inputTokens: 0, outputTokens: 0,
+          totalTokens: 0, cost: 0, latencyMs: 1, status: "success",
+        });
+      reset("OpenAI", "gpt-4o");
+      reset("FLock.io", "kimi-k2-thinking");
+    }
+  });
+
+  test("H1: network-error cross-provider fallback records the provider that actually served it", async () => {
+    const { providers } = await import("../lib/providers");
+    const { metrics } = await import("../lib/metrics");
+    const anthropic = providers.find((p) => p.name === "Anthropic");
+    if (!anthropic) return; // env didn't configure Anthropic — skip
+    const originalBaseUrl = anthropic.baseUrl;
+    anthropic.baseUrl = "http://127.0.0.1:1/v1"; // dead port → fetch throws
+    // Prime Anthropic to failStreak=2 (still up); the handler's single in-catch
+    // markProviderDown then trips it to 3=down, forcing a cross-provider fallback.
+    metrics.markProviderDown("Anthropic");
+    metrics.markProviderDown("Anthropic");
+    try {
+      const res = await proxyRequest({
+        model: "claude-sonnet-4-20250514",
+        messages: [{ role: "user", content: "Hello" }],
+      });
+      expect(res.status).toBe(200);
+      const served = res.headers.get("X-RouteBox-Provider");
+      expect(served).not.toBe("Anthropic");
+      const json = await res.json() as any;
+      expect(json.choices[0].message.content).toBe("Hello from mock!");
+      expect(json._routebox.provider).toBe(served!.toLowerCase());
+      expect(json._routebox.is_fallback).toBe(true);
+    } finally {
+      anthropic.baseUrl = originalBaseUrl;
+      // Restore shared singleton state: reset Anthropic (primed down) and the
+      // served fallback provider to healthy using the same success-recording
+      // mechanism the M4 test uses, so sibling tests see all providers UP.
+      const reset = (provider: string, model: string) =>
+        metrics.record({
+          id: crypto.randomUUID(), timestamp: Date.now(), provider, model, inputTokens: 0, outputTokens: 0,
+          totalTokens: 0, cost: 0, latencyMs: 1, status: "success",
+        });
+      reset("Anthropic", "claude-sonnet-4-20250514");
+      reset("OpenAI", "gpt-4o");
+      reset("FLock.io", "kimi-k2-thinking");
+    }
   });
 });
 

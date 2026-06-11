@@ -172,6 +172,18 @@ pub async fn spawn_gateway(
             t
         });
 
+    // M4-sec: 获取或生成 provider-key 静态加密密钥(64 hex = 32 bytes)
+    let db_key = keychain::get_db_key()
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| {
+            let mut bytes = [0u8; 32];
+            getrandom::getrandom(&mut bytes).expect("failed to generate db key");
+            let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+            let _ = keychain::store_db_key(&hex);
+            hex
+        });
+
     let bun_path = which_bun().ok_or_else(|| {
         eprintln!("[RouteBox] bun not found in any known path");
         "bun not found. Install from https://bun.sh or add to PATH".to_string()
@@ -263,10 +275,13 @@ pub async fn spawn_gateway(
         .current_dir(entry.parent().unwrap_or(&resource_dir))
         .env("PORT", gateway_port.to_string())
         .env("ROUTEBOX_TOKEN", &token)
+        .env("ROUTEBOX_DB_KEY", &db_key)
         .env("ROUTEBOX_DB_PATH", db_path.to_string_lossy().to_string())
         .env("HOME", &real_home)
         .env("PATH", &child_path)
-        .stdout(std::process::Stdio::piped())
+        // C2b: 丢弃 gateway stdout —— 诊断走 stderr(下方会读取);
+        // 不保留无人读取的管道,避免凭据泄露与管道缓冲写满导致的死锁
+        .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| {
@@ -381,6 +396,13 @@ pub async fn is_gateway_running(app: tauri::AppHandle) -> Result<bool, String> {
     } else {
         Ok(false)
     }
+}
+
+// ── Tray status ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn update_tray_status(app: tauri::AppHandle, status: String) {
+    crate::tray::update_tray(&app, &status);
 }
 
 fn generate_token() -> String {

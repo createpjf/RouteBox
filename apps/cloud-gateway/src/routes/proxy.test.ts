@@ -9,6 +9,7 @@ import { describe, test, expect, spyOn } from "bun:test";
 
 const {
   resolveAlias,
+  metricModelLabel,
   pricingFor,
   calculateCost,
   calculateUserCostCents,
@@ -25,6 +26,18 @@ describe("resolveAlias", () => {
 
   test("returns unknown model unchanged", () => {
     expect(resolveAlias("some-unknown-model")).toBe("some-unknown-model");
+  });
+});
+
+// ── metricModelLabel ───────────────────────────────────────────────────────
+
+describe("metricModelLabel", () => {
+  test("returns known served model IDs unchanged", () => {
+    expect(metricModelLabel("kimi-k2.5", new Set(["kimi-k2.5", "minimax-m2.5"]))).toBe("kimi-k2.5");
+  });
+
+  test("collapses unknown model IDs to other", () => {
+    expect(metricModelLabel("minimax-m2.5-user-supplied-variant", new Set(["kimi-k2.5"]))).toBe("other");
   });
 });
 

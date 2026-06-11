@@ -124,6 +124,7 @@ pub fn run() {
             commands::spawn_gateway,
             commands::stop_gateway,
             commands::is_gateway_running,
+            commands::update_tray_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

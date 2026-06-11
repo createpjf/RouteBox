@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t routebox-gateway apps/gateway
+        run: docker build -t routebox-gateway -f apps/gateway/Dockerfile .
 
       - name: Smoke test container
         run: |
@@ -82,7 +82,7 @@ jobs:
             -e ROUTEBOX_TOKEN=test \
             -e OPENAI_API_KEY=sk-fake \
             routebox-gateway
-          sleep 2
+          sleep 3
           curl -sf http://localhost:3001/health | grep -q '"status":"ok"'
           docker stop gw
 
@@ -93,7 +93,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t routebox-cloud-gateway apps/cloud-gateway
+        run: docker build -t routebox-cloud-gateway -f apps/cloud-gateway/Dockerfile .
 
       - name: Smoke test container
         run: |

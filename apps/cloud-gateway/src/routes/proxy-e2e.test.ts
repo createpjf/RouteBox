@@ -10,6 +10,13 @@ import type { CloudEnv } from "../types";
 
 let deductCalls: unknown[][] = [];
 let recordCalls: unknown[][] = [];
+let decrementQuotaCalls: unknown[][] = [];
+let logErrorCalls: unknown[][] = [];
+let metricCounterCalls: unknown[][] = [];
+let mockScoredCandidates: any[] = [];
+let mockDecrementDailyQuota = async (...args: unknown[]) => {
+  decrementQuotaCalls.push(args);
+};
 let mockGetBalanceInfo = async (_userId: string) => ({
   balance_cents: 5000,
   bonus_cents: 0,
@@ -25,7 +32,7 @@ mock.module("../lib/model-registry", () => ({
 }));
 
 mock.module("../lib/scoring-engine", () => ({
-  scoreAndRank: async () => [],
+  scoreAndRank: async () => mockScoredCandidates,
 }));
 
 mock.module("../lib/circuit-breaker", () => ({
@@ -55,6 +62,7 @@ mock.module("../lib/routing-config", () => ({
 mock.module("../lib/quota", () => ({
   checkDailyQuota: async () => ({ allowed: true, remaining: Infinity, resetAt: new Date() }),
   incrementDailyQuota: async () => {},
+  decrementDailyQuota: async (...args: unknown[]) => mockDecrementDailyQuota(...args),
 }));
 
 mock.module("../lib/provider-config", () => ({
@@ -87,7 +95,9 @@ mock.module("../lib/key-pool", () => ({
 }));
 
 mock.module("../lib/metrics", () => ({
-  incCounter: () => {},
+  incCounter: (...args: unknown[]) => {
+    metricCounterCalls.push(args);
+  },
   observeHistogram: () => {},
   incGauge: () => {},
   decGauge: () => {},
@@ -97,7 +107,9 @@ mock.module("../lib/logger", () => ({
   log: {
     info: () => {},
     warn: () => {},
-    error: () => {},
+    error: (...args: unknown[]) => {
+      logErrorCalls.push(args);
+    },
     debug: () => {},
   },
 }));
@@ -207,6 +219,13 @@ beforeEach(() => {
   globalThis.__dbMockSqlCalls = [];
   deductCalls = [];
   recordCalls = [];
+  decrementQuotaCalls = [];
+  logErrorCalls = [];
+  metricCounterCalls = [];
+  mockScoredCandidates = [];
+  mockDecrementDailyQuota = async (...args: unknown[]) => {
+    decrementQuotaCalls.push(args);
+  };
   mockGetBalanceInfo = async () => ({
     balance_cents: 5000,
     bonus_cents: 0,
@@ -415,6 +434,139 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
     expect(recordCalls[0][1]).toBe("minimax-m2.5");
     expect(recordCalls[0][2]).toBe("TestProvider");
   });
+
+  test("M1: scoring fallback bills and records the actual served model", async () => {
+    const app = createApp({ userPlan: "pro" });
+
+    const providerConfig = {
+      name: "TestProvider",
+      instanceId: "test-1",
+      baseUrl: "http://localhost:9999",
+      apiKey: "test-key",
+      format: "openai",
+      prefixes: ["minimax-", "kimi-"],
+    };
+    mockScoredCandidates = [
+      {
+        modelId: "kimi-k2.5",
+        providerConfigs: [providerConfig],
+        isFallback: true,
+        totalScore: 0.99,
+      },
+    ];
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    const usage = { prompt_tokens: 100_000, completion_tokens: 50_000, total_tokens: 150_000 };
+    const requestedModelCost = calculateUserCostCents(
+      usage.prompt_tokens,
+      usage.completion_tokens,
+      { ...pricingFor("minimax-m2.5"), markup: 1.08 },
+    );
+    const servedModelCost = calculateUserCostCents(
+      usage.prompt_tokens,
+      usage.completion_tokens,
+      { ...pricingFor("kimi-k2.5"), markup: 1.08 },
+    );
+    expect(servedModelCost).not.toBe(requestedModelCost);
+
+    mockFetch(async (_url, init) => {
+      const providerBody = JSON.parse(init!.body as string);
+      expect(providerBody.model).toBe("kimi-k2.5");
+      return new Response(JSON.stringify({
+        ...PROVIDER_JSON_RESPONSE,
+        model: providerBody.model,
+        usage,
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(CHAT_BODY),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+
+    expect(body._routebox.routed_model).toBe("kimi-k2.5");
+    expect(body._routebox.requested_model).toBe("minimax-m2.5");
+    expect(body._routebox.is_fallback).toBe(true);
+    expect(body._routebox.user_cost_cents).toBe(servedModelCost);
+
+    expect(deductCalls).toHaveLength(1);
+    expect(deductCalls[0][1]).toBe(servedModelCost);
+    expect(deductCalls[0][1]).not.toBe(requestedModelCost);
+    expect((deductCalls[0][2] as any).model).toBe("kimi-k2.5");
+
+    expect(recordCalls).toHaveLength(1);
+    expect(recordCalls[0][1]).toBe("kimi-k2.5");
+
+    const providerRequestMetric = metricCounterCalls.find(
+      ([name, labels]) => name === "provider_requests_total" && (labels as any).status === "200",
+    );
+    expect((providerRequestMetric![1] as any).model).toBe("kimi-k2.5");
+  });
+
+  test("provider metrics use bounded model label for unregistered model IDs", async () => {
+    const app = createApp({ userPlan: "pro" });
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    let fetchCount = 0;
+    mockFetch(async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return new Response("retry me", { status: 500 });
+      }
+      return new Response(JSON.stringify(PROVIDER_JSON_RESPONSE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "minimax-user-supplied-variant",
+        messages: [{ role: "user", content: "Hello" }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const providerRequestMetric = metricCounterCalls.find(
+      ([name, labels]) => name === "provider_requests_total" && (labels as any).status === "200",
+    );
+    expect(providerRequestMetric).toBeTruthy();
+    expect((providerRequestMetric![1] as any).model).toBe("other");
+
+    const retryMetric = metricCounterCalls.find(
+      ([name]) => name === "retry_attempts_total",
+    );
+    expect(retryMetric).toBeTruthy();
+    expect((retryMetric![1] as any).model).toBe("other");
+
+    const inputTokenMetric = metricCounterCalls.find(
+      ([name, labels]) => name === "provider_tokens_total" && (labels as any).direction === "input",
+    );
+    const outputTokenMetric = metricCounterCalls.find(
+      ([name, labels]) => name === "provider_tokens_total" && (labels as any).direction === "output",
+    );
+    expect(inputTokenMetric).toBeTruthy();
+    expect(outputTokenMetric).toBeTruthy();
+    expect((inputTokenMetric![1] as any).model).toBe("other");
+    expect((outputTokenMetric![1] as any).model).toBe("other");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -422,6 +574,69 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("T5: Streaming full chain", () => {
+  test("H2: clears overall request timeout when streaming response begins", async () => {
+    const app = createApp({ userPlan: "pro" });
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    const encoder = new TextEncoder();
+    mockFetch(async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({
+              id: "chatcmpl-stream",
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: { content: "Hi" }, finish_reason: null }],
+            })}\n\n`,
+          ));
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const requestTimer = { type: "request-timeout" };
+    let requestTimeoutCleared = false;
+    const origSetTimeout = globalThis.setTimeout;
+    const origClearTimeout = globalThis.clearTimeout;
+    // @ts-ignore - intercept only the route-level 60s request timeout.
+    globalThis.setTimeout = (fn: () => void, ms?: number, ...args: unknown[]) => {
+      if (ms === 60_000) return requestTimer as any;
+      return origSetTimeout(fn as any, ms as any, ...(args as any[]));
+    };
+    // @ts-ignore - clearTimeout accepts the sentinel returned above.
+    globalThis.clearTimeout = (timer?: unknown) => {
+      if (timer === requestTimer) {
+        requestTimeoutCleared = true;
+        return;
+      }
+      return origClearTimeout(timer as any);
+    };
+
+    let res: Response | undefined;
+    try {
+      res = await app.request("/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...CHAT_BODY, stream: true }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("text/event-stream");
+      expect(requestTimeoutCleared).toBe(true);
+    } finally {
+      globalThis.setTimeout = origSetTimeout;
+      globalThis.clearTimeout = origClearTimeout;
+      await res?.body?.cancel().catch(() => {});
+    }
+  });
+
   test("SSE stream with routebox.meta and deductCredits called", async () => {
     const app = createApp({ userPlan: "pro" });
 
@@ -491,6 +706,90 @@ describe("T5: Streaming full chain", () => {
     // recordCloudRequest should have been called
     expect(recordCalls.length).toBeGreaterThanOrEqual(1);
   });
+
+  test("streaming scoring fallback uses served-model metadata and accounting", async () => {
+    const app = createApp({ userPlan: "pro" });
+
+    const providerConfig = {
+      name: "TestProvider",
+      instanceId: "test-1",
+      baseUrl: "http://localhost:9999",
+      apiKey: "test-key",
+      format: "openai",
+      prefixes: ["minimax-", "kimi-"],
+    };
+    mockScoredCandidates = [
+      {
+        modelId: "kimi-k2.5",
+        providerConfigs: [providerConfig],
+        isFallback: true,
+        totalScore: 0.99,
+      },
+    ];
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    const encoder = new TextEncoder();
+    mockFetch(async (_url, init) => {
+      const providerBody = JSON.parse(init!.body as string);
+      expect(providerBody.model).toBe("kimi-k2.5");
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({
+              id: "chatcmpl-stream",
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: { content: "Hi" }, finish_reason: null }],
+            })}\n\n`,
+          ));
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({
+              id: "chatcmpl-stream",
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+              usage: { prompt_tokens: 100_000, completion_tokens: 50_000, total_tokens: 150_000 },
+            })}\n\n`,
+          ));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...CHAT_BODY, stream: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-RouteBox-Model")).toBe("kimi-k2.5");
+
+    const text = await res.text();
+    const metaLine = text.split("\n").find(
+      (line) => line.startsWith("data: ") && line.includes("\"object\":\"routebox.meta\""),
+    );
+    expect(metaLine).toBeTruthy();
+    const streamMeta = JSON.parse(metaLine!.slice("data: ".length));
+    expect(streamMeta.model).toBe("kimi-k2.5");
+    expect(streamMeta.requested_model).toBe("minimax-m2.5");
+    expect(streamMeta.is_fallback).toBe(true);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(deductCalls).toHaveLength(1);
+    expect((deductCalls[0][2] as any).model).toBe("kimi-k2.5");
+
+    expect(recordCalls).toHaveLength(1);
+    expect(recordCalls[0][1]).toBe("kimi-k2.5");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -554,6 +853,100 @@ describe("T7: All providers fail → 502", () => {
     expect(body.error.type).toBe("server_error");
     // Should have retried (1 original + 2 retries = 3 attempts)
     expect(fetchCount).toBe(3);
+  });
+
+  test("starter quota is decremented when providers are exhausted", async () => {
+    const app = createApp({ userPlan: "starter" });
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    let fetchCount = 0;
+    mockFetch(async () => {
+      fetchCount++;
+      return new Response("Internal Server Error", { status: 500 });
+    });
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(CHAT_BODY),
+    });
+
+    expect(res.status).toBe(502);
+    expect(fetchCount).toBe(3);
+    expect(decrementQuotaCalls).toEqual([["test-user", "minimax-m2.5"]]);
+    expect(deductCalls).toHaveLength(0);
+    expect(recordCalls).toHaveLength(0);
+  });
+});
+
+describe("L5: Upstream 4xx quota rollback", () => {
+  test("starter quota is decremented when provider returns non-retryable 4xx", async () => {
+    const app = createApp({ userPlan: "starter" });
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    mockFetch(async () =>
+      new Response(JSON.stringify({ error: { message: "bad request" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }));
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(CHAT_BODY),
+    });
+
+    expect(res.status).toBe(400);
+    expect(decrementQuotaCalls).toEqual([["test-user", "minimax-m2.5"]]);
+    expect(deductCalls).toHaveLength(0);
+    expect(recordCalls).toHaveLength(0);
+  });
+
+  test("rollback failures are logged without masking upstream 4xx", async () => {
+    const app = createApp({ userPlan: "starter" });
+    mockDecrementDailyQuota = async (...args: unknown[]) => {
+      decrementQuotaCalls.push(args);
+      throw new Error("quota database unavailable");
+    };
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    mockFetch(async () =>
+      new Response(JSON.stringify({ error: { message: "bad request" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }));
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(CHAT_BODY),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as any;
+    expect(body.error.code).toBe("upstream_error");
+    await Promise.resolve();
+
+    expect(decrementQuotaCalls).toEqual([["test-user", "minimax-m2.5"]]);
+    const rollbackLog = logErrorCalls.find(([event]) => event === "quota_rollback_failed");
+    expect(rollbackLog).toBeTruthy();
+    const rollbackLogContext = rollbackLog![1] as any;
+    expect(rollbackLogContext.requestId).toBe("req-test");
+    expect(rollbackLogContext.userId).toBe("test-user");
+    expect(rollbackLogContext.model).toBe("minimax-m2.5");
+    expect(rollbackLogContext.error).toBe("quota database unavailable");
   });
 });
 

@@ -25,6 +25,28 @@ beforeEach(() => {
   globalThis.__dbMockTxResults = [];
   // @ts-ignore
   globalThis.__dbMockSqlCalls = [];
+  // @ts-ignore
+  globalThis.__dbMockTxCalls = [];
+});
+
+// ── ledger idempotency migration ───────────────────────────────────────────
+
+describe("transaction idempotency migration", () => {
+  test("adds idempotency_key and unique partial indexes", async () => {
+    const migration = await Bun.file(
+      new URL("../../migrations/025_transaction_idempotency.sql", import.meta.url),
+    ).text();
+
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS idempotency_key");
+    expect(migration).toContain("ROW_NUMBER() OVER (PARTITION BY payment_ref");
+    expect(migration).toContain("duplicate payment_ref cleared before idempotency index");
+    expect(migration).toContain("idx_transactions_payment_ref_unique");
+    expect(migration).toContain("WHERE payment_ref IS NOT NULL");
+    expect(migration).toContain("ROW_NUMBER() OVER (PARTITION BY user_id, type, idempotency_key");
+    expect(migration).toContain("duplicate bonus idempotency_key cleared before idempotency index");
+    expect(migration).toContain("idx_transactions_bonus_idempotency_unique");
+    expect(migration).toContain("WHERE type = 'bonus' AND idempotency_key IS NOT NULL");
+  });
 });
 
 // ── getBalance ──────────────────────────────────────────────────────────────
@@ -105,20 +127,26 @@ describe("addCredits", () => {
   test("adds credits and returns new balance", async () => {
     // @ts-ignore
     globalThis.__dbMockTxResults = [
-      [],                                // Check duplicate session
-      [{ balance_cents: 2500 }],         // UPDATE RETURNING
-      [],                                // INSERT transaction
+      [{ id: "tx-claim" }],        // INSERT deposit claim
+      [{ balance_cents: 2500 }],   // UPDATE credits RETURNING
+      [],                          // UPDATE transaction balance_after_cents
     ];
 
     const newBalance = await credits.addCredits("user-1", 1000, "cs_test_123", "Top up");
     expect(newBalance).toBe(2500);
+
+    // @ts-ignore
+    const txCalls = globalThis.__dbMockTxCalls as unknown[][];
+    expect(txCalls[0]).toContain("cs_test_123");
+    expect(txCalls[2]).toContain("tx-claim");
+    expect(txCalls[2]).toContain(2500);
   });
 
   test("returns existing balance for duplicate payment ref", async () => {
     // @ts-ignore
     globalThis.__dbMockTxResults = [
-      [{ id: "existing-tx" }],
-      [{ balance_cents: 1500 }],
+      [],                         // INSERT claim hit ON CONFLICT DO NOTHING
+      [{ balance_cents: 1500 }],  // Current balance lookup
     ];
 
     const newBalance = await credits.addCredits("user-1", 1000, "cs_duplicate");

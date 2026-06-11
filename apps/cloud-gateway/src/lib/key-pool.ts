@@ -5,6 +5,7 @@
 
 import { log } from "./logger";
 import { getCircuitBreaker } from "./circuit-breaker";
+import type { ProviderTemplate } from "@routebox/llm-core";
 
 export interface CloudProviderConfig {
   name: string;
@@ -16,16 +17,6 @@ export interface CloudProviderConfig {
   authHeader?: string;
   /** Unique instance ID for multi-key support (e.g., "OpenAI:0") */
   instanceId: string;
-}
-
-interface ProviderTemplate {
-  name: string;
-  envKey: string;
-  baseUrlEnvKey: string;
-  defaultBaseUrl: string;
-  prefixes: string[];
-  format: "openai" | "anthropic";
-  authHeader?: string;
 }
 
 export const PROVIDER_REGISTRY: ProviderTemplate[] = [
