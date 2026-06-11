@@ -35,6 +35,18 @@ beforeAll(() => {
           }
 
           if (body.stream) {
+            const firstContent = Array.isArray(body.messages) && typeof body.messages[0]?.content === "string"
+              ? body.messages[0].content as string : "";
+            if (firstContent.includes("__OVERFLOW__")) {
+              const huge = "x".repeat(1024 * 1024 + 10);
+              const ovStream = new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode(`data: {"choices":[{"delta":{"content":"${huge}"}}]}`));
+                  controller.close();
+                },
+              });
+              return new Response(ovStream, { headers: { "Content-Type": "text/event-stream" } });
+            }
             // Streaming response
             const encoder = new TextEncoder();
             const stream = new ReadableStream({
@@ -181,6 +193,18 @@ describe("POST /v1/chat/completions", () => {
     // Should contain "Hello" and " world" somewhere in the chunks
     expect(text).toContain("Hello");
     expect(text).toContain("world");
+  });
+
+  test("H4: stream buffer overflow does not crash; emits error event and [DONE]", async () => {
+    const res = await proxyRequest({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "__OVERFLOW__ please" }],
+      stream: true,
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("stream_overflow");
+    expect(text).toContain("[DONE]");
   });
 
   test("401 without auth", async () => {

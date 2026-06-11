@@ -22,6 +22,7 @@ import { braveSearch, formatSearchContext, isSearchEnabled } from "../lib/brave-
 const app = new Hono();
 
 const MAX_STREAM_BUFFER = 1024 * 1024; // 1 MB — reject malformed streams that never emit newlines
+const STREAM_IDLE_TIMEOUT_MS = Number(process.env.ROUTEBOX_STREAM_IDLE_MS) || 30_000; // 无数据超过此时长则关闭流
 
 // ── In-memory rate limiter: 60 requests per minute per auth token ────────
 
@@ -160,22 +161,44 @@ function anthropicStreamToOpenAI(
   let currentToolCallName = "";
   let currentToolCallInput = "";
   let toolCallIndex = -1;
+  let streamedChars = 0;
+  let doneCalled = false;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const resolveOutputTokens = () => (outputTokens > 0 ? outputTokens : Math.ceil(streamedChars / 4));
+  const callOnDone = (usage: { input: number; output: number }) => {
+    if (doneCalled) return;
+    doneCalled = true;
+    if (idleTimer) clearTimeout(idleTimer);
+    onDone(usage);
+  };
 
   return new ReadableStream({
     async start(controller) {
       const reader = upstream.getReader();
 
       function pushChunk(data: string) {
-        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)); } catch { /* closed */ }
       }
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          reader.cancel().catch(() => {});
+          try { controller.close(); } catch { /* already closed */ }
+          callOnDone({ input: inputTokens, output: resolveOutputTokens() });
+        }, STREAM_IDLE_TIMEOUT_MS);
+      };
+      resetIdleTimer();
 
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          resetIdleTimer();
           buffer += decoder.decode(value, { stream: true });
           if (buffer.length > MAX_STREAM_BUFFER) {
-            controller.error(new Error("Stream buffer overflow"));
+            pushChunk(JSON.stringify({
+              error: { message: "Stream buffer overflow — response truncated", type: "server_error", code: "stream_overflow" },
+            }));
             break;
           }
 
@@ -219,6 +242,7 @@ function anthropicStreamToOpenAI(
                   }
                 } else if (evt.type === "content_block_delta") {
                   if (evt.delta?.type === "text_delta" && evt.delta?.text) {
+                    streamedChars += (evt.delta.text as string).length;
                     pushChunk(JSON.stringify({
                       id: messageId,
                       object: "chat.completion.chunk",
@@ -277,22 +301,24 @@ function anthropicStreamToOpenAI(
       }
 
       // Inject routebox.meta before [DONE]
-      const totalTokens = inputTokens + outputTokens;
-      const metaCost = calculateCost(model, inputTokens, outputTokens, streamMeta.provider);
+      if (idleTimer) clearTimeout(idleTimer);
+      const finalOutput = resolveOutputTokens();
+      const totalTokens = inputTokens + finalOutput;
+      const metaCost = calculateCost(model, inputTokens, finalOutput, streamMeta.provider);
       pushChunk(JSON.stringify({
         object: "routebox.meta",
         provider: streamMeta.provider.toLowerCase(),
         model,
         requested_model: streamMeta.requestedModel,
-        usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTokens },
+        usage: { prompt_tokens: inputTokens, completion_tokens: finalOutput, total_tokens: totalTokens },
         cost: metaCost,
         latency_ms: Math.round(performance.now() - streamMeta.startMs),
         is_fallback: streamMeta.isFallback,
       }));
 
       pushChunk("[DONE]");
-      controller.close();
-      onDone({ input: inputTokens, output: outputTokens });
+      try { controller.close(); } catch { /* already closed */ }
+      callOnDone({ input: inputTokens, output: finalOutput });
     },
   });
 }
@@ -309,20 +335,45 @@ function openaiStreamPassthrough(
   let inputTokens = 0;
   let outputTokens = 0;
   let metaInjected = false;
+  let streamedChars = 0;
+  let doneCalled = false;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const resolveOutputTokens = () => (outputTokens > 0 ? outputTokens : Math.ceil(streamedChars / 4));
+  const callOnDone = (usage: { input: number; output: number }) => {
+    if (doneCalled) return;
+    doneCalled = true;
+    if (idleTimer) clearTimeout(idleTimer);
+    onDone(usage);
+  };
 
   return new ReadableStream({
     async start(controller) {
       const reader = upstream.getReader();
       const encoder = new TextEncoder();
+      const enqueue = (data: Uint8Array) => {
+        try { controller.enqueue(data); } catch { /* closed */ }
+      };
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          reader.cancel().catch(() => {});
+          try { controller.close(); } catch { /* already closed */ }
+          callOnDone({ input: inputTokens, output: resolveOutputTokens() });
+        }, STREAM_IDLE_TIMEOUT_MS);
+      };
+      resetIdleTimer();
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          resetIdleTimer();
 
           // Parse for usage and intercept [DONE] to inject _routebox
           buffer += decoder.decode(value, { stream: true });
           if (buffer.length > MAX_STREAM_BUFFER) {
-            controller.error(new Error("Stream buffer overflow"));
+            enqueue(encoder.encode(`data: ${JSON.stringify({
+              error: { message: "Stream buffer overflow — response truncated", type: "server_error", code: "stream_overflow" },
+            })}\n\n`));
             break;
           }
           const lines = buffer.split("\n");
@@ -334,7 +385,7 @@ function openaiStreamPassthrough(
                 // Inject routebox.meta before [DONE]
                 const totalTok = inputTokens + outputTokens;
                 const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens, streamMeta.provider);
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                enqueue(encoder.encode(`data: ${JSON.stringify({
                   object: "routebox.meta",
                   provider: streamMeta.provider.toLowerCase(),
                   model: streamMeta.requestedModel,
@@ -344,7 +395,7 @@ function openaiStreamPassthrough(
                   latency_ms: Math.round(performance.now() - streamMeta.startMs),
                   is_fallback: streamMeta.isFallback,
                 })}\n\n`));
-                controller.enqueue(encoder.encode(`${line}\n\n`));
+                enqueue(encoder.encode(`${line}\n\n`));
                 metaInjected = true;
               } else {
                 try {
@@ -353,40 +404,45 @@ function openaiStreamPassthrough(
                     inputTokens = chunk.usage.prompt_tokens ?? inputTokens;
                     outputTokens = chunk.usage.completion_tokens ?? outputTokens;
                   }
+                  const delta = chunk.choices?.[0]?.delta;
+                  if (delta?.content) streamedChars += (delta.content as string).length;
                 } catch { /* skip */ }
-                controller.enqueue(encoder.encode(`${line}\n\n`));
+                enqueue(encoder.encode(`${line}\n\n`));
               }
             } else if (line.trim()) {
               // Pass through non-data lines (e.g. event: lines)
-              controller.enqueue(encoder.encode(`${line}\n`));
+              enqueue(encoder.encode(`${line}\n`));
             }
           }
         }
       } catch (err) {
         // Send SSE error event to the client
         const errorMessage = err instanceof Error ? err.message : "Stream read error";
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: errorMessage, type: "stream_error" } })}\n\n`));
+        enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: errorMessage, type: "stream_error" } })}\n\n`));
       } finally {
         reader.releaseLock();
       }
+      if (idleTimer) clearTimeout(idleTimer);
       // Fallback: if stream ended without [DONE], inject meta now (e.g. local LM Studio)
       if (!metaInjected) {
-        const totalTok = inputTokens + outputTokens;
-        const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens, streamMeta.provider);
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+        const finalOutput = resolveOutputTokens();
+        const totalTok = inputTokens + finalOutput;
+        const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, finalOutput, streamMeta.provider);
+        enqueue(encoder.encode(`data: ${JSON.stringify({
           object: "routebox.meta",
           provider: streamMeta.provider.toLowerCase(),
           model: streamMeta.requestedModel,
           requested_model: streamMeta.requestedModel,
-          usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
+          usage: { prompt_tokens: inputTokens, completion_tokens: finalOutput, total_tokens: totalTok },
           cost: metaCost,
           latency_ms: Math.round(performance.now() - streamMeta.startMs),
           is_fallback: streamMeta.isFallback,
         })}\n\n`));
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        enqueue(encoder.encode("data: [DONE]\n\n"));
+        outputTokens = finalOutput;
       }
-      controller.close();
-      onDone({ input: inputTokens, output: outputTokens });
+      try { controller.close(); } catch { /* already closed */ }
+      callOnDone({ input: inputTokens, output: resolveOutputTokens() });
     },
   });
 }
