@@ -36,8 +36,12 @@ describe("transaction idempotency migration", () => {
     ).text();
 
     expect(migration).toContain("ADD COLUMN IF NOT EXISTS idempotency_key");
+    expect(migration).toContain("ROW_NUMBER() OVER (PARTITION BY payment_ref");
+    expect(migration).toContain("duplicate payment_ref cleared before idempotency index");
     expect(migration).toContain("idx_transactions_payment_ref_unique");
     expect(migration).toContain("WHERE payment_ref IS NOT NULL");
+    expect(migration).toContain("ROW_NUMBER() OVER (PARTITION BY user_id, type, idempotency_key");
+    expect(migration).toContain("duplicate bonus idempotency_key cleared before idempotency index");
     expect(migration).toContain("idx_transactions_bonus_idempotency_unique");
     expect(migration).toContain("WHERE type = 'bonus' AND idempotency_key IS NOT NULL");
   });
