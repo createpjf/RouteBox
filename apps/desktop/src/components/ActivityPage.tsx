@@ -32,7 +32,14 @@ export function ActivityPage({ requestLog, onSelectEntry }: ActivityPageProps) {
   const autoScroll = useRef(true);
 
   const filtered = search
-    ? requestLog.filter((e) => e.model.toLowerCase().includes(search.toLowerCase()))
+    ? requestLog.filter((e) => {
+        const q = search.toLowerCase();
+        return (
+          e.model?.toLowerCase().includes(q) ||
+          e.provider?.toLowerCase().includes(q) ||
+          String((e as { status?: unknown }).status ?? "").toLowerCase().includes(q)
+        );
+      })
     : requestLog;
 
   useEffect(() => {

@@ -55,6 +55,7 @@ export function Settings({ onClose, onGoToAccount }: SettingsProps) {
   const [searchHasKey, setSearchHasKey] = useState(false);
   const [searchSaving, setSearchSaving] = useState(false);
   const [searchSaved, setSearchSaved] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   // Cloud read-only info
   const [cloudUser, setCloudUser] = useState<{ email: string; plan: string } | null>(null);
 
@@ -301,9 +302,12 @@ export function Settings({ onClose, onGoToAccount }: SettingsProps) {
       await api.setSearchKey(searchKey.trim());
       setSearchHasKey(true);
       setSearchSaved(true);
+      setSearchError(null);
       setSearchKey("");
       setTimeout(() => setSearchSaved(false), 2000);
-    } catch {}
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Failed to save search key");
+    }
     setSearchSaving(false);
   }, [searchKey]);
 
@@ -710,6 +714,7 @@ export function Settings({ onClose, onGoToAccount }: SettingsProps) {
                   </button>
                 )}
               </div>
+              {searchError && <p className="text-[10px] text-accent-red mt-1">{searchError}</p>}
             </div>
           </div>
 

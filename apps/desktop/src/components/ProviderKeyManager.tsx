@@ -28,6 +28,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   const [customApiKey, setCustomApiKey] = useState("");
   const [customSaving, setCustomSaving] = useState(false);
   const [customError, setCustomError] = useState<string | null>(null);
+  const [fetchFailed, setFetchFailed] = useState(false);
 
   const fetchRegistry = useCallback(async () => {
     try {
@@ -37,8 +38,10 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
       ]);
       setProviders(regRes.providers);
       setLocalProviders(localRes.providers);
+      setFetchFailed(false);
     } catch {
-      // silent — may not be connected yet
+      // may not be connected yet — flag for bounded auto-retry
+      setFetchFailed(true);
     } finally {
       setLoading(false);
     }
@@ -47,6 +50,12 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   useEffect(() => {
     fetchRegistry();
   }, [fetchRegistry]);
+
+  useEffect(() => {
+    if (!fetchFailed) return;
+    const t = setTimeout(() => { fetchRegistry(); }, 2000);
+    return () => clearTimeout(t);
+  }, [fetchFailed, fetchRegistry]);
 
   const handleSaveKey = useCallback(async (name: string) => {
     if (!keyInput.trim()) return;
@@ -145,7 +154,9 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
     return (
       <div className="glass-card-static p-3">
         <p className="text-[11px] text-text-tertiary text-center mb-2">
-          Connect to gateway to manage providers
+          {fetchFailed
+            ? "Gateway not reachable yet — retrying…"
+            : "Connect to gateway to manage providers"}
         </p>
         <button onClick={fetchRegistry} className="flex items-center gap-1 mx-auto text-[11px] text-[#007AFF] hover:underline">
           <RefreshCw size={11} strokeWidth={1.75} />
