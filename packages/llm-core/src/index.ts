@@ -5,3 +5,5 @@
 
 /** 冒烟用,确认跨包解析可用;Task 2 起被真实导出替换。 */
 export const LLM_CORE_VERSION = "1.0.0";
+
+export type { ProviderFormat, ProviderTemplate, ModelPricing } from "./types";
