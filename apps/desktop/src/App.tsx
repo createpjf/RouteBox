@@ -201,11 +201,18 @@ export function App() {
       setCloudBalanceCents(res.total_cents);
     }).catch(() => {});
 
-    // Poll balance every 30s
-    const balanceInterval = setInterval(() => {
+    // Poll balance every 30s — skip while the panel is hidden (menu-bar app)
+    const fetchBalance = () => {
+      if (document.hidden) return;
       api.cloudGetBalance().then((res) => setCloudBalanceCents(res.total_cents)).catch(() => {});
-    }, 30_000);
-    return () => clearInterval(balanceInterval);
+    };
+    const balanceInterval = setInterval(fetchBalance, 30_000);
+    const onVisible = () => { if (!document.hidden) fetchBalance(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(balanceInterval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [tokenLoaded]);
 
   // Auto-show onboarding for first-run users (only needs tokenLoaded, not connected)

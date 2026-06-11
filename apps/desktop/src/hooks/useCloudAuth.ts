@@ -196,8 +196,14 @@ export function useCloudAuth(onLoginSuccess?: () => void, showToast?: (msg: stri
   // Poll balance every 10s when authenticated
   useEffect(() => {
     if (!isCloud || !hasCloudToken) return;
-    const timer = setInterval(refreshBalance, 10_000);
-    return () => clearInterval(timer);
+    const tick = () => { if (!document.hidden) refreshBalance(); };
+    const timer = setInterval(tick, 10_000);
+    const onVisible = () => { if (!document.hidden) refreshBalance(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [isCloud, hasCloudToken, refreshBalance]);
 
   // Refresh balance on window focus (e.g. returning from checkout)
