@@ -69,6 +69,7 @@ function checkRateLimit(token: string): { allowed: boolean; retryAfterMs: number
 async function forwardOpenAI(
   provider: ProviderConfig,
   body: OpenAIChatRequest,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -88,13 +89,14 @@ async function forwardOpenAI(
     headers,
     body: JSON.stringify(body),
     redirect: "error",
-    signal: AbortSignal.timeout(provider.isLocal ? 120_000 : 30_000),
+    signal: signal ?? AbortSignal.timeout(provider.isLocal ? 120_000 : 30_000),
   });
 }
 
 async function forwardAnthropic(
   provider: ProviderConfig,
   body: OpenAIChatRequest,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const anthropicBody = toAnthropicRequest(body);
   return fetch(`${provider.baseUrl}/messages`, {
@@ -106,17 +108,18 @@ async function forwardAnthropic(
     },
     body: JSON.stringify(anthropicBody),
     redirect: "error",
-    signal: AbortSignal.timeout(30_000),
+    signal: signal ?? AbortSignal.timeout(30_000),
   });
 }
 
 async function forward(
   provider: ProviderConfig,
   body: OpenAIChatRequest,
+  signal?: AbortSignal,
 ): Promise<Response> {
   return provider.format === "anthropic"
-    ? forwardAnthropic(provider, body)
-    : forwardOpenAI(provider, body);
+    ? forwardAnthropic(provider, body, signal)
+    : forwardOpenAI(provider, body, signal);
 }
 
 // ── Extract usage from provider response (non-stream) ───────────────────────
@@ -584,14 +587,31 @@ app.post("/chat/completions", async (c) => {
   }
 
   const startMs = performance.now();
+  const clientSignal = c.req.raw.signal;
+  const abortController = new AbortController();
+  const upstreamSignal = abortController.signal;
+  const onClientAbort = () => abortController.abort();
+  clientSignal?.addEventListener("abort", onClientAbort, { once: true });
+  const CONNECT_TIMEOUT_MS = Number(process.env.ROUTEBOX_CONNECT_TIMEOUT_MS) || 30_000;
+  let connectTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => abortController.abort(), CONNECT_TIMEOUT_MS);
+  const clearConnectTimer = () => {
+    if (connectTimer) {
+      clearTimeout(connectTimer);
+      connectTimer = null;
+    }
+  };
+  const cleanupUpstreamSignal = () => {
+    clearConnectTimer();
+    clientSignal?.removeEventListener("abort", onClientAbort);
+  };
   let res: Response;
   let retriedProvider: ProviderConfig | undefined;
   let retriedModel: string | undefined;
 
   try {
-    res = await forward(provider, body);
+    res = await forward(provider, body, upstreamSignal);
   } catch (err) {
-    metrics.markProviderDown(provider.name);
+    if (!clientSignal?.aborted) metrics.markProviderDown(provider.name);
     const latencyMs = Math.round(performance.now() - startMs);
     recordRequest(requestedModel, model, provider.name, 0, 0, 0, latencyMs, "error");
 
@@ -604,16 +624,17 @@ app.post("/chat/completions", async (c) => {
           if (isStream && fallback.provider.format === "openai" && !fallback.provider.isLocal) {
             body.stream_options = { include_usage: true };
           }
-          res = await forward(fallback.provider, body);
+          res = await forward(fallback.provider, body, upstreamSignal);
           Object.assign(route, { provider: fallback.provider, model: fallback.model, isFallback: true });
           retriedProvider = fallback.provider;
           retriedModel = fallback.model;
         } catch {
-          metrics.markProviderDown(fallback.provider.name);
+          if (!clientSignal?.aborted) metrics.markProviderDown(fallback.provider.name);
         }
       }
     }
     if (!res!) {
+      cleanupUpstreamSignal();
       return c.json({
         error: { message: `Provider ${provider.name} unreachable`, type: "server_error" },
       }, 502);
@@ -632,7 +653,7 @@ app.post("/chat/completions", async (c) => {
 
     // Auto-retry on 5xx with a different provider
     if (errStatus >= 500 && !activeIsFallback) {
-      metrics.markProviderDown(activeProvider.name);
+      if (!clientSignal?.aborted) metrics.markProviderDown(activeProvider.name);
       const fallback = selectRoute(requestedModel, "quality_first");
       if (fallback && fallback.provider.name !== activeProvider.name) {
         try {
@@ -640,7 +661,7 @@ app.post("/chat/completions", async (c) => {
           if (isStream && fallback.provider.format === "openai" && !fallback.provider.isLocal) {
             body.stream_options = { include_usage: true };
           }
-          const retryRes = await forward(fallback.provider, body);
+          const retryRes = await forward(fallback.provider, body, upstreamSignal);
           if (retryRes.ok) {
             // Retry succeeded — continue with this response
             res = retryRes;
@@ -648,6 +669,7 @@ app.post("/chat/completions", async (c) => {
             // Fall through to normal response handling below
           } else {
             // Retry also failed
+            cleanupUpstreamSignal();
             recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
             return c.json({
               error: {
@@ -658,7 +680,8 @@ app.post("/chat/completions", async (c) => {
             }, 502);
           }
         } catch {
-          metrics.markProviderDown(fallback.provider.name);
+          if (!clientSignal?.aborted) metrics.markProviderDown(fallback.provider.name);
+          cleanupUpstreamSignal();
           recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
           return c.json({
             error: {
@@ -668,6 +691,7 @@ app.post("/chat/completions", async (c) => {
           }, 502);
         }
       } else {
+        cleanupUpstreamSignal();
         recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
         return c.json({
           error: {
@@ -678,6 +702,7 @@ app.post("/chat/completions", async (c) => {
         }, 502);
       }
     } else {
+      cleanupUpstreamSignal();
       recordRequest(requestedModel, activeModel, activeProvider.name, 0, 0, 0, latencyMs, "error");
       return c.json({
         error: {
@@ -696,6 +721,7 @@ app.post("/chat/completions", async (c) => {
 
   // ── Streaming response ──
   if (isStream && res!.body) {
+    clearConnectTimer();
     const streamMetaObj: StreamMeta = {
       provider: finalProvider.name,
       requestedModel,
@@ -704,6 +730,7 @@ app.post("/chat/completions", async (c) => {
     };
     const stream = finalProvider.format === "anthropic"
       ? anthropicStreamToOpenAI(res!.body, finalModel, streamMetaObj, (usage) => {
+          cleanupUpstreamSignal();
           const latencyMs = Math.round(performance.now() - startMs);
           recordRequest(
             requestedModel, finalModel, finalProvider.name,
@@ -712,6 +739,7 @@ app.post("/chat/completions", async (c) => {
           );
         })
       : openaiStreamPassthrough(res!.body, streamMetaObj, (usage) => {
+          cleanupUpstreamSignal();
           const latencyMs = Math.round(performance.now() - startMs);
           recordRequest(
             requestedModel, finalModel, finalProvider.name,
@@ -733,6 +761,7 @@ app.post("/chat/completions", async (c) => {
   }
 
   // ── Non-streaming response ──
+  cleanupUpstreamSignal();
   const latencyMs = Math.round(performance.now() - startMs);
   const json = await res!.json() as Record<string, unknown>;
 

@@ -47,6 +47,23 @@ beforeAll(() => {
               });
               return new Response(ovStream, { headers: { "Content-Type": "text/event-stream" } });
             }
+            if (firstContent.includes("__SLOWSTREAM__")) {
+              const encoder = new TextEncoder();
+              const slowStream = new ReadableStream({
+                async start(controller) {
+                  const chunk1 = { id: "chatcmpl-slow", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: { role: "assistant", content: "Hello" }, finish_reason: null }] };
+                  const chunk2 = { id: "chatcmpl-slow", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: { content: " world" }, finish_reason: null }] };
+                  const chunk3 = { id: "chatcmpl-slow", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk1)}\n\n`));
+                  await Bun.sleep(120);
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk2)}\n\n`));
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk3)}\n\n`));
+                  controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                  controller.close();
+                },
+              });
+              return new Response(slowStream, { headers: { "Content-Type": "text/event-stream" } });
+            }
             // Streaming response
             const encoder = new TextEncoder();
             const stream = new ReadableStream({
@@ -205,6 +222,30 @@ describe("POST /v1/chat/completions", () => {
     const text = await res.text();
     expect(text).toContain("stream_overflow");
     expect(text).toContain("[DONE]");
+  });
+
+  test("H2: streaming response is not killed by the connect timeout once data flows", async () => {
+    const originalTimeout = AbortSignal.timeout;
+    (AbortSignal as any).timeout = () => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 50);
+      return controller.signal;
+    };
+    process.env.ROUTEBOX_CONNECT_TIMEOUT_MS = "50";
+    try {
+      const res = await proxyRequest({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "__SLOWSTREAM__ please" }],
+        stream: true,
+      });
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("[DONE]");
+      expect(text).toContain("world");
+    } finally {
+      (AbortSignal as any).timeout = originalTimeout;
+      delete process.env.ROUTEBOX_CONNECT_TIMEOUT_MS;
+    }
   });
 
   test("401 without auth", async () => {
