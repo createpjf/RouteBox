@@ -3,6 +3,13 @@
 // ---------------------------------------------------------------------------
 
 import { getLocalProviderForModel, getLocalProviderConfigs, localProviders } from "./local-providers";
+import {
+  pricingForModel as corePricingForModel,
+  calculateCost as coreCalculateCost,
+  resolveAlias as coreResolveAlias,
+  type ModelPricing,
+  type ProviderTemplate as CoreProviderTemplate,
+} from "@routebox/llm-core";
 
 export interface ProviderConfig {
   name: string;
@@ -40,7 +47,7 @@ export const MODEL_ALIASES: Record<string, string> = {
 
 /** Resolve a user-provided model name to the canonical model ID */
 export function resolveModelAlias(model: string): string {
-  return MODEL_ALIASES[model] ?? model;
+  return coreResolveAlias(model, MODEL_ALIASES);
 }
 
 // Pricing per 1 M tokens  { input, output }  — matches spec exactly
@@ -118,16 +125,7 @@ export const MODEL_TIERS: Record<string, string[]> = {
 // Static provider registry — metadata only, no API keys
 // ---------------------------------------------------------------------------
 
-export interface ProviderTemplate {
-  name: string;
-  envKey: string;
-  baseUrlEnvKey: string;
-  defaultBaseUrl: string;
-  prefixes: string[];
-  format: "openai" | "anthropic";
-  /** Custom auth header name (default: "Authorization" with "Bearer " prefix) */
-  authHeader?: string;
-}
+export type ProviderTemplate = CoreProviderTemplate;
 
 export const PROVIDER_REGISTRY: ProviderTemplate[] = [
   {
@@ -314,21 +312,13 @@ export function providersForModel(model: string): ProviderConfig[] {
 }
 
 /** Lookup pricing — checks provider-specific overrides, then global, then prefix match */
-export function pricingForModel(model: string, providerName?: string): { input: number; output: number } {
-  // Local providers are always free
-  if (providerName === "Ollama" || providerName === "LM Studio") {
-    return { input: 0, output: 0 };
-  }
-  // Check provider-specific pricing override first
-  if (providerName && PROVIDER_MODEL_PRICING[providerName]?.[model]) {
-    return PROVIDER_MODEL_PRICING[providerName][model];
-  }
-  if (MODEL_PRICING[model]) return MODEL_PRICING[model];
-  // try prefix match (e.g. "gpt-4o-2024-08-06" → "gpt-4o")
-  for (const [key, val] of Object.entries(MODEL_PRICING)) {
-    if (model.startsWith(key)) return val;
-  }
-  return { input: 1, output: 3 }; // fallback estimate
+export function pricingForModel(model: string, providerName?: string): ModelPricing {
+  return corePricingForModel(model, MODEL_PRICING, {
+    providerName,
+    providerOverrides: PROVIDER_MODEL_PRICING,
+    freeProviders: ["Ollama", "LM Studio"],
+    fallback: { input: 1, output: 3 },
+  });
 }
 
 /** Calculate cost in USD from token counts */
@@ -338,8 +328,12 @@ export function calculateCost(
   outputTokens: number,
   providerName?: string,
 ): number {
-  const p = pricingForModel(model, providerName);
-  return (inputTokens * p.input + outputTokens * p.output) / 1_000_000;
+  return coreCalculateCost(model, inputTokens, outputTokens, MODEL_PRICING, {
+    providerName,
+    providerOverrides: PROVIDER_MODEL_PRICING,
+    freeProviders: ["Ollama", "LM Studio"],
+    fallback: { input: 1, output: 3 },
+  });
 }
 
 // ---------------------------------------------------------------------------
