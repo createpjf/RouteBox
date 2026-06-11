@@ -783,9 +783,6 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     }
   }
 
-  // ── Pre-resolve effective pricing (after model is finalized) ─────────────
-  const modelPricing = await getModelUserPrice(requestedModel, userPlan);
-
   let providerChain: CloudProviderConfig[];
 
   if (scoredCandidates.length > 0) {
@@ -856,6 +853,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   let lastError: { message: string; status?: number; body?: string } | undefined;
   let res: Response | undefined;
   let activeProvider: CloudProviderConfig | undefined;
+  let activeModel = requestedModel;
   let activeProviderLatencyMs = 0;
   let isFallback = false;
   let totalAttempts = 0;
@@ -888,11 +886,11 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
     // If scoring engine selected a different model, rewrite the model ID
     const scored = provider as CloudProviderConfig & { _scoredModelId?: string; _isScoredFallback?: boolean };
+    const servedModel = scored._scoredModelId ?? requestedModel;
     if (scored._scoredModelId) {
-      providerBody.model = scored._scoredModelId;
+      providerBody.model = servedModel;
       if (scored._isScoredFallback) isFallback = true;
     }
-    const servedModel = scored._scoredModelId ?? requestedModel;
     const metricModel = metricModelLabel(servedModel, knownMetricModels);
     if (isStream && provider.format === "openai") {
       providerBody.stream_options = { include_usage: true };
@@ -922,8 +920,9 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
           res = rawRes;
           activeProvider = provider;
+          activeModel = servedModel;
           activeProviderLatencyMs = providerLatencyMs;
-          isFallback = providerIdx > 0;
+          isFallback = providerIdx > 0 || scored._isScoredFallback === true;
           activeMetricModel = metricModel;
           break; // exit retry loop
 
@@ -1057,6 +1056,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     }, 502);
   }
 
+  const modelPricing = await getModelUserPrice(activeModel, userPlan);
+
   // Track retry metrics
   if (totalAttempts > 1) {
     incCounter("retry_attempts_total", {
@@ -1071,11 +1072,11 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     clearTimeout(requestTimeout);
     const streamMetaObj: StreamMeta = {
       provider: activeProvider.name,
-      requestedModel,
+      requestedModel: activeModel,
       startMs,
       isFallback,
       autoRouted: isAutoRoute,
-      originalRequestedModel: isAutoRoute ? "auto" : undefined,
+      originalRequestedModel: isAutoRoute ? "auto" : originalRequestedModel,
     };
 
     // Capture variables for the async onDone closure
@@ -1107,19 +1108,19 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       // Deduct credits (even for partial streams — bill consumed tokens)
       if (costCents > 0) {
         const deductResult = await deductCredits(userId, costCents, {
-          model: requestedModel,
+          model: activeModel,
           provider: finalProvider.name,
           inputTokens: usage.input,
           outputTokens: usage.output,
         }).catch((err) => {
           log.error("deduct_credits_failed", {
-            requestId, userId, model: requestedModel, costCents,
+            requestId, userId, model: activeModel, costCents,
             error: err instanceof Error ? err.message : String(err),
           });
           // H1: Persist pending deduction so it can be retried later
           sql`
             INSERT INTO pending_deductions (user_id, cost_cents, model, provider, input_tokens, output_tokens, request_id)
-            VALUES (${userId}, ${costCents}, ${requestedModel}, ${finalProvider.name}, ${usage.input}, ${usage.output}, ${requestId})
+            VALUES (${userId}, ${costCents}, ${activeModel}, ${finalProvider.name}, ${usage.input}, ${usage.output}, ${requestId})
           `.catch((dbErr) => {
             log.error("pending_deduction_persist_failed", {
               requestId, userId, costCents,
@@ -1129,7 +1130,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           return null;
         });
         if (deductResult && !deductResult.success) {
-          log.error("deduct_credits_insufficient", { requestId, userId, model: requestedModel, costCents });
+          log.error("deduct_credits_insufficient", { requestId, userId, model: activeModel, costCents });
         }
       }
 
@@ -1138,18 +1139,18 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       // Record request
       const status = clientSignal?.aborted && !wasAborted ? "aborted" : "ok";
       await recordCloudRequest(
-        userId, requestedModel, finalProvider.name,
+        userId, activeModel, finalProvider.name,
         usage.input, usage.output, costCents, latencyMs, status,
       ).catch((err) => {
         log.error("record_request_failed", {
-          requestId, userId, model: requestedModel,
+          requestId, userId, model: activeModel,
           error: err instanceof Error ? err.message : String(err),
         });
       });
     };
 
     const stream = activeProvider.format === "anthropic"
-      ? anthropicStreamToOpenAI(res.body, requestedModel, streamMetaObj, onDone)
+      ? anthropicStreamToOpenAI(res.body, activeModel, streamMetaObj, onDone)
       : openaiStreamPassthrough(res.body, streamMetaObj, onDone);
 
     const streamHeaders: Record<string, string> = {
@@ -1157,7 +1158,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
       "X-RouteBox-Provider": activeProvider.name,
-      "X-RouteBox-Model": requestedModel,
+      "X-RouteBox-Model": activeModel,
     };
     if (isAutoRoute) streamHeaders["X-RouteBox-Auto-Routed"] = "true";
 
@@ -1175,7 +1176,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   const inputTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
   const outputTokens = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
   const costCents = calculateUserCostCents(inputTokens, outputTokens, modelPricing);
-  const providerCost = calculateCost(requestedModel, inputTokens, outputTokens);
+  const providerCost = calculateCost(activeModel, inputTokens, outputTokens);
 
   // Token metrics
   incCounter("provider_tokens_total", { provider: activeProvider.name, model: activeMetricModel, direction: "input" }, inputTokens);
@@ -1184,18 +1185,18 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   // Deduct credits
   if (costCents > 0) {
     const deductResult = await deductCredits(userId, costCents, {
-      model: requestedModel,
+      model: activeModel,
       provider: activeProvider.name,
       inputTokens, outputTokens,
     }).catch((err) => {
       log.error("deduct_credits_failed", {
-        requestId, userId, model: requestedModel, costCents,
+        requestId, userId, model: activeModel, costCents,
         error: err instanceof Error ? err.message : String(err),
       });
       return null;
     });
     if (deductResult && !deductResult.success) {
-      log.error("deduct_credits_insufficient", { requestId, userId, model: requestedModel, costCents });
+      log.error("deduct_credits_insufficient", { requestId, userId, model: activeModel, costCents });
     }
   }
 
@@ -1203,11 +1204,11 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // Record request
   await recordCloudRequest(
-    userId, requestedModel, activeProvider.name,
+    userId, activeModel, activeProvider.name,
     inputTokens, outputTokens, costCents, latencyMs, "ok",
   ).catch((err) => {
     log.error("record_request_failed", {
-      requestId, userId, model: requestedModel,
+      requestId, userId, model: activeModel,
       error: err instanceof Error ? err.message : String(err),
     });
   });
@@ -1221,7 +1222,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       id: (json as { id: string }).id,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
-      model: requestedModel,
+      model: activeModel,
       choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
       usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: inputTokens + outputTokens },
     };
@@ -1229,8 +1230,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // Inject _routebox metadata
   const routeboxMeta: Record<string, unknown> = {
-    routed_model: requestedModel,
-    requested_model: isAutoRoute ? "auto" : requestedModel,
+    routed_model: activeModel,
+    requested_model: isAutoRoute ? "auto" : originalRequestedModel,
     provider: activeProvider.name.toLowerCase(),
     instance_id: activeProvider.instanceId,
     cost: providerCost,
@@ -1244,7 +1245,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   const responseHeaders: Record<string, string> = {
     "X-RouteBox-Provider": activeProvider.name,
-    "X-RouteBox-Model": requestedModel,
+    "X-RouteBox-Model": activeModel,
   };
   if (isAutoRoute) responseHeaders["X-RouteBox-Auto-Routed"] = "true";
 

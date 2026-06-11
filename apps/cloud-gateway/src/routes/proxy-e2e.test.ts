@@ -11,6 +11,7 @@ import type { CloudEnv } from "../types";
 let deductCalls: unknown[][] = [];
 let recordCalls: unknown[][] = [];
 let metricCounterCalls: unknown[][] = [];
+let mockScoredCandidates: any[] = [];
 let mockGetBalanceInfo = async (_userId: string) => ({
   balance_cents: 5000,
   bonus_cents: 0,
@@ -26,7 +27,7 @@ mock.module("../lib/model-registry", () => ({
 }));
 
 mock.module("../lib/scoring-engine", () => ({
-  scoreAndRank: async () => [],
+  scoreAndRank: async () => mockScoredCandidates,
 }));
 
 mock.module("../lib/circuit-breaker", () => ({
@@ -212,6 +213,7 @@ beforeEach(() => {
   deductCalls = [];
   recordCalls = [];
   metricCounterCalls = [];
+  mockScoredCandidates = [];
   mockGetBalanceInfo = async () => ({
     balance_cents: 5000,
     bonus_cents: 0,
@@ -419,6 +421,68 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
     expect(recordCalls[0][0]).toBe("test-user");
     expect(recordCalls[0][1]).toBe("minimax-m2.5");
     expect(recordCalls[0][2]).toBe("TestProvider");
+  });
+
+  test("M1: scoring fallback bills and records the actual served model", async () => {
+    const app = createApp({ userPlan: "pro" });
+
+    const providerConfig = {
+      name: "TestProvider",
+      instanceId: "test-1",
+      baseUrl: "http://localhost:9999",
+      apiKey: "test-key",
+      format: "openai",
+      prefixes: ["minimax-", "kimi-"],
+    };
+    mockScoredCandidates = [
+      {
+        modelId: "kimi-k2.5",
+        providerConfigs: [providerConfig],
+        isFallback: true,
+        totalScore: 0.99,
+      },
+    ];
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    mockFetch(async (_url, init) => {
+      const providerBody = JSON.parse(init!.body as string);
+      expect(providerBody.model).toBe("kimi-k2.5");
+      return new Response(JSON.stringify({
+        ...PROVIDER_JSON_RESPONSE,
+        model: providerBody.model,
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(CHAT_BODY),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+
+    expect(body._routebox.routed_model).toBe("kimi-k2.5");
+    expect(body._routebox.requested_model).toBe("minimax-m2.5");
+    expect(body._routebox.is_fallback).toBe(true);
+
+    expect(deductCalls).toHaveLength(1);
+    expect((deductCalls[0][2] as any).model).toBe("kimi-k2.5");
+
+    expect(recordCalls).toHaveLength(1);
+    expect(recordCalls[0][1]).toBe("kimi-k2.5");
+
+    const providerRequestMetric = metricCounterCalls.find(
+      ([name, labels]) => name === "provider_requests_total" && (labels as any).status === "200",
+    );
+    expect((providerRequestMetric![1] as any).model).toBe("kimi-k2.5");
   });
 
   test("provider metrics use bounded model label for unregistered model IDs", async () => {
