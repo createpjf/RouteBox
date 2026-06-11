@@ -849,7 +849,15 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   // Overall request timeout
   const requestTimeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
   const rollbackQuota = (model: string) => {
-    if (userPlan === "starter") decrementDailyQuota(userId, model).catch(() => {});
+    if (userPlan !== "starter") return;
+    decrementDailyQuota(userId, model).catch((err) => {
+      log.error("quota_rollback_failed", {
+        requestId,
+        userId,
+        model,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   };
 
   // ── Retry + Fallback Loop ──────────────────────────────────────────────────

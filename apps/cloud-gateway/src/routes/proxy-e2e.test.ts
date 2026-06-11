@@ -11,8 +11,12 @@ import type { CloudEnv } from "../types";
 let deductCalls: unknown[][] = [];
 let recordCalls: unknown[][] = [];
 let decrementQuotaCalls: unknown[][] = [];
+let logErrorCalls: unknown[][] = [];
 let metricCounterCalls: unknown[][] = [];
 let mockScoredCandidates: any[] = [];
+let mockDecrementDailyQuota = async (...args: unknown[]) => {
+  decrementQuotaCalls.push(args);
+};
 let mockGetBalanceInfo = async (_userId: string) => ({
   balance_cents: 5000,
   bonus_cents: 0,
@@ -58,9 +62,7 @@ mock.module("../lib/routing-config", () => ({
 mock.module("../lib/quota", () => ({
   checkDailyQuota: async () => ({ allowed: true, remaining: Infinity, resetAt: new Date() }),
   incrementDailyQuota: async () => {},
-  decrementDailyQuota: async (...args: unknown[]) => {
-    decrementQuotaCalls.push(args);
-  },
+  decrementDailyQuota: async (...args: unknown[]) => mockDecrementDailyQuota(...args),
 }));
 
 mock.module("../lib/provider-config", () => ({
@@ -105,7 +107,9 @@ mock.module("../lib/logger", () => ({
   log: {
     info: () => {},
     warn: () => {},
-    error: () => {},
+    error: (...args: unknown[]) => {
+      logErrorCalls.push(args);
+    },
     debug: () => {},
   },
 }));
@@ -216,8 +220,12 @@ beforeEach(() => {
   deductCalls = [];
   recordCalls = [];
   decrementQuotaCalls = [];
+  logErrorCalls = [];
   metricCounterCalls = [];
   mockScoredCandidates = [];
+  mockDecrementDailyQuota = async (...args: unknown[]) => {
+    decrementQuotaCalls.push(args);
+  };
   mockGetBalanceInfo = async () => ({
     balance_cents: 5000,
     bonus_cents: 0,
@@ -846,6 +854,33 @@ describe("T7: All providers fail → 502", () => {
     // Should have retried (1 original + 2 retries = 3 attempts)
     expect(fetchCount).toBe(3);
   });
+
+  test("starter quota is decremented when providers are exhausted", async () => {
+    const app = createApp({ userPlan: "starter" });
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    let fetchCount = 0;
+    mockFetch(async () => {
+      fetchCount++;
+      return new Response("Internal Server Error", { status: 500 });
+    });
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(CHAT_BODY),
+    });
+
+    expect(res.status).toBe(502);
+    expect(fetchCount).toBe(3);
+    expect(decrementQuotaCalls).toEqual([["test-user", "minimax-m2.5"]]);
+    expect(deductCalls).toHaveLength(0);
+    expect(recordCalls).toHaveLength(0);
+  });
 });
 
 describe("L5: Upstream 4xx quota rollback", () => {
@@ -873,6 +908,45 @@ describe("L5: Upstream 4xx quota rollback", () => {
     expect(decrementQuotaCalls).toEqual([["test-user", "minimax-m2.5"]]);
     expect(deductCalls).toHaveLength(0);
     expect(recordCalls).toHaveLength(0);
+  });
+
+  test("rollback failures are logged without masking upstream 4xx", async () => {
+    const app = createApp({ userPlan: "starter" });
+    mockDecrementDailyQuota = async (...args: unknown[]) => {
+      decrementQuotaCalls.push(args);
+      throw new Error("quota database unavailable");
+    };
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    mockFetch(async () =>
+      new Response(JSON.stringify({ error: { message: "bad request" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }));
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(CHAT_BODY),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as any;
+    expect(body.error.code).toBe("upstream_error");
+    await Promise.resolve();
+
+    expect(decrementQuotaCalls).toEqual([["test-user", "minimax-m2.5"]]);
+    const rollbackLog = logErrorCalls.find(([event]) => event === "quota_rollback_failed");
+    expect(rollbackLog).toBeTruthy();
+    const rollbackLogContext = rollbackLog![1] as any;
+    expect(rollbackLogContext.requestId).toBe("req-test");
+    expect(rollbackLogContext.userId).toBe("test-user");
+    expect(rollbackLogContext.model).toBe("minimax-m2.5");
+    expect(rollbackLogContext.error).toBe("quota database unavailable");
   });
 });
 
