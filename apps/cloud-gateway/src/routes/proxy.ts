@@ -18,6 +18,7 @@ import { getCircuitBreaker } from "../lib/circuit-breaker";
 import { sql } from "../lib/db-cloud";
 import { deductCredits, recordCloudRequest } from "../lib/credits";
 import { getMarkupForPlan } from "../lib/polar";
+import { pricingForModel, calculateCost as coreCalculateCost, type ModelPricing } from "@routebox/llm-core";
 import { getRegistryEntry, getActiveModels } from "../lib/model-registry";
 import { resolveStrategy } from "../lib/routing-config";
 import { checkDailyQuota, decrementDailyQuota } from "../lib/quota";
@@ -87,17 +88,12 @@ export function resolveAlias(model: string): string {
   return MODEL_ALIASES[model] ?? model;
 }
 
-export function pricingFor(model: string): { input: number; output: number } {
-  if (MODEL_PRICING[model]) return MODEL_PRICING[model];
-  for (const [key, val] of Object.entries(MODEL_PRICING)) {
-    if (model.startsWith(key)) return val;
-  }
-  return { input: 1, output: 3 };
+export function pricingFor(model: string): ModelPricing {
+  return pricingForModel(model, MODEL_PRICING, { fallback: { input: 1, output: 3 } });
 }
 
 export function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
-  const p = pricingFor(model);
-  return (inputTokens * p.input + outputTokens * p.output) / 1_000_000;
+  return coreCalculateCost(model, inputTokens, outputTokens, MODEL_PRICING, { fallback: { input: 1, output: 3 } });
 }
 
 /** Effective pricing for a model+plan combination.
