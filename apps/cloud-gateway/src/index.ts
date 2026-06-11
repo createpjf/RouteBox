@@ -147,7 +147,9 @@ app.get("/static/*", async (c) => {
   const fileName = c.req.path.replace("/static/", "");
   const result = serveStaticFile(fileName);
   if (!result) return c.notFound();
-  return new Response(result.data, {
+  // result.data is a Uint8Array; cast to satisfy TS 5.7's generic-TypedArray
+  // BodyInit typing (valid BodyInit at runtime).
+  return new Response(result.data as BodyInit, {
     status: 200,
     headers: { "Content-Type": result.contentType, "Cache-Control": "public, max-age=86400, immutable" },
   });
@@ -157,7 +159,9 @@ app.get("/static/*", async (c) => {
 app.get("/favicon.ico", async (c) => {
   const result = serveStaticFile("favicon.ico");
   if (!result) return c.notFound();
-  return new Response(result.data, {
+  // result.data is a Uint8Array; cast to satisfy TS 5.7's generic-TypedArray
+  // BodyInit typing (valid BodyInit at runtime).
+  return new Response(result.data as BodyInit, {
     status: 200,
     headers: { "Content-Type": result.contentType, "Cache-Control": "public, max-age=86400, immutable" },
   });
