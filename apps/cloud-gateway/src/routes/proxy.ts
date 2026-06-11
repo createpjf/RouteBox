@@ -848,6 +848,9 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // Overall request timeout
   const requestTimeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
+  const rollbackQuota = (model: string) => {
+    if (userPlan === "starter") decrementDailyQuota(userId, model).catch(() => {});
+  };
 
   // ── Retry + Fallback Loop ──────────────────────────────────────────────────
   let lastError: { message: string; status?: number; body?: string } | undefined;
@@ -946,6 +949,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
             status: rawRes.status,
             upstream: errBody.slice(0, 500),
           });
+          rollbackQuota(requestedModel);
           return c.json({
             error: {
               message: `Provider returned ${rawRes.status}`,
@@ -1044,7 +1048,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
     clientSignal?.removeEventListener("abort", onClientAbort);
     incCounter("errors_total", { type: "all_providers_failed" });
     // Roll back the atomic quota increment since the request completely failed
-    decrementDailyQuota(userId, requestedModel).catch(() => {});
+    rollbackQuota(requestedModel);
     return c.json({
       error: {
         message: lastError?.message ?? "All providers failed",

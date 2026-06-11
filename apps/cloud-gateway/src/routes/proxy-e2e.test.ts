@@ -10,6 +10,7 @@ import type { CloudEnv } from "../types";
 
 let deductCalls: unknown[][] = [];
 let recordCalls: unknown[][] = [];
+let decrementQuotaCalls: unknown[][] = [];
 let metricCounterCalls: unknown[][] = [];
 let mockScoredCandidates: any[] = [];
 let mockGetBalanceInfo = async (_userId: string) => ({
@@ -57,7 +58,9 @@ mock.module("../lib/routing-config", () => ({
 mock.module("../lib/quota", () => ({
   checkDailyQuota: async () => ({ allowed: true, remaining: Infinity, resetAt: new Date() }),
   incrementDailyQuota: async () => {},
-  decrementDailyQuota: async () => {},
+  decrementDailyQuota: async (...args: unknown[]) => {
+    decrementQuotaCalls.push(args);
+  },
 }));
 
 mock.module("../lib/provider-config", () => ({
@@ -212,6 +215,7 @@ beforeEach(() => {
   globalThis.__dbMockSqlCalls = [];
   deductCalls = [];
   recordCalls = [];
+  decrementQuotaCalls = [];
   metricCounterCalls = [];
   mockScoredCandidates = [];
   mockGetBalanceInfo = async () => ({
@@ -841,6 +845,34 @@ describe("T7: All providers fail → 502", () => {
     expect(body.error.type).toBe("server_error");
     // Should have retried (1 original + 2 retries = 3 attempts)
     expect(fetchCount).toBe(3);
+  });
+});
+
+describe("L5: Upstream 4xx quota rollback", () => {
+  test("starter quota is decremented when provider returns non-retryable 4xx", async () => {
+    const app = createApp({ userPlan: "starter" });
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    mockFetch(async () =>
+      new Response(JSON.stringify({ error: { message: "bad request" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }));
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(CHAT_BODY),
+    });
+
+    expect(res.status).toBe(400);
+    expect(decrementQuotaCalls).toEqual([["test-user", "minimax-m2.5"]]);
+    expect(deductCalls).toHaveLength(0);
+    expect(recordCalls).toHaveLength(0);
   });
 });
 
