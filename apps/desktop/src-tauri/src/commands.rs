@@ -398,6 +398,13 @@ pub async fn is_gateway_running(app: tauri::AppHandle) -> Result<bool, String> {
     }
 }
 
+// ── Tray status ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn update_tray_status(app: tauri::AppHandle, status: String) {
+    crate::tray::update_tray(&app, &status);
+}
+
 fn generate_token() -> String {
     // C4: Use crypto-secure random bytes instead of time+PID
     let mut bytes = [0u8; 32];

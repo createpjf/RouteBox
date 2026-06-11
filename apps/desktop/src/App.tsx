@@ -15,7 +15,7 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { ToastContainer } from "@/components/ToastContainer";
 import { useRealtimeStats } from "@/hooks/useRealtimeStats";
 import { useToast } from "@/hooks/useToast";
-import { getGatewayUrl, setGatewayUrl, setAuthToken, setCloudAuthToken, setGatewayMode, getGatewayMode, getCloudAuthToken, getPortFromUrl, ROUTEBOX_CLOUD_URL } from "@/lib/constants";
+import { getGatewayUrl, setGatewayUrl, setAuthToken, setCloudAuthToken, setGatewayMode, getGatewayMode, getCloudAuthToken, getAuthToken, getPortFromUrl, ROUTEBOX_CLOUD_URL } from "@/lib/constants";
 import { checkGatewayHealth, waitForGateway, isLocalGatewayUrl } from "@/lib/gateway-health";
 import { api } from "@/lib/api";
 import type { CloudAnnouncement } from "@/lib/api";
@@ -182,6 +182,87 @@ export function App() {
   useEffect(() => {
     if (gatewayState === "running") setGatewayRunningAt(Date.now());
   }, [gatewayState]);
+
+  // Drive the menu-bar tray tooltip from the gateway state (desktop only; no-ops in browser)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        if (!cancelled) await invoke("update_tray_status", { status: gatewayState });
+      } catch {
+        // Browser mode or invoke unavailable — best-effort, swallow
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [gatewayState]);
+
+  // Handle tray menu actions (Start / Stop / Copy Endpoint) emitted from Rust.
+  // Desktop only — lazy import so the browser build never pulls in the Tauri API.
+  useEffect(() => {
+    let unlistenFns: Array<() => void> = [];
+    let mounted = true;
+
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const { invoke } = await import("@tauri-apps/api/core");
+
+        const handlers: Array<Promise<() => void>> = [
+          listen("tray://start", async () => {
+            const url = getGatewayUrl();
+            if (getGatewayMode() !== "local" || !isLocalGatewayUrl(url)) return;
+            setGatewayState("starting");
+            setGatewayError(null);
+            try {
+              await invoke("spawn_gateway", { port: getPortFromUrl(url) });
+              try {
+                const t = await invoke<string>("get_token");
+                if (t) { setAuthToken(t); setToken(t); }
+              } catch { /* token reload best-effort */ }
+              const healthy = await waitForGateway(url, 12_000, 500);
+              setGatewayState(healthy ? "running" : "failed");
+            } catch (err) {
+              setGatewayState("failed");
+              setGatewayError(err instanceof Error ? err.message : String(err));
+            }
+          }),
+          listen("tray://stop", async () => {
+            try {
+              await invoke("stop_gateway");
+              setGatewayState("idle");
+            } catch (err) {
+              setGatewayError(err instanceof Error ? err.message : String(err));
+            }
+          }),
+          listen("tray://copy-endpoint", async () => {
+            const token = getAuthToken();
+            const endpoint = getGatewayUrl();
+            const text = token ? `${endpoint}\nToken: ${token}` : endpoint;
+            try {
+              await navigator.clipboard.writeText(text);
+              showToast("Endpoint copied", "success");
+            } catch {
+              // Clipboard unavailable — silently ignore
+            }
+          }),
+        ];
+
+        for (const p of handlers) {
+          const fn = await p;
+          if (mounted) unlistenFns.push(fn);
+          else fn();
+        }
+      } catch {
+        // Browser mode — no Tauri event API
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      unlistenFns.forEach((fn) => fn());
+    };
+  }, [showToast]);
 
   // Fetch cloud announcement once token is loaded (cloud mode only)
   useEffect(() => {
