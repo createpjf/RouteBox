@@ -18,6 +18,9 @@ COPY --from=build /app/src src/
 COPY --from=build /app/package.json ./
 
 ENV ROUTEBOX_DB_PATH=/data/routebox.db
+# Bind all interfaces inside the container so the mapped port is reachable.
+# (The desktop app leaves this unset → gateway defaults to 127.0.0.1.)
+ENV ROUTEBOX_HOST=0.0.0.0
 
 USER bun
 EXPOSE 3001

@@ -126,7 +126,10 @@ process.on("SIGINT", () => { console.log("Shutting down..."); process.exit(0); }
 
 export default {
   port,
-  hostname: "127.0.0.1", // C1: 仅监听 loopback,禁止局域网访问本地代理
+  // C1: default to loopback so the desktop-embedded gateway isn't LAN-exposed.
+  // In a container, set ROUTEBOX_HOST=0.0.0.0 so the mapped port is reachable —
+  // there the security boundary is the container/network, not the bind address.
+  hostname: process.env.ROUTEBOX_HOST || "127.0.0.1",
   fetch: app.fetch,
   websocket,
 };
