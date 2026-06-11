@@ -263,7 +263,7 @@ describe("POST /v1/chat/completions", () => {
       // sibling tests (and other test files) see them UP.
       const reset = (provider: string, model: string) =>
         metrics.record({
-          timestamp: Date.now(), provider, model, inputTokens: 0, outputTokens: 0,
+          id: crypto.randomUUID(), timestamp: Date.now(), provider, model, inputTokens: 0, outputTokens: 0,
           totalTokens: 0, cost: 0, latencyMs: 1, status: "success",
         });
       reset("OpenAI", "gpt-4o");
@@ -301,7 +301,7 @@ describe("POST /v1/chat/completions", () => {
       // mechanism the M4 test uses, so sibling tests see all providers UP.
       const reset = (provider: string, model: string) =>
         metrics.record({
-          timestamp: Date.now(), provider, model, inputTokens: 0, outputTokens: 0,
+          id: crypto.randomUUID(), timestamp: Date.now(), provider, model, inputTokens: 0, outputTokens: 0,
           totalTokens: 0, cost: 0, latencyMs: 1, status: "success",
         });
       reset("Anthropic", "claude-sonnet-4-20250514");
