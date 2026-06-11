@@ -27,6 +27,22 @@ beforeEach(() => {
   globalThis.__dbMockSqlCalls = [];
 });
 
+// ── ledger idempotency migration ───────────────────────────────────────────
+
+describe("transaction idempotency migration", () => {
+  test("adds idempotency_key and unique partial indexes", async () => {
+    const migration = await Bun.file(
+      new URL("../../migrations/025_transaction_idempotency.sql", import.meta.url),
+    ).text();
+
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS idempotency_key");
+    expect(migration).toContain("idx_transactions_payment_ref_unique");
+    expect(migration).toContain("WHERE payment_ref IS NOT NULL");
+    expect(migration).toContain("idx_transactions_bonus_idempotency_unique");
+    expect(migration).toContain("WHERE type = 'bonus' AND idempotency_key IS NOT NULL");
+  });
+});
+
 // ── getBalance ──────────────────────────────────────────────────────────────
 
 describe("getBalance", () => {
