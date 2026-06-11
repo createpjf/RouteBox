@@ -549,6 +549,7 @@ app.post("/chat/completions", async (c) => {
             body.stream_options = { include_usage: true };
           }
           res = await forward(fallback.provider, body);
+          Object.assign(route, { provider: fallback.provider, model: fallback.model, isFallback: true });
           retriedProvider = fallback.provider;
           retriedModel = fallback.model;
         } catch {

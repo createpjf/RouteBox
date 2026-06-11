@@ -270,6 +270,45 @@ describe("POST /v1/chat/completions", () => {
       reset("FLock.io", "kimi-k2-thinking");
     }
   });
+
+  test("H1: network-error cross-provider fallback records the provider that actually served it", async () => {
+    const { providers } = await import("../lib/providers");
+    const { metrics } = await import("../lib/metrics");
+    const anthropic = providers.find((p) => p.name === "Anthropic");
+    if (!anthropic) return; // env didn't configure Anthropic — skip
+    const originalBaseUrl = anthropic.baseUrl;
+    anthropic.baseUrl = "http://127.0.0.1:1/v1"; // dead port → fetch throws
+    // Prime Anthropic to failStreak=2 (still up); the handler's single in-catch
+    // markProviderDown then trips it to 3=down, forcing a cross-provider fallback.
+    metrics.markProviderDown("Anthropic");
+    metrics.markProviderDown("Anthropic");
+    try {
+      const res = await proxyRequest({
+        model: "claude-sonnet-4-20250514",
+        messages: [{ role: "user", content: "Hello" }],
+      });
+      expect(res.status).toBe(200);
+      const served = res.headers.get("X-RouteBox-Provider");
+      expect(served).not.toBe("Anthropic");
+      const json = await res.json() as any;
+      expect(json.choices[0].message.content).toBe("Hello from mock!");
+      expect(json._routebox.provider).toBe(served!.toLowerCase());
+      expect(json._routebox.is_fallback).toBe(true);
+    } finally {
+      anthropic.baseUrl = originalBaseUrl;
+      // Restore shared singleton state: reset Anthropic (primed down) and the
+      // served fallback provider to healthy using the same success-recording
+      // mechanism the M4 test uses, so sibling tests see all providers UP.
+      const reset = (provider: string, model: string) =>
+        metrics.record({
+          timestamp: Date.now(), provider, model, inputTokens: 0, outputTokens: 0,
+          totalTokens: 0, cost: 0, latencyMs: 1, status: "success",
+        });
+      reset("Anthropic", "claude-sonnet-4-20250514");
+      reset("OpenAI", "gpt-4o");
+      reset("FLock.io", "kimi-k2-thinking");
+    }
+  });
 });
 
 describe("GET /health", () => {
