@@ -5,12 +5,8 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
     "esModuleInterop": true,
-    "types": ["bun"],
-    "paths": {
-      "@routebox/llm-core": ["../../packages/llm-core/src/index.ts"]
-    }
+    "types": ["bun"]
   },
   "include": ["src"]
 }
