@@ -1050,6 +1050,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
   // ── Streaming response ──
   if (isStream && res.body) {
+    // Stream has started; the transformer idle timer handles stuck streams.
+    clearTimeout(requestTimeout);
     const streamMetaObj: StreamMeta = {
       provider: activeProvider.name,
       requestedModel,

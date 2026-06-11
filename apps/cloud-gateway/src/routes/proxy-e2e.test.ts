@@ -55,6 +55,7 @@ mock.module("../lib/routing-config", () => ({
 mock.module("../lib/quota", () => ({
   checkDailyQuota: async () => ({ allowed: true, remaining: Infinity, resetAt: new Date() }),
   incrementDailyQuota: async () => {},
+  decrementDailyQuota: async () => {},
 }));
 
 mock.module("../lib/provider-config", () => ({
@@ -422,6 +423,69 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("T5: Streaming full chain", () => {
+  test("H2: clears overall request timeout when streaming response begins", async () => {
+    const app = createApp({ userPlan: "pro" });
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    const encoder = new TextEncoder();
+    mockFetch(async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({
+              id: "chatcmpl-stream",
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: { content: "Hi" }, finish_reason: null }],
+            })}\n\n`,
+          ));
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const requestTimer = { type: "request-timeout" };
+    let requestTimeoutCleared = false;
+    const origSetTimeout = globalThis.setTimeout;
+    const origClearTimeout = globalThis.clearTimeout;
+    // @ts-ignore - intercept only the route-level 60s request timeout.
+    globalThis.setTimeout = (fn: () => void, ms?: number, ...args: unknown[]) => {
+      if (ms === 60_000) return requestTimer as any;
+      return origSetTimeout(fn as any, ms as any, ...(args as any[]));
+    };
+    // @ts-ignore - clearTimeout accepts the sentinel returned above.
+    globalThis.clearTimeout = (timer?: unknown) => {
+      if (timer === requestTimer) {
+        requestTimeoutCleared = true;
+        return;
+      }
+      return origClearTimeout(timer as any);
+    };
+
+    let res: Response | undefined;
+    try {
+      res = await app.request("/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...CHAT_BODY, stream: true }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("text/event-stream");
+      expect(requestTimeoutCleared).toBe(true);
+    } finally {
+      globalThis.setTimeout = origSetTimeout;
+      globalThis.clearTimeout = origClearTimeout;
+      await res?.body?.cancel().catch(() => {});
+    }
+  });
+
   test("SSE stream with routebox.meta and deductCredits called", async () => {
     const app = createApp({ userPlan: "pro" });
 
