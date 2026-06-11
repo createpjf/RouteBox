@@ -25,6 +25,8 @@ beforeEach(() => {
   globalThis.__dbMockTxResults = [];
   // @ts-ignore
   globalThis.__dbMockSqlCalls = [];
+  // @ts-ignore
+  globalThis.__dbMockTxCalls = [];
 });
 
 // ── ledger idempotency migration ───────────────────────────────────────────
@@ -125,20 +127,26 @@ describe("addCredits", () => {
   test("adds credits and returns new balance", async () => {
     // @ts-ignore
     globalThis.__dbMockTxResults = [
-      [],                                // Check duplicate session
-      [{ balance_cents: 2500 }],         // UPDATE RETURNING
-      [],                                // INSERT transaction
+      [{ id: "tx-claim" }],        // INSERT deposit claim
+      [{ balance_cents: 2500 }],   // UPDATE credits RETURNING
+      [],                          // UPDATE transaction balance_after_cents
     ];
 
     const newBalance = await credits.addCredits("user-1", 1000, "cs_test_123", "Top up");
     expect(newBalance).toBe(2500);
+
+    // @ts-ignore
+    const txCalls = globalThis.__dbMockTxCalls as unknown[][];
+    expect(txCalls[0]).toContain("cs_test_123");
+    expect(txCalls[2]).toContain("tx-claim");
+    expect(txCalls[2]).toContain(2500);
   });
 
   test("returns existing balance for duplicate payment ref", async () => {
     // @ts-ignore
     globalThis.__dbMockTxResults = [
-      [{ id: "existing-tx" }],
-      [{ balance_cents: 1500 }],
+      [],                         // INSERT claim hit ON CONFLICT DO NOTHING
+      [{ balance_cents: 1500 }],  // Current balance lookup
     ];
 
     const newBalance = await credits.addCredits("user-1", 1000, "cs_duplicate");

@@ -96,14 +96,21 @@ export async function addCredits(
   description?: string,
 ): Promise<number> {
   const result = await withTx(async (tx) => {
-    // Check for duplicate payment_ref to prevent double-crediting
-    const [existing] = await tx`
-      SELECT id FROM transactions
-      WHERE payment_ref = ${paymentRef}
+    const desc = description ?? "Credit purchase";
+
+    const [claim] = await tx`
+      INSERT INTO transactions (user_id, type, amount_cents, balance_after_cents,
+        description, payment_ref, idempotency_key)
+      VALUES (${userId}, 'deposit', ${amountCents}, 0, ${desc}, ${paymentRef}, ${paymentRef})
+      ON CONFLICT (payment_ref) WHERE payment_ref IS NOT NULL DO NOTHING
+      RETURNING id
     `;
-    if (existing) {
-      const [row] = await tx`SELECT balance_cents FROM credits WHERE user_id = ${userId}`;
-      return (row?.balance_cents as number) ?? 0;
+
+    if (!claim) {
+      const [current] = await tx`
+        SELECT balance_cents FROM credits WHERE user_id = ${userId}
+      `;
+      return (current?.balance_cents as number) ?? 0;
     }
 
     const [row] = await tx`
@@ -115,13 +122,12 @@ export async function addCredits(
       RETURNING balance_cents
     `;
 
-    const newBalance = row.balance_cents as number;
+    const newBalance = (row?.balance_cents as number) ?? 0;
 
     await tx`
-      INSERT INTO transactions (user_id, type, amount_cents, balance_after_cents,
-        description, payment_ref)
-      VALUES (${userId}, 'deposit', ${amountCents}, ${newBalance},
-        ${description ?? 'Credit purchase'}, ${paymentRef})
+      UPDATE transactions
+      SET balance_after_cents = ${newBalance}
+      WHERE id = ${claim.id}
     `;
 
     return newBalance;

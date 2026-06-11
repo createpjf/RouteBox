@@ -15,6 +15,8 @@ globalThis.__dbMockSqlResults = [] as unknown[];
 globalThis.__dbMockTxResults = [] as unknown[];
 // @ts-ignore
 globalThis.__dbMockSqlCalls = [] as unknown[][];
+// @ts-ignore
+globalThis.__dbMockTxCalls = [] as unknown[][];
 
 mock.module("./lib/db-cloud", () => ({
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => {
@@ -33,6 +35,8 @@ mock.module("./lib/db-cloud", () => ({
   },
   withTx: async (fn: any) => {
     const tx = (strings: TemplateStringsArray, ...values: unknown[]) => {
+      // @ts-ignore
+      (globalThis.__dbMockTxCalls as unknown[][]).push(values);
       // @ts-ignore
       const txResult = (globalThis.__dbMockTxResults as unknown[]).shift();
       if (txResult === undefined) {
