@@ -10,6 +10,7 @@ import type { CloudEnv } from "../types";
 
 let deductCalls: unknown[][] = [];
 let recordCalls: unknown[][] = [];
+let metricCounterCalls: unknown[][] = [];
 let mockGetBalanceInfo = async (_userId: string) => ({
   balance_cents: 5000,
   bonus_cents: 0,
@@ -88,7 +89,9 @@ mock.module("../lib/key-pool", () => ({
 }));
 
 mock.module("../lib/metrics", () => ({
-  incCounter: () => {},
+  incCounter: (...args: unknown[]) => {
+    metricCounterCalls.push(args);
+  },
   observeHistogram: () => {},
   incGauge: () => {},
   decGauge: () => {},
@@ -208,6 +211,7 @@ beforeEach(() => {
   globalThis.__dbMockSqlCalls = [];
   deductCalls = [];
   recordCalls = [];
+  metricCounterCalls = [];
   mockGetBalanceInfo = async () => ({
     balance_cents: 5000,
     bonus_cents: 0,
@@ -415,6 +419,37 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
     expect(recordCalls[0][0]).toBe("test-user");
     expect(recordCalls[0][1]).toBe("minimax-m2.5");
     expect(recordCalls[0][2]).toBe("TestProvider");
+  });
+
+  test("provider metrics use bounded model label for unregistered model IDs", async () => {
+    const app = createApp({ userPlan: "pro" });
+
+    // @ts-ignore
+    globalThis.__dbMockSqlResults = [
+      [], // disabled model check
+    ];
+
+    mockFetch(async () =>
+      new Response(JSON.stringify(PROVIDER_JSON_RESPONSE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+
+    const res = await app.request("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "minimax-user-supplied-variant",
+        messages: [{ role: "user", content: "Hello" }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const providerRequestMetric = metricCounterCalls.find(
+      ([name, labels]) => name === "provider_requests_total" && (labels as any).status === "200",
+    );
+    expect(providerRequestMetric).toBeTruthy();
+    expect((providerRequestMetric![1] as any).model).toBe("other");
   });
 });
 

@@ -88,6 +88,11 @@ export function resolveAlias(model: string): string {
   return MODEL_ALIASES[model] ?? model;
 }
 
+export function metricModelLabel(model: string, knownModelIds: Iterable<string>): string {
+  const known = new Set(knownModelIds);
+  return known.has(model) ? model : "other";
+}
+
 export function pricingFor(model: string): ModelPricing {
   return pricingForModel(model, MODEL_PRICING, { fallback: { input: 1, output: 3 } });
 }
@@ -854,6 +859,15 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   let activeProviderLatencyMs = 0;
   let isFallback = false;
   let totalAttempts = 0;
+  const knownMetricModels = new Set<string>();
+  if (!isAutoRoute) {
+    const entry = await getRegistryEntry(requestedModel);
+    if (entry?.modelId) knownMetricModels.add(entry.modelId);
+  }
+  for (const candidate of scoredCandidates) {
+    knownMetricModels.add(candidate.modelId);
+  }
+  let activeMetricModel = metricModelLabel(requestedModel, knownMetricModels);
 
   for (let providerIdx = 0; providerIdx < providerChain.length; providerIdx++) {
     const provider = providerChain[providerIdx]!;
@@ -878,6 +892,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
       providerBody.model = scored._scoredModelId;
       if (scored._isScoredFallback) isFallback = true;
     }
+    const servedModel = scored._scoredModelId ?? requestedModel;
+    const metricModel = metricModelLabel(servedModel, knownMetricModels);
     if (isStream && provider.format === "openai") {
       providerBody.stream_options = { include_usage: true };
     }
@@ -897,7 +913,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           cb.onSuccess();
           incCounter("provider_requests_total", {
             provider: provider.name,
-            model: requestedModel,
+            model: metricModel,
             status: "200",
           });
           observeHistogram("provider_request_duration_ms", providerLatencyMs, {
@@ -908,6 +924,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           activeProvider = provider;
           activeProviderLatencyMs = providerLatencyMs;
           isFallback = providerIdx > 0;
+          activeMetricModel = metricModel;
           break; // exit retry loop
 
         } else if (!isRetryableStatus(rawRes.status)) {
@@ -915,7 +932,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           const errBody = await rawRes.text().catch(() => "");
           incCounter("provider_requests_total", {
             provider: provider.name,
-            model: requestedModel,
+            model: metricModel,
             status: String(rawRes.status),
           });
           observeHistogram("provider_request_duration_ms", providerLatencyMs, {
@@ -945,7 +962,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
           cb.onFailure();
           incCounter("provider_requests_total", {
             provider: provider.name,
-            model: requestedModel,
+            model: metricModel,
             status: String(rawRes.status),
           });
           observeHistogram("provider_request_duration_ms", providerLatencyMs, {
@@ -980,7 +997,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
         cb.onFailure();
         incCounter("provider_requests_total", {
           provider: provider.name,
-          model: requestedModel,
+          model: metricModel,
           status: "error",
         });
         observeHistogram("provider_request_duration_ms", providerLatencyMs, {
@@ -1078,14 +1095,14 @@ app.post("/chat/completions", creditsCheck, async (c) => {
 
       // Track if client aborted
       if (clientSignal?.aborted && !wasAborted) {
-        incCounter("stream_aborted_total", { provider: finalProvider.name, model: requestedModel });
+        incCounter("stream_aborted_total", { provider: finalProvider.name, model: activeMetricModel });
       }
 
       const costCents = calculateUserCostCents(usage.input, usage.output, modelPricing);
 
       // Token metrics
-      incCounter("provider_tokens_total", { provider: finalProvider.name, model: requestedModel, direction: "input" }, usage.input);
-      incCounter("provider_tokens_total", { provider: finalProvider.name, model: requestedModel, direction: "output" }, usage.output);
+      incCounter("provider_tokens_total", { provider: finalProvider.name, model: activeMetricModel, direction: "input" }, usage.input);
+      incCounter("provider_tokens_total", { provider: finalProvider.name, model: activeMetricModel, direction: "output" }, usage.output);
 
       // Deduct credits (even for partial streams — bill consumed tokens)
       if (costCents > 0) {
@@ -1161,8 +1178,8 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   const providerCost = calculateCost(requestedModel, inputTokens, outputTokens);
 
   // Token metrics
-  incCounter("provider_tokens_total", { provider: activeProvider.name, model: requestedModel, direction: "input" }, inputTokens);
-  incCounter("provider_tokens_total", { provider: activeProvider.name, model: requestedModel, direction: "output" }, outputTokens);
+  incCounter("provider_tokens_total", { provider: activeProvider.name, model: activeMetricModel, direction: "input" }, inputTokens);
+  incCounter("provider_tokens_total", { provider: activeProvider.name, model: activeMetricModel, direction: "output" }, outputTokens);
 
   // Deduct credits
   if (costCents > 0) {
