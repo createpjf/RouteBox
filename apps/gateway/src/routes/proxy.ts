@@ -386,19 +386,21 @@ function openaiStreamPassthrough(
             if (line.startsWith("data: ")) {
               if (line.includes("[DONE]")) {
                 // Inject routebox.meta before [DONE]
-                const totalTok = inputTokens + outputTokens;
-                const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, outputTokens, streamMeta.provider);
+                const finalOutput = resolveOutputTokens();
+                const totalTok = inputTokens + finalOutput;
+                const metaCost = calculateCost(streamMeta.requestedModel, inputTokens, finalOutput, streamMeta.provider);
                 enqueue(encoder.encode(`data: ${JSON.stringify({
                   object: "routebox.meta",
                   provider: streamMeta.provider.toLowerCase(),
                   model: streamMeta.requestedModel,
                   requested_model: streamMeta.requestedModel,
-                  usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTok },
+                  usage: { prompt_tokens: inputTokens, completion_tokens: finalOutput, total_tokens: totalTok },
                   cost: metaCost,
                   latency_ms: Math.round(performance.now() - streamMeta.startMs),
                   is_fallback: streamMeta.isFallback,
                 })}\n\n`));
                 enqueue(encoder.encode(`${line}\n\n`));
+                outputTokens = finalOutput;
                 metaInjected = true;
               } else {
                 try {

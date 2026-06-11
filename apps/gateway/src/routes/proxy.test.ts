@@ -64,6 +64,18 @@ beforeAll(() => {
               });
               return new Response(slowStream, { headers: { "Content-Type": "text/event-stream" } });
             }
+            if (firstContent.includes("__NO_USAGE_STREAM__")) {
+              const encoder = new TextEncoder();
+              const noUsageStream = new ReadableStream({
+                start(controller) {
+                  const chunk = { id: "chatcmpl-no-usage", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: { content: "estimated tokens" }, finish_reason: null }] };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                  controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                  controller.close();
+                },
+              });
+              return new Response(noUsageStream, { headers: { "Content-Type": "text/event-stream" } });
+            }
             // Streaming response
             const encoder = new TextEncoder();
             const stream = new ReadableStream({
@@ -246,6 +258,21 @@ describe("POST /v1/chat/completions", () => {
       (AbortSignal as any).timeout = originalTimeout;
       delete process.env.ROUTEBOX_CONNECT_TIMEOUT_MS;
     }
+  });
+
+  test("streaming: estimates routebox.meta tokens when provider omits usage", async () => {
+    const res = await proxyRequest({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "__NO_USAGE_STREAM__ please" }],
+      stream: true,
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const metaLine = text.split("\n").find((line) => line.startsWith("data: {") && line.includes("routebox.meta"));
+    expect(metaLine).toBeTruthy();
+    const meta = JSON.parse(metaLine!.slice("data: ".length));
+    expect(meta.usage.completion_tokens).toBeGreaterThan(0);
+    expect(meta.cost).toBeGreaterThan(0);
   });
 
   test("401 without auth", async () => {
