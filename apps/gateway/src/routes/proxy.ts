@@ -584,7 +584,7 @@ app.post("/chat/completions", async (c) => {
             body.stream_options = { include_usage: true };
           }
           const retryRes = await forward(fallback.provider, body);
-          if (retryRes.ok || retryRes.status < 500) {
+          if (retryRes.ok) {
             // Retry succeeded — continue with this response
             res = retryRes;
             Object.assign(route, { provider: fallback.provider, model: fallback.model, isFallback: true });

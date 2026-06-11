@@ -15,6 +15,25 @@ beforeAll(() => {
         const authEcho = req.headers.get("authorization") || "";
         const litellmEcho = req.headers.get("x-litellm-api-key") || "";
         return req.json().then((body: any) => {
+          // Deterministic failure injection (M4 test): only triggered when a
+          // request carries the sentinel marker in its first message, so other
+          // tests using the same models are unaffected. The mock returns a
+          // per-model HTTP status read from the marker's status map.
+          const firstContent = typeof body.messages?.[0]?.content === "string"
+            ? body.messages[0].content
+            : "";
+          const failMatch = firstContent.match(/__M4_FAIL__:(\{.*\})/);
+          if (failMatch) {
+            const statusMap = JSON.parse(failMatch[1]) as Record<string, number>;
+            const forced = statusMap[body.model];
+            if (forced) {
+              return Response.json(
+                { error: { message: `mock forced ${forced} for ${body.model}` } },
+                { status: forced },
+              );
+            }
+          }
+
           if (body.stream) {
             // Streaming response
             const encoder = new TextEncoder();
@@ -211,6 +230,45 @@ describe("POST /v1/chat/completions", () => {
     // FLock.io uses x-litellm-api-key instead of Authorization Bearer
     expect(json._litellm).toBe("test-flock");
     expect(json._auth).toBe("");
+  });
+
+  test("M4: primary 5xx → fallback 4xx returns upstream error, NOT 200", async () => {
+    const { metrics } = await import("../lib/metrics");
+
+    // Arrange: prime OpenAI to failStreak=2 (still UP, threshold is 3) so the
+    // top-level route picks OpenAI (isFallback:false). The handler's single
+    // markProviderDown inside the 5xx branch then trips OpenAI to DOWN, so the
+    // in-branch selectRoute("gpt-4o","quality_first") falls back to FLock.io
+    // (kimi-k2-thinking) — a DIFFERENT provider — and retries it.
+    metrics.markProviderDown("OpenAI");
+    metrics.markProviderDown("OpenAI");
+
+    try {
+      // Mock: gpt-4o (primary, OpenAI) → 503; kimi-k2-thinking (retry, FLock) → 400.
+      const marker = `__M4_FAIL__:${JSON.stringify({ "gpt-4o": 503, "kimi-k2-thinking": 400 })}`;
+      const res = await proxyRequest({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: marker }],
+      });
+
+      // The fallback returned 4xx (not 2xx), so it must NOT be treated as a
+      // success. Pre-fix (retryRes.ok || retryRes.status < 500) returned the
+      // 400 body as a 200. Post-fix the error branch returns 502.
+      expect(res.status).toBe(502);
+      expect(res.status).not.toBe(200);
+      const json = await res.json() as any;
+      expect(json.error?.type).toBe("upstream_error");
+    } finally {
+      // Restore shared singleton state: reset both providers to healthy so
+      // sibling tests (and other test files) see them UP.
+      const reset = (provider: string, model: string) =>
+        metrics.record({
+          timestamp: Date.now(), provider, model, inputTokens: 0, outputTokens: 0,
+          totalTokens: 0, cost: 0, latencyMs: 1, status: "success",
+        });
+      reset("OpenAI", "gpt-4o");
+      reset("FLock.io", "kimi-k2-thinking");
+    }
   });
 });
 
