@@ -8,3 +8,4 @@ export const LLM_CORE_VERSION = "1.0.0";
 
 export type { ProviderFormat, ProviderTemplate, ModelPricing } from "./types";
 export { pricingForModel, calculateCost, type PricingOptions } from "./pricing";
+export { resolveAlias } from "./aliases";
