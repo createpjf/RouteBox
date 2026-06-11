@@ -29,6 +29,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   const [customSaving, setCustomSaving] = useState(false);
   const [customError, setCustomError] = useState<string | null>(null);
   const [fetchFailed, setFetchFailed] = useState(false);
+  const [retriesExhausted, setRetriesExhausted] = useState(false);
 
   const fetchRegistry = useCallback(async () => {
     try {
@@ -39,6 +40,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
       setProviders(regRes.providers);
       setLocalProviders(localRes.providers);
       setFetchFailed(false);
+      setRetriesExhausted(false);
     } catch {
       // may not be connected yet — flag for bounded auto-retry
       setFetchFailed(true);
@@ -51,10 +53,22 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
     fetchRegistry();
   }, [fetchRegistry]);
 
+  // Bounded auto-retry while the gateway is still coming up (e.g. starting).
+  // Polls every 2s, stops on success (fetchFailed→false clears this effect) or
+  // after a cap, after which the user falls back to the manual Refresh button.
   useEffect(() => {
     if (!fetchFailed) return;
-    const t = setTimeout(() => { fetchRegistry(); }, 2000);
-    return () => clearTimeout(t);
+    let attempts = 0;
+    const id = setInterval(() => {
+      attempts += 1;
+      if (attempts > 10) {
+        setRetriesExhausted(true);
+        clearInterval(id);
+        return;
+      }
+      fetchRegistry();
+    }, 2000);
+    return () => clearInterval(id);
   }, [fetchFailed, fetchRegistry]);
 
   const handleSaveKey = useCallback(async (name: string) => {
@@ -154,7 +168,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
     return (
       <div className="glass-card-static p-3">
         <p className="text-[11px] text-text-tertiary text-center mb-2">
-          {fetchFailed
+          {fetchFailed && !retriesExhausted
             ? "Gateway not reachable yet — retrying…"
             : "Connect to gateway to manage providers"}
         </p>
