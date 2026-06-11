@@ -54,7 +54,19 @@ interface ProviderState {
 const MAX_LOG = 200;
 const MAX_SPARKLINE = 30;
 const LATENCY_WINDOW = 20;
-const DOWN_FAIL_STREAK = 3;
+export const DOWN_FAIL_STREAK = 3;
+
+/** 标记 down 后,距上次失败多久重新视为可用(half-open 探测) */
+export const PROVIDER_RECOVERY_MS = 60_000;
+
+/**
+ * 判定 provider 是否可用(纯函数,便于测试)。
+ * failStreak 未达阈值 → 可用;达阈值后,距 lastFailure 超过恢复冷却 → 重新可用(half-open)。
+ */
+export function computeProviderUp(failStreak: number, lastFailure: number, now: number): boolean {
+  if (failStreak < DOWN_FAIL_STREAK) return true;
+  return now - lastFailure >= PROVIDER_RECOVERY_MS;
+}
 
 class MetricsStore {
   private log: RequestRecord[] = [];
@@ -277,7 +289,7 @@ class MetricsStore {
       const avgLatency = ps.latencySamples.length
         ? Math.round(ps.latencySamples.reduce((a, b) => a + b, 0) / ps.latencySamples.length)
         : 0;
-      const isUp = ps.failStreak < DOWN_FAIL_STREAK;
+      const isUp = computeProviderUp(ps.failStreak, ps.lastFailure, Date.now());
       providerSnapshots.push({
         name: p.name,
         latency: avgLatency,
@@ -379,7 +391,7 @@ class MetricsStore {
 
     const ps = this.providerState.get(name);
     if (!ps) return false;
-    return ps.failStreak < DOWN_FAIL_STREAK;
+    return computeProviderUp(ps.failStreak, ps.lastFailure, Date.now());
   }
 
   /** Sync provider state when providers array changes (after rebuildProviders) */
