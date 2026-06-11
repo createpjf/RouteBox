@@ -345,6 +345,7 @@ export function App() {
         {showSettings && (
           <Settings
             onClose={() => setShowSettings(false)}
+            onGoToAccount={() => setActiveTab("account")}
           />
         )}
 

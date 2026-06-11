@@ -28,9 +28,10 @@ async function loadStore() {
 
 interface SettingsProps {
   onClose: () => void;
+  onGoToAccount?: () => void;
 }
 
-export function Settings({ onClose }: SettingsProps) {
+export function Settings({ onClose, onGoToAccount }: SettingsProps) {
   const [activeMode, setActiveMode] = useState<GatewayMode>(getGatewayMode);
   const [token, setToken] = useState("");
   const [hasToken, setHasToken] = useState(false);
@@ -574,10 +575,10 @@ export function Settings({ onClose }: SettingsProps) {
                       <p className="text-[10px] text-text-tertiary capitalize">{cloudUser.plan} plan</p>
                     </div>
                     <button
-                      onClick={onClose}
+                      onClick={() => { onGoToAccount?.(); onClose(); }}
                       className="flex items-center gap-1 text-[11px] text-accent-cyan hover:bg-accent-cyan/10 h-7 px-2 rounded-lg transition-colors"
                     >
-                      Go to Activity
+                      Go to Account
                       <ArrowRight size={12} strokeWidth={1.75} />
                     </button>
                   </div>
@@ -585,10 +586,10 @@ export function Settings({ onClose }: SettingsProps) {
                   <div className="flex items-center justify-between">
                     <p className="text-[13px] text-text-secondary">Not signed in</p>
                     <button
-                      onClick={onClose}
+                      onClick={() => { onGoToAccount?.(); onClose(); }}
                       className="flex items-center gap-1 text-[11px] text-accent-cyan hover:bg-accent-cyan/10 h-7 px-2 rounded-lg transition-colors"
                     >
-                      Sign in via Activity
+                      Sign in via Account
                       <ArrowRight size={12} strokeWidth={1.75} />
                     </button>
                   </div>
