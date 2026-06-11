@@ -16,6 +16,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
   const [keyInput, setKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [successProvider, setSuccessProvider] = useState<string | null>(null);
   const [editingLocalUrl, setEditingLocalUrl] = useState<string | null>(null);
   const [localUrlInput, setLocalUrlInput] = useState("");
@@ -70,6 +71,7 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
     try {
       await api.deleteProviderKey(name);
       await fetchRegistry();
+      setConfirmingDelete(null);
       onProvidersChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
@@ -408,15 +410,39 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
                       <span className="text-[11px] font-mono text-text-tertiary">
                         {p.maskedKey}
                       </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteKey(p.name);
-                        }}
-                        className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-accent-red/10 transition-colors"
-                      >
-                        <Trash2 size={12} strokeWidth={1.75} className="text-text-tertiary hover:text-accent-red" />
-                      </button>
+                      {confirmingDelete === p.name ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteKey(p.name);
+                            }}
+                            className="text-[10px] text-accent-red font-medium px-1.5 h-6 rounded-md hover:bg-accent-red/10"
+                          >
+                            Delete?
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmingDelete(null);
+                            }}
+                            className="text-[10px] text-text-tertiary px-1.5 h-6 rounded-md hover:bg-bg-input"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setError(null);
+                            setConfirmingDelete(p.name);
+                          }}
+                          className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-accent-red/10 transition-colors"
+                        >
+                          <Trash2 size={12} strokeWidth={1.75} className="text-text-tertiary hover:text-accent-red" />
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -476,6 +502,12 @@ export function ProviderKeyManager({ onProvidersChanged }: ProviderKeyManagerPro
           </div>
         );
       })}
+      {error && !editingProvider && !editingLocalUrl && (
+        <div className="flex items-center gap-1.5 px-3 py-2 border-t border-border-light">
+          <AlertCircle size={12} strokeWidth={1.75} className="text-accent-red shrink-0" />
+          <span className="text-[11px] text-accent-red">{error}</span>
+        </div>
+      )}
     </div>
     </div>
   );

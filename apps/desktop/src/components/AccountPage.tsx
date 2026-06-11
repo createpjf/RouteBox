@@ -52,6 +52,8 @@ function CloudApiKeySection() {
   const [copied, setCopied] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); }, []);
 
@@ -80,8 +82,12 @@ function CloudApiKeySection() {
   const handleDelete = async (id: string) => {
     try {
       await api.cloudDeleteApiKey(id);
+      setConfirmingDelete(null);
+      setDeleteError(null);
       await loadKeys();
-    } catch (err) { console.warn("Failed to delete API key:", err); }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete key");
+    }
   };
 
   const handleRename = async (id: string) => {
@@ -169,17 +175,35 @@ function CloudApiKeySection() {
                   {k.name} <Pencil size={8} />
                 </button>
               )}
-              <button
-                onClick={() => handleDelete(k.id)}
-                className="h-5 w-5 flex items-center justify-center rounded hover:bg-accent-red/10 transition-colors shrink-0"
-                title="Delete key"
-              >
-                <Trash2 size={10} strokeWidth={1.75} className="text-text-tertiary hover:text-accent-red" />
-              </button>
+              {confirmingDelete === k.id ? (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => handleDelete(k.id)}
+                    className="text-[9px] text-accent-red font-medium px-1.5 h-5 rounded hover:bg-accent-red/10"
+                  >
+                    Delete?
+                  </button>
+                  <button
+                    onClick={() => setConfirmingDelete(null)}
+                    className="text-[9px] text-text-tertiary px-1.5 h-5 rounded hover:bg-hover-overlay"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setDeleteError(null); setConfirmingDelete(k.id); }}
+                  className="h-5 w-5 flex items-center justify-center rounded hover:bg-accent-red/10 transition-colors shrink-0"
+                  title="Delete key"
+                >
+                  <Trash2 size={10} strokeWidth={1.75} className="text-text-tertiary hover:text-accent-red" />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
+      {deleteError && <p className="text-[10px] text-accent-red mt-1">{deleteError}</p>}
     </div>
   );
 }
