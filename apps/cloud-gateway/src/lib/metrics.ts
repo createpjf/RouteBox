@@ -77,12 +77,19 @@ export function decGauge(name: string, amount = 1): void {
 
 // ── Serialization (Prometheus text exposition format) ────────────────────────
 
+function escapeLabelValue(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/"/g, '\\"');
+}
+
 function labelKey(labels: Record<string, string>): string {
   const entries = Object.entries(labels).sort(([a], [b]) =>
     a.localeCompare(b),
   );
   if (entries.length === 0) return "";
-  return entries.map(([k, v]) => `${k}="${v}"`).join(",");
+  return entries.map(([k, v]) => `${k}="${escapeLabelValue(v)}"`).join(",");
 }
 
 function labelStr(key: string): string {

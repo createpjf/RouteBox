@@ -43,6 +43,12 @@ describe("incCounter", () => {
     const output = serialize();
     expect(output).toContain('test_counter_4{a="2",z="1"} 1');
   });
+
+  test("escapes label values for Prometheus text format", () => {
+    incCounter("test_counter_escaped", { model: 'bad"slash\\line\nnext' });
+    const output = serialize();
+    expect(output).toContain('test_counter_escaped{model="bad\\"slash\\\\line\\nnext"} 1');
+  });
 });
 
 describe("Histogram", () => {
