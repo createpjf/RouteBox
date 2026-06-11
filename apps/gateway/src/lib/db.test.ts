@@ -1,13 +1,14 @@
-import { test, expect } from "bun:test";
-import { Database } from "bun:sqlite";
+import { test, expect, beforeAll } from "bun:test";
+import { saveProviderKey, loadProviderKey, loadAllProviderKeys, __rawProviderKeyForTest } from "./db";
 
-const TEST_DB = "/tmp/routebox-test-db.sqlite";
-
-// 必须在 import db 之前设置(db.ts 在模块加载时按此路径打开 SQLite)
-process.env.ROUTEBOX_DB_KEY = "1".repeat(64);
-process.env.ROUTEBOX_DB_PATH = TEST_DB;
-
-const { saveProviderKey, loadProviderKey, loadAllProviderKeys } = await import("./db");
+// db.ts 的 Database 句柄是模块级单例,其路径由最先导入它的文件决定(可能是 :memory:)。
+// 因此本测试不按固定路径另开 DB,而是通过 __rawProviderKeyForTest 读取同一单例底层表的
+// 原始值——与 DB 路径及测试导入顺序无关。
+// encryptSecret/decryptSecret 在调用时读取 ROUTEBOX_DB_KEY;secrets.test.ts 会在其末个用例
+// 删除该变量,故在本文件用例运行前用 beforeAll 重新设置,确保加解密用同一密钥。
+beforeAll(() => {
+  process.env.ROUTEBOX_DB_KEY = "1".repeat(64);
+});
 
 test("provider key is stored encrypted but reads back as plaintext", () => {
   saveProviderKey("OpenAI", "sk-secret-abc123");
@@ -16,12 +17,10 @@ test("provider key is stored encrypted but reads back as plaintext", () => {
   const row = loadProviderKey("OpenAI");
   expect(row?.api_key).toBe("sk-secret-abc123");
 
-  // 直接查底层表,值应为密文(不含明文)
-  const raw = new Database(TEST_DB).query(
-    "SELECT api_key FROM provider_keys WHERE provider_name = ?",
-  ).get("OpenAI") as { api_key: string };
-  expect(raw.api_key.startsWith("enc:v1:")).toBe(true);
-  expect(raw.api_key).not.toContain("sk-secret-abc123");
+  // 底层表中的值应为密文(不含明文)
+  const raw = __rawProviderKeyForTest("OpenAI");
+  expect(raw?.startsWith("enc:v1:")).toBe(true);
+  expect(raw).not.toContain("sk-secret-abc123");
 });
 
 test("loadAllProviderKeys decrypts every row", () => {

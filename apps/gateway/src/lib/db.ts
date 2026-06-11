@@ -138,6 +138,10 @@ const updateProviderKeyValidationStmt = db.prepare(`
   UPDATE provider_keys SET validated_at = ? WHERE provider_name = ?
 `);
 
+const rawProviderKeyStmt = db.prepare(`
+  SELECT api_key FROM provider_keys WHERE provider_name = ?
+`);
+
 // ── Request by ID ───────────────────────────────────────────────────────────
 
 const getRequestByIdStmt = db.prepare(`
@@ -277,6 +281,16 @@ export function loadAllProviderKeys(): ProviderKeyRow[] {
 
 export function updateProviderKeyValidation(name: string) {
   updateProviderKeyValidationStmt.run(Date.now(), name);
+}
+
+/**
+ * Test-only: read the raw (still-encrypted) api_key directly from the table,
+ * bypassing decryption. Lets tests assert at-rest encryption against the actual
+ * module-level Database singleton, independent of its path or test import order.
+ * Not used in production.
+ */
+export function __rawProviderKeyForTest(name: string): string | undefined {
+  return (rawProviderKeyStmt.get(name) as { api_key: string } | undefined)?.api_key;
 }
 
 // ── Request by ID ───────────────────────────────────────────────────────────

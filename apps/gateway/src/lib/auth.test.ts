@@ -1,11 +1,14 @@
-import { test, expect } from "bun:test";
+import { test, expect, beforeAll, afterAll } from "bun:test";
+import { verifyToken } from "./auth";
 
-// 在导入被测模块前设置一个固定 token,使 resolveToken 走 env 分支。
-// 使用动态 import,确保该赋值在 auth.ts 顶层求值(捕获 ROUTEBOX_TOKEN)之前生效,
-// 覆盖 test-preload.ts 里设置的默认值。
-process.env.ROUTEBOX_TOKEN = "rb_testtoken_constant_time";
-
-const { verifyToken } = await import("./auth");
+// verifyToken 在调用时读取 ROUTEBOX_TOKEN,故在本文件的测试运行前设置固定 token,
+// 运行后恢复默认值(test-preload.ts 中的 "test-token"),避免污染其它测试文件的共享环境。
+beforeAll(() => {
+  process.env.ROUTEBOX_TOKEN = "rb_testtoken_constant_time";
+});
+afterAll(() => {
+  process.env.ROUTEBOX_TOKEN = "test-token";
+});
 
 test("verifyToken accepts the correct token", () => {
   expect(verifyToken("rb_testtoken_constant_time")).toBe(true);

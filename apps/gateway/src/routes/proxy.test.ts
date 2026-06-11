@@ -3,6 +3,9 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 let mockServer: ReturnType<typeof Bun.serve>;
 
 beforeAll(() => {
+  // Self-contained auth: verifyToken reads ROUTEBOX_TOKEN at call time, so a
+  // sibling test file (e.g. auth.test.ts) cannot leave a stale token behind.
+  process.env.ROUTEBOX_TOKEN = "test-token";
   mockServer = Bun.serve({
     port: 19999,
     fetch(req: Request) {
