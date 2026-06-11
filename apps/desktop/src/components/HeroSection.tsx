@@ -102,10 +102,17 @@ export function HeroSection({ connected, stale, gatewayState, gatewayError, bala
           </button>
         </div>
       </div>
-      {gatewayState === "failed" && shortError && (
-        <div className="px-5 pb-2 -mt-1">
-          <p className="text-[10px] text-[#FF3B30] leading-tight truncate">{shortError}</p>
-        </div>
+      {gatewayState === "failed" && (
+        <button
+          onClick={onOpenSettings}
+          className="mx-5 mb-2 px-3 py-1.5 rounded-lg flex items-center gap-2 text-left w-[calc(100%-2.5rem)] transition-colors hover:bg-[#FF3B30]/15"
+          style={{ background: "rgba(255, 59, 48, 0.08)", border: "1px solid rgba(255, 59, 48, 0.15)" }}
+        >
+          <AlertTriangle size={12} strokeWidth={2} className="text-[#FF3B30] shrink-0" />
+          <span className="text-[10px] text-[#FF3B30] font-medium leading-tight">
+            Gateway failed{shortError ? ` — ${shortError}` : ""} · tap to open Settings
+          </span>
+        </button>
       )}
       {/* Low balance warning (P8) */}
       {mode === "cloud" && balanceCents !== undefined && balanceCents < 100 && balanceCents >= 0 && (
