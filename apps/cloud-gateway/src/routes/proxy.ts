@@ -1060,7 +1060,7 @@ app.post("/chat/completions", creditsCheck, async (c) => {
   // Track retry metrics
   if (totalAttempts > 1) {
     incCounter("retry_attempts_total", {
-      model: requestedModel,
+      model: activeMetricModel,
       final_provider: activeProvider.instanceId,
     }, totalAttempts - 1);
   }

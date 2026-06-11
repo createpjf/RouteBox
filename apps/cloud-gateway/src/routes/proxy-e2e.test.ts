@@ -429,11 +429,17 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
       [], // disabled model check
     ];
 
-    mockFetch(async () =>
-      new Response(JSON.stringify(PROVIDER_JSON_RESPONSE), {
+    let fetchCount = 0;
+    mockFetch(async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return new Response("retry me", { status: 500 });
+      }
+      return new Response(JSON.stringify(PROVIDER_JSON_RESPONSE), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }));
+      });
+    });
 
     const res = await app.request("/chat/completions", {
       method: "POST",
@@ -450,6 +456,23 @@ describe("T4: Non-streaming full chain (route + deduct)", () => {
     );
     expect(providerRequestMetric).toBeTruthy();
     expect((providerRequestMetric![1] as any).model).toBe("other");
+
+    const retryMetric = metricCounterCalls.find(
+      ([name]) => name === "retry_attempts_total",
+    );
+    expect(retryMetric).toBeTruthy();
+    expect((retryMetric![1] as any).model).toBe("other");
+
+    const inputTokenMetric = metricCounterCalls.find(
+      ([name, labels]) => name === "provider_tokens_total" && (labels as any).direction === "input",
+    );
+    const outputTokenMetric = metricCounterCalls.find(
+      ([name, labels]) => name === "provider_tokens_total" && (labels as any).direction === "output",
+    );
+    expect(inputTokenMetric).toBeTruthy();
+    expect(outputTokenMetric).toBeTruthy();
+    expect((inputTokenMetric![1] as any).model).toBe("other");
+    expect((outputTokenMetric![1] as any).model).toBe("other");
   });
 });
 
